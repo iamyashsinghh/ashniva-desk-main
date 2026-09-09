@@ -1,0 +1,132 @@
+.release-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.release-page__columns {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+@media (max-width: 900px) {
+  .release-page__columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.release-page__main,
+.release-page__aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.release-page__header-facts {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The readiness checklist, exactly as the server sent it. */
+.release-gates {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.release-gates__row {
+  align-items: baseline;
+  display: grid;
+  gap: var(--space-1) var(--space-2);
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.release-gates__mark {
+  font-weight: 600;
+}
+
+.release-gates__mark--blocked {
+  color: var(--tone-danger-fg);
+}
+
+.release-gates__mark--satisfied {
+  color: var(--tone-success-fg);
+}
+
+.release-gates__reason {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  grid-column: 2;
+  margin: 0;
+}
+
+.release-blockers {
+  background: var(--tone-danger-bg);
+  border-radius: var(--radius-md);
+  color: var(--tone-danger-fg);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.release-blockers ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}
+
+.release-approvals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.release-approvals li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.release-approvals__row {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.release-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.release-history li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Typing the version back is the last thing between an operator and production. */
+.publish-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.publish-confirm__facts {
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}

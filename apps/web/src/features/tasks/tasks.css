@@ -1,0 +1,431 @@
+.tasks-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Active filters carried in from a dashboard card or a previous search. */
+.tasks-page__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* Board ------------------------------------------------------------------------------- */
+.task-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(230px, 1fr);
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+}
+
+.task-board__column {
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text);
+}
+
+.task-board__header {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.task-board__header span {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.task-board__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 8px 8px;
+}
+
+.task-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+}
+
+.task-card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.task-card__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.task-card__title {
+  font-weight: 500;
+}
+
+.task-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/*
+  The due phrase and its timing badge sit on one line and wrap together rather than letting the
+  badge fall under the assignee. `flex: none` keeps the pair at its natural width so the assignee
+  name is what gives way on a narrow column.
+*/
+.task-card__meta > span:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+
+/* Name beside a small avatar, on a board card and in a table cell alike. */
+.task-card__person,
+.task-cell__person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.task-card__person,
+.task-cell__person {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Detail ------------------------------------------------------------------------------ */
+.task-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.task-detail__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.task-detail__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* Effort reads under the logged total rather than beside it: it is a sentence, not a chip. */
+.task-detail__effort {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+}
+
+.task-detail__subheading {
+  margin-top: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.task-detail__blocked {
+  margin-top: var(--space-3);
+}
+
+.task-detail__people {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.task-detail__person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.task-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  font-size: var(--font-size-sm);
+}
+
+.task-steps__step {
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-faint);
+}
+
+.task-steps__step--done {
+  color: var(--tone-success-fg);
+}
+
+.task-steps__step--current {
+  font-weight: 600;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 6px 12px;
+  font-size: var(--font-size-sm);
+}
+
+.kv dt {
+  color: var(--color-text-muted);
+}
+
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.actions-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actions-card .ui-button,
+.actions-card .ui-button-with-reason {
+  width: 100%;
+}
+
+.actions-card__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.prose {
+  white-space: pre-wrap;
+  font-size: var(--font-size-sm);
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.comment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-sm);
+}
+
+.comment--client {
+  background: var(--tone-success-bg);
+}
+
+.comment__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.comment__body {
+  white-space: pre-wrap;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+}
+
+.timeline__item {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px;
+}
+
+.timeline__when {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.timeline__note {
+  color: var(--color-text-muted);
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.file-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-list__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: var(--font-size-sm);
+}
+
+.file-list__upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: var(--font-size-xs);
+}
+
+.file-list__visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.form-grid__full {
+  grid-column: 1 / -1;
+}
+
+.form-error {
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--tone-danger-bg);
+  color: var(--tone-danger-fg);
+  font-size: var(--font-size-sm);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.segmented-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.segmented-field__label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+@media (max-width: 899px) {
+  .task-detail__grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* On a phone the actions and key details come first, as in the approved mobile flows. */
+  .task-detail__column--aside {
+    order: -1;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A download "link" that must go through fetch (bearer token), styled like an anchor. */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand-primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Small helpers shared by the Phase 2 editors (SLA targets, permission matrix, day pickers). */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.table th,
+.table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-subtle);
+  vertical-align: middle;
+}

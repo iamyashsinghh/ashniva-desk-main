@@ -1,0 +1,57 @@
+.ui-dl {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.ui-dl__pair {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.ui-dl__pair:first-child {
+  padding-top: 0;
+}
+
+.ui-dl__pair:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.ui-dl__term {
+  color: var(--color-text-muted);
+}
+
+.ui-dl__description {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * `minmax(0, …)` on both tracks rather than `auto 1fr`: a long unbroken value (a URL, a ticket
+ * reference) in a grid track that sizes to content pushes the panel wider than its card and takes
+ * the whole page sideways with it.
+ */
+.ui-dl--rows .ui-dl__pair {
+  display: grid;
+  grid-template-columns: minmax(0, 8.5rem) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.ui-dl--stacked .ui-dl__pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-half);
+}
+
+/* Below the tablet breakpoint a two-column pair leaves ~9 characters for the value. */
+@media (max-width: 599px) {
+  .ui-dl--rows .ui-dl__pair {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-half);
+  }
+}

@@ -1,0 +1,323 @@
+/*
+ * Layout shared by every screen in the web app.
+ *
+ * Everything here was previously declared in `features/tasks/tasks.css`, which is why fifty-four
+ * files across twenty-four unrelated features imported that stylesheet: the classes below are not
+ * about tasks, they are the shape of a list page, a detail page, a comment thread and a timeline.
+ * Importing another feature's stylesheet to borrow its layout is the coupling this file removes.
+ *
+ * The rules are a faithful move — the same declarations, so nothing renders differently — with
+ * three deliberate exceptions, each marked below: the list reset that nine callers were adding by
+ * hand in a `style` attribute, `.link-button`'s colour, and `.inline-error`, which is new.
+ *
+ * `features/tasks/tasks.css` still declares its own copies. That file belongs to a branch in
+ * flight (`feat/task-visibility`), so it is left untouched; the duplicate declarations are
+ * identical, and it can drop them once that branch lands.
+ *
+ * Every value here is a token, so a tenant's branding and the dark palette both reach these
+ * screens without this file knowing that either exists.
+ */
+
+/* --- Page shells ------------------------------------------------------------------------ */
+
+/* A list screen: header, filters, then results. Was `.tasks-page`. */
+.list-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* A detail screen: a wide column of content beside a narrow column of facts and actions. */
+.detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.detail-page__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.detail-page__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.detail-page__subheading {
+  margin-top: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+/* A message that has to stand apart from the paragraph above it — blocked, resolved, rejected. */
+.detail-page__blocked {
+  margin-top: var(--space-3);
+}
+
+/* "Ada Lovelace → Grace Hopper": two people with avatars, wrapping on a narrow column. */
+.detail-page__people {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.detail-page__person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+@media (max-width: 899px) {
+  .detail-page__grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* On a phone the actions and key details come first, as in the approved mobile flows. */
+  .detail-page__column--aside {
+    order: -1;
+  }
+}
+
+/* The title block of a detail page while it is still loading. */
+.detail-skeleton__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 40rem;
+}
+
+/*
+ * A name beside a small avatar in a table cell.
+ *
+ * The rest of the `.task-cell` family is declared in `features/dashboard/dashboard.css` and used
+ * by nine features that have nothing to do with tasks; only this member of it lived in
+ * `tasks.css`. Renaming the family is a separate change from this one, so the name stays.
+ */
+.task-cell__person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Prose and small text ---------------------------------------------------------------- */
+
+.prose {
+  white-space: pre-wrap;
+  font-size: var(--font-size-sm);
+}
+
+/*
+ * A download "link" that must go through fetch (bearer token), styled like an anchor.
+ *
+ * `--brand-primary-text` rather than `--brand-primary`, for the reason `global.css` gives about
+ * `a`: a brand colour chosen to carry white text is not readable as body text on a dark page.
+ */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand-primary-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* An error inside a row, where a block-level Alert would break the line it sits in. */
+.inline-error {
+  color: var(--tone-danger-fg);
+  font-size: var(--font-size-sm);
+}
+
+/* --- Timelines and threads --------------------------------------------------------------- */
+
+/*
+ * The margin/padding/list-style reset is new here. Nine callers were writing
+ * `style={{ listStyle: 'none', margin: 0, padding: 0 }}` on every `<ul className="timeline">`,
+ * which is the same declaration nine times in a place no stylesheet can reach.
+ */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}
+
+.timeline__item {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px;
+}
+
+.timeline__when {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.timeline__note {
+  color: var(--color-text-muted);
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.comment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-sm);
+}
+
+.comment--client {
+  background: var(--tone-success-bg);
+}
+
+.comment__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.comment__body {
+  white-space: pre-wrap;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* --- Small groupings --------------------------------------------------------------------- */
+
+.actions-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actions-card .ui-button,
+.actions-card .ui-button-with-reason {
+  width: 100%;
+}
+
+.actions-card__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* Small helpers shared by the Phase 2 editors (SLA targets, permission matrix, day pickers). */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.file-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.file-list__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: var(--font-size-sm);
+}
+
+.file-list__upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: var(--font-size-xs);
+}
+
+.file-list__visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+}
+
+/* --- Plain tables ------------------------------------------------------------------------ */
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.table th,
+.table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-subtle);
+  vertical-align: middle;
+}
+
+/* --- Spacing helpers --------------------------------------------------------------------- */
+
+/*
+ * `FormActions` and `FormGridFull` take no `className`, deliberately: where they sit is the
+ * caller's business, not the component's. These three are the whole vocabulary the callers
+ * needed, and they replace `style={{ marginTop: 12 }}` written out at fourteen call sites.
+ */
+.stack-top {
+  margin-top: var(--space-3);
+}
+
+.stack-bottom {
+  margin-bottom: var(--space-2);
+}
+
+.align-end {
+  align-self: end;
+}

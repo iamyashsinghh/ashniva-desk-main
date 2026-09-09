@@ -1,0 +1,29 @@
+.ui-spinner {
+  display: inline-flex;
+}
+
+.ui-spinner__ring {
+  width: var(--space-5);
+  height: var(--space-5);
+  border: 2px solid var(--color-border-strong);
+  border-top-color: var(--brand-primary-text);
+  border-radius: var(--radius-circle);
+  animation: ui-spinner-spin 800ms linear infinite;
+}
+
+.ui-spinner--sm .ui-spinner__ring {
+  width: var(--space-3);
+  height: var(--space-3);
+}
+
+.ui-spinner--lg .ui-spinner__ring {
+  width: var(--space-8);
+  height: var(--space-8);
+  border-width: 3px;
+}
+
+@keyframes ui-spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

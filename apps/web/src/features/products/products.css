@@ -1,0 +1,80 @@
+/* The product registry. */
+
+.product-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.product-cell__code {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.product-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.product-switches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/*
+ * A secret, or a snippet containing one. Monospace and wrapping rather than scrolling, because a
+ * value somebody has to copy exactly must be visible in full at a glance.
+ */
+.secret-once {
+  margin: var(--space-2) 0 0;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised, var(--color-surface));
+  border: 1px solid var(--color-border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/*
+ * Support tiers, laid out one block per tier.
+ *
+ * A single card rather than four, because the useful comparison an administrator makes is between
+ * tiers — "what does PRIORITY get that STANDARD does not" — and four separate cards put that
+ * comparison on four different scroll positions.
+ */
+.tier-row {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.tier-row:first-of-type {
+  border-top: none;
+  margin-top: 0;
+}
+
+.tier-row h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.form-fieldset {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin: var(--space-3) 0;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px 0;
+}

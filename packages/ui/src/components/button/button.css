@@ -1,0 +1,146 @@
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.ui-button--sm {
+  height: var(--control-height-sm);
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-xs);
+}
+
+.ui-button--lg {
+  height: var(--control-height-lg);
+  padding: 0 var(--space-4);
+  font-size: var(--font-size-md);
+}
+
+.ui-button--full,
+.ui-button--full > .ui-button {
+  width: 100%;
+}
+
+/* A square button holding one glyph; its accessible name comes from `aria-label`. */
+.ui-button--icon {
+  width: var(--control-height);
+  padding: 0;
+}
+
+.ui-button--icon.ui-button--sm {
+  width: var(--control-height-sm);
+}
+
+.ui-button--icon.ui-button--lg {
+  width: var(--control-height-lg);
+}
+
+.ui-button--primary {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--color-text-on-brand);
+}
+
+.ui-button--primary:hover:not(:disabled) {
+  background: var(--brand-primary-hover);
+  border-color: var(--brand-primary-hover);
+}
+
+.ui-button--accent {
+  background: var(--brand-accent);
+  border-color: var(--brand-accent);
+  color: var(--color-text-on-brand);
+}
+
+.ui-button--accent:hover:not(:disabled) {
+  background: var(--brand-accent-hover);
+  border-color: var(--brand-accent-hover);
+}
+
+.ui-button--secondary:hover:not(:disabled) {
+  background: var(--state-hover-bg);
+  border-color: var(--color-border-interactive);
+}
+
+.ui-button--danger {
+  color: var(--color-danger);
+}
+
+.ui-button--danger:hover:not(:disabled) {
+  background: var(--tone-danger-bg);
+  border-color: var(--tone-danger-border);
+}
+
+.ui-button--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--brand-primary-text);
+  padding: 0 var(--space-2);
+}
+
+.ui-button--ghost:hover:not(:disabled) {
+  background: var(--brand-primary-soft);
+}
+
+/*
+ * The press state, which the set was missing entirely: without it a click on a slow action gives
+ * no feedback at all between the press and whatever happens next.
+ */
+.ui-button:active:not(:disabled) {
+  background-image: linear-gradient(var(--state-active-bg), var(--state-active-bg));
+}
+
+/* Disabled buttons are clearly distinct: dashed border + reduced opacity (per the approved designs). */
+.ui-button:disabled {
+  opacity: var(--state-disabled-opacity);
+  border-style: dashed;
+}
+
+/* The wrapper takes the layout so a full-width button with a reason still fills its container. */
+.ui-button-with-reason {
+  display: inline-flex;
+}
+
+.ui-button__leading {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ui-button__spinner {
+  width: var(--space-3);
+  height: var(--space-3);
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: var(--radius-circle);
+  animation: ui-button-spin 700ms linear infinite;
+}
+
+@keyframes ui-button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Touch devices get 44px targets */
+@media (pointer: coarse) {
+  .ui-button {
+    min-height: var(--touch-target);
+  }
+
+  .ui-button--icon {
+    min-width: var(--touch-target);
+  }
+}

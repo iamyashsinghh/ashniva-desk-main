@@ -1,0 +1,11 @@
+{
+  "extends": "@ashniva/config/tsconfig/node.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "baseUrl": ".",
+    "types": ["node", "jest"],
+    "incremental": true
+  },
+  "include": ["src", "test", "prisma", "prisma.config.ts"]
+}

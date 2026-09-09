@@ -1,0 +1,84 @@
+.ui-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+/*
+ * The tone classes set a background and a foreground; an alert is a block rather than a pill, so
+ * it also needs an edge. Each tone's border token is stated here rather than in `badge.css`,
+ * where nothing draws one.
+ */
+.ui-alert.ui-tone--neutral {
+  border-color: var(--tone-neutral-border);
+}
+.ui-alert.ui-tone--info {
+  border-color: var(--tone-info-border);
+}
+.ui-alert.ui-tone--progress {
+  border-color: var(--tone-progress-border);
+}
+.ui-alert.ui-tone--warning {
+  border-color: var(--tone-warning-border);
+}
+.ui-alert.ui-tone--success {
+  border-color: var(--tone-success-border);
+}
+.ui-alert.ui-tone--review {
+  border-color: var(--tone-review-border);
+}
+.ui-alert.ui-tone--danger {
+  border-color: var(--tone-danger-border);
+}
+
+.ui-alert__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-half);
+}
+
+.ui-alert__title {
+  font-weight: var(--font-weight-semibold);
+}
+
+.ui-alert__body {
+  min-width: 0;
+  line-height: var(--line-height-normal);
+}
+
+.ui-alert__action {
+  flex: none;
+}
+
+.ui-alert__dismiss {
+  flex: none;
+  width: var(--space-5);
+  height: var(--space-5);
+  margin: calc(var(--space-half) * -1) calc(var(--space-1) * -1) 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font-size: var(--font-size-lg);
+  line-height: 1;
+}
+
+.ui-alert__dismiss:hover {
+  background: var(--state-hover-bg);
+}
+
+/* A 20px hit area is fine with a mouse and not with a thumb. */
+@media (pointer: coarse) {
+  .ui-alert__dismiss {
+    width: var(--touch-target);
+    height: var(--touch-target);
+    margin: 0;
+  }
+}

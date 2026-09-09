@@ -1,0 +1,42 @@
+{
+  "name": "ashniva-desk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ashniva Desk — IT project, task, ticket, contract, client support, IVR and work tracking SaaS (pnpm monorepo)",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build:packages": "pnpm --filter @ashniva/types build",
+    "build": "pnpm -r --workspace-concurrency=1 build",
+    "dev": "pnpm build:packages && pnpm -r --parallel --filter @ashniva/api --filter @ashniva/web dev",
+    "dev:api": "pnpm build:packages && pnpm --filter @ashniva/api dev",
+    "dev:web": "pnpm --filter @ashniva/web dev",
+    "lint": "pnpm build:packages && eslint .",
+    "lint:fix": "pnpm build:packages && eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm build:packages && pnpm -r typecheck",
+    "test": "pnpm build:packages && pnpm -r test",
+    "test:e2e": "pnpm build:packages && pnpm --filter @ashniva/api test:e2e",
+    "db:generate": "pnpm --filter @ashniva/api db:generate",
+    "db:migrate": "pnpm --filter @ashniva/api db:migrate",
+    "db:migrate:deploy": "pnpm --filter @ashniva/api db:migrate:deploy",
+    "db:seed": "pnpm build:packages && pnpm --filter @ashniva/api db:seed",
+    "db:reset": "pnpm build:packages && pnpm --filter @ashniva/api db:reset",
+    "db:studio": "pnpm --filter @ashniva/api db:studio",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "clean": "pnpm -r clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "@ashniva/config": "workspace:*",
+    "eslint": "^9.39.5",
+    "prettier": "^3.9.6",
+    "rimraf": "^6.1.3",
+    "typescript": "^5.9.3"
+  }
+}

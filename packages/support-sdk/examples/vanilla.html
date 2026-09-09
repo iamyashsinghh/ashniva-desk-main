@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ashniva support widget — runnable example</title>
+    <style>
+      body {
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+        margin: 0 auto;
+        max-width: 40rem;
+        padding: 2rem 1rem;
+      }
+      .ashniva-support__label {
+        display: block;
+        margin-bottom: 0.75rem;
+      }
+      .ashniva-support__label input,
+      .ashniva-support__label textarea,
+      .ashniva-support__label select {
+        display: block;
+        width: 100%;
+        margin-top: 0.25rem;
+        padding: 0.4rem;
+        font: inherit;
+      }
+      .ashniva-support__error {
+        color: #b00020;
+      }
+      .ashniva-support__status {
+        padding: 0.75rem 0;
+      }
+      .ashniva-support__submit,
+      .ashniva-support__again {
+        font: inherit;
+        padding: 0.4rem 1rem;
+      }
+      .note {
+        background: #f6f6f6;
+        border-left: 3px solid #999;
+        padding: 0.75rem 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Support</h1>
+
+    <p class="note">
+      <strong>Before this page works:</strong> set <code>BASE_URL</code> below, register this page's
+      origin against your product in Desk (Products → Allowed origins), and point
+      <code>mintSession</code> at an endpoint of <em>your own backend</em> that holds the
+      <code>ask_</code> credential. There is deliberately no credential in this file — putting one
+      here is exactly the mistake the whole design exists to prevent.
+    </p>
+
+    <div id="support"></div>
+
+    <!-- Built by `pnpm --filter @ashniva/support-sdk build`. Serve it from your own origin or a CDN. -->
+    <script src="../dist/browser/ashniva-support.iife.js"></script>
+    <script>
+      const BASE_URL = 'https://desk.example.com/api/v1';
+
+      /**
+       * Asks *your* backend for a support session.
+       *
+       * Your backend holds `ask_<keyId>.<secret>`, calls POST /support/widget-sessions with it, and
+       * returns the `{ token, expiresAt }` it gets back. The token that reaches this page is bound
+       * to one product, one of your users and this exact origin, and expires in minutes.
+       */
+      async function mintSession() {
+        const response = await fetch('/our-backend/support-session', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ origin: window.location.origin }),
+        });
+        if (!response.ok) {
+          throw new Error('We could not open support just now');
+        }
+        return response.json();
+      }
+
+      const support = AshnivaSupport.mountSupportWidget({
+        container: '#support',
+        baseUrl: BASE_URL,
+        session: mintSession,
+      });
+
+      support.open();
+
+      // The state machine is available directly, for a page that wants to react to it — showing a
+      // badge when support is closed, say, rather than only inside the widget.
+      support.widget.subscribe((state) => {
+        // eslint-disable-next-line no-console
+        console.info('support widget state:', state.kind, AshnivaSupport.SDK_INTERFACE_VERSION);
+      });
+    </script>
+  </body>
+</html>

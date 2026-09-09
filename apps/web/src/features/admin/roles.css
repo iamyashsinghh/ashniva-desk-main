@@ -1,0 +1,30 @@
+.permission-group {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.permission-group legend {
+  padding: 0 4px;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.permission-group__row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 3px 0;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.permission-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  columns: 2;
+  column-gap: 16px;
+}

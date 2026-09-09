@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><script src="./doc-page.js"></script><style>body{margin:0;font-family:'IBM Plex Sans',Helvetica,sans-serif;color:#1c1d1f;font-size:14px;line-height:1.6}doc-page:not(:defined){visibility:hidden}a{color:#3b5fa0}a:hover{color:#2c4a82}table{border-collapse:collapse;width:100%;max-width:100%;table-layout:fixed;font-size:12.5px;overflow-wrap:anywhere}thead th{text-align:left;font-weight:600;padding:6px 8px;border-bottom:1.5px solid #1c1d1f;background:#f3f3f0}td{padding:5px 8px;border-bottom:1px solid #e3e3df;vertical-align:top}pre{font-family:'IBM Plex Mono',Menlo,monospace;font-size:11.5px;line-height:1.5;background:#f6f6f4;border:1px solid #e3e3df;border-radius:4px;padding:12px 14px;margin:8px 0 16px;white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font-size:10.5px;break-inside:avoid}code{font-family:'IBM Plex Mono',Menlo,monospace;font-size:12px;background:#f3f3f0;padding:1px 4px;border-radius:3px}h1{font-size:30px;line-height:1.15;font-weight:600;margin:0 0 6px;letter-spacing:-.01em}h2{font-size:20px;font-weight:600;margin:36px 0 10px;padding-top:12px;border-top:2px solid #1c1d1f}h3{font-size:14.5px;font-weight:600;margin:20px 0 6px}p{margin:0 0 10px;text-wrap:pretty}ul,ol{margin:0 0 12px;padding-left:22px}li{margin:2px 0}.note{background:#f6f6f4;border:1px solid #e3e3df;border-radius:4px;padding:10px 14px;margin:10px 0 14px;break-inside:avoid}.kv{display:grid;grid-template-columns:150px 1fr;gap:4px 14px;font-size:13px}</style></helmet>
+<doc-page margin="0.75in">
+<div slot="footer" style="display:flex;justify-content:space-between;font-size:10px;color:#77787b;padding:6px 0"><span>Ashniva Desk — Architecture &amp; Design Plan v0.1</span><span>Confidential · 02/09/2026</span></div>
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:22px"><span style="font-weight:600;font-size:13px;letter-spacing:.02em;padding:4px 8px;border:1.5px solid #1c1d1f;border-radius:3px">Ashniva Desk</span><span style="font-size:12px;color:#77787b">Temporary text logo · replaceable from Admin → Branding</span></div>
+<h1>Architecture &amp; Design Plan <span style="font-size:14px;font-weight:500;color:#77787b;vertical-align:middle">v0.3</span></h1>
+<p style="font-size:16px;color:#4a4b4e;margin-bottom:18px">IT project, task, ticket, contract and client work tracking — for review and approval before implementation.</p>
+
+<div class="note"><div class="kv"><span style="color:#77787b">Status</span><span>Draft for approval. No implementation code written.</span><span style="color:#77787b">Companion files</span><span><a href="Ashniva Desk - Wireframes.dc.html">Wireframes</a> · <a href="Ashniva Desk - Hi-fi Screens.dc.html">Hi-fi screens (12 core)</a> · <a href="Ashniva Desk - Hi-fi Screens v2.dc.html">Hi-fi screens v2 (23 workflow/admin/QA/release + mobile)</a></span><span style="color:#77787b">v0.2 changes</span><span>Full dev → review → QA → UAT → release → live-verification workflow (§11); task categories &amp; manager tasks (§12); QA module, test environments &amp; secure test accounts (§13); GitHub App integration &amp; Actions gating (§14); Releases &amp; live publishing (§15); customer status mapping (§16); admin (§17); schema/API additions and security corrections (§18); revised phases (§10).</span><span style="color:#77787b">Scale at launch</span><span>~25 internal users, ~10 client organizations, IST, INR, DD/MM/YYYY</span><span style="color:#77787b">Stack</span><span>React + TS + Vite · NestJS + Prisma + PostgreSQL · Redis/BullMQ · Socket.IO · S3 · Docker</span></div></div>
+
+<h3>Design principles that shape everything below</h3>
+<ol>
+<li><b>Task activity is the report.</b> Nobody writes a status update twice. Completing a task asks four things; daily reports and the client's "Completed Today" are derived.</li>
+<li><b>Internal vs client-visible is a first-class flag</b> on every comment, update, attachment and estimate — shown as a badge in the UI, enforced in the API by a visibility filter, not by the frontend.</li>
+<li><b>Tenant isolation at the query layer.</b> Every tenant-scoped table carries <code>organization_id</code>; a Prisma middleware injects it from the JWT on every read/write. Clients never hit internal endpoints.</li>
+<li><b>Two hats for seniors.</b> Every task has a <code>category</code> (Development, Management, Review, Testing, Planning, Client Meeting …). Managers get real assignable tasks too. "My Tasks Today" shows Management and Development in separate sections; reports split on the same field. Admin can hide a user's Development section with a per-user flag — no new role.</li>
+<li><b>Nobody publishes by marking a task done.</b> Completion is the end of a gated chain: code review → automated checks → QA on staging → optional client UAT → controlled release → live verification. See §11.</li>
+<li><b>Minimal fields, fixed workflows.</b> No custom fields, no custom workflows, no per-project statuses in Phase 1–2.</li>
+</ol>
+
+<h2>1. User flows</h2>
+<h3>1.1 Developer — daily loop</h3>
+<ol>
+<li>Sign in → <b>Developer dashboard</b>: Today's tasks, overdue, awaiting my review fixes, tickets assigned to me.</li>
+<li>Open task → <b>Start Work</b> (Assigned → In Progress; timer optional). Branch <code>AD-124-login-otp</code> auto-links via GitHub.</li>
+<li>Working: internal comments, Blocked with reason (notifies senior). Commits with <code>AD-124</code> attach automatically.</li>
+<li><b>Development Completed</b> sheet (what was done · time · client-visible?) → opens/links PR → senior gets a <i>Review</i> task → <b>Code Review</b>.</li>
+<li>Review approved + mandatory checks green → <b>Ready for QA</b> → staging deploy → <b>Send for Testing</b> (confirm tester) → QA assignment created with auto-selected test account.</li>
+<li>QA Passed → (Client UAT if enabled) → Ready to Publish → added to a Release → Published Live → Live Verification → <b>Completed</b>. QA Failed returns to developer with reason + evidence; Fix Submitted → Retest.</li>
+<li>Daily report for the developer is generated automatically at 18:30 IST (and viewable live).</li>
+</ol>
+<h3>1.2 Senior / Team Lead — managing and building</h3>
+<ol>
+<li><b>Senior dashboard</b>: Pending reviews · team board summary · blocked · overdue · my own tasks (separate panel).</li>
+<li><b>Create Task</b> (title, project, assignee, priority, due date — everything else optional) or <b>Assign</b> an unassigned task/ticket-task.</li>
+<li>Review queue: open task → see completion summary, diff of files/links → <b>Approve</b> or <b>Reject with Comment</b>.</li>
+<li>If the update is client-visible: <b>Publish Update</b> (or edit wording first) → appears in client portal "Completed Today".</li>
+<li>Own development work follows flow 1.1; logged as DEVELOPMENT and shown separately in the senior report.</li>
+</ol>
+<h3>1.3 Client — raise a ticket and follow progress</h3>
+<ol>
+<li>Sign in → <b>Client dashboard</b>: In progress · Completed today · This week · Open tickets · Pending decisions · Support hours.</li>
+<li><b>Raise Ticket</b>: type, title, description, screenshot. Ticket number auto-generated; SLA clock starts.</li>
+<li>Ticket replies: sees public replies only; can reply, attach, and mark "Waiting for Client" items as answered.</li>
+<li>Approvals: files or decisions requiring approval → Approve / Request changes.</li>
+<li>Project detail (client view): milestones, progress, published updates, releases, contract hours.</li>
+</ol>
+<h3>1.4 Support Executive — ticket triage</h3>
+<ol>
+<li><b>Ticket list</b> filtered New / SLA at risk.</li>
+<li>Triage: set type, priority, product, assign to team/developer → Assigned.</li>
+<li>Reply publicly or comment internally; set Waiting for Client when blocked on requester.</li>
+<li><b>Convert to Task(s)</b>: one or many development tasks linked to the ticket; ticket status follows the tasks.</li>
+<li>Resolve with resolution summary → Resolved. Auto-closes after 5 days without reopen.</li>
+</ol>
+<h3>1.5 Ticket → Task linkage</h3>
+<p>Ticket and tasks stay linked via <code>task.ticket_id</code>. When all linked tasks are Completed, the ticket moves to Review/Testing and the support executive is prompted to verify and resolve. Client-visible task updates on ticket-linked tasks post as public ticket replies (after approval).</p>
+
+<h2>2. Screen list</h2>
+<table><thead><tr><th style="width:28px">#</th><th>Screen</th><th>Roles</th><th>Phase</th><th>Designed</th></tr></thead><tbody>
+<tr><td>1</td><td>Sign in / Forgot password / Invite accept</td><td>All</td><td>1</td><td>—</td></tr>
+<tr><td>2</td><td>Super Admin dashboard</td><td>Super Admin, PM</td><td>1</td><td>✓</td></tr>
+<tr><td>3</td><td>Senior dashboard</td><td>Team Lead</td><td>1</td><td>✓</td></tr>
+<tr><td>4</td><td>Developer dashboard</td><td>Developer</td><td>1</td><td>✓</td></tr>
+<tr><td>5</td><td>Tester dashboard</td><td>Tester/QA</td><td>1</td><td>variant of 4</td></tr>
+<tr><td>6</td><td>Support dashboard</td><td>Support Exec</td><td>1</td><td>variant of 10</td></tr>
+<tr><td>7</td><td>Client dashboard</td><td>Client Admin, Client Employee</td><td>1</td><td>✓</td></tr>
+<tr><td>8</td><td>Projects list · Project detail (Overview, Tasks, Milestones, Tickets, Files, Updates, Contract)</td><td>Internal; client sees restricted view</td><td>1</td><td>✓</td></tr>
+<tr><td>9</td><td>Task board (Kanban / List / Calendar) with saved views: My Tasks, Assigned by Me, Team, Today, Overdue, Completed Today</td><td>Internal</td><td>1</td><td>✓</td></tr>
+<tr><td>10</td><td>Task detail (side panel or full page) + Completion sheet</td><td>Internal</td><td>1</td><td>✓</td></tr>
+<tr><td>11</td><td>Ticket list</td><td>Internal; clients see own</td><td>1</td><td>✓</td></tr>
+<tr><td>12</td><td>Ticket detail (public thread / internal thread / linked tasks)</td><td>Internal; clients see public</td><td>1</td><td>✓</td></tr>
+<tr><td>13</td><td>Raise Ticket form</td><td>All</td><td>1</td><td>mobile</td></tr>
+<tr><td>14</td><td>Contracts list · Contract detail</td><td>Super Admin, PM; client sees own</td><td>2</td><td>✓</td></tr>
+<tr><td>15</td><td>Completed Today (internal review/publish queue + client view)</td><td>Senior, PM, Client</td><td>1</td><td>✓</td></tr>
+<tr><td>16</td><td>Reports (Developer · Senior · Project; date range; export PDF/CSV)</td><td>Internal by scope</td><td>1</td><td>✓</td></tr>
+<tr><td>17</td><td>Approvals (client) · Pending decisions</td><td>Client Admin</td><td>2</td><td>—</td></tr>
+<tr><td>18</td><td>Notifications panel + preferences</td><td>All</td><td>2</td><td>—</td></tr>
+<tr><td>19</td><td>Admin: Organizations · Users &amp; roles · Teams · Products · Branding · Audit log</td><td>Super Admin</td><td>1 (Branding 1)</td><td>—</td></tr>
+<tr><td>20</td><td>Profile &amp; notification preferences</td><td>All</td><td>1</td><td>—</td></tr>
+<tr><td colspan="5" style="background:#f3f3f0;font-weight:600">Added in v0.2 — all designed in Hi-fi v2</td></tr>
+<tr><td>21</td><td>Create Task (basic + More Options) · Assign Task</td><td>PM, Lead, Senior, Support</td><td>1</td><td>✓ 2a 2b</td></tr>
+<tr><td>22</td><td>Raise Ticket (all requester types, auto-captured fields, More Options)</td><td>All</td><td>1</td><td>✓ 2c</td></tr>
+<tr><td>23</td><td>My Tasks Today — Manager/Senior (Management + Development sections)</td><td>PM, Lead, Senior</td><td>1</td><td>✓ 2d</td></tr>
+<tr><td>24</td><td>Admin: dashboard · Companies · Projects &amp; products · Teams &amp; users · Roles &amp; permissions · Task categories/statuses · Ticket categories · SLA · Testers · GitHub · Test environments · Branding · Notifications · Audit · "Preview as"</td><td>Super Admin</td><td>1–2</td><td>✓ 2e–2i, 2w</td></tr>
+<tr><td>25</td><td>Tester/QA dashboard · Testing assignment detail · Pass/Fail form</td><td>Tester, QA Lead</td><td>1</td><td>✓ 2j 2k 2l</td></tr>
+<tr><td>26</td><td>Test environments · Test accounts (secure reveal)</td><td>Admin, PM, Tester</td><td>1</td><td>✓ 2m 2n</td></tr>
+<tr><td>27</td><td>GitHub connection · Repository &amp; branch mapping · PR/code-review status on task</td><td>Admin, PM, Dev</td><td>2</td><td>✓ 2o 2p 2q</td></tr>
+<tr><td>28</td><td>Releases list · Release detail · Publish-live confirmation · Live verification</td><td>PM, Lead, QA, Admin</td><td>2</td><td>✓ 2r 2s 2t 2u</td></tr>
+<tr><td>29</td><td>Client UAT approval</td><td>Client Admin</td><td>2</td><td>✓ 2v</td></tr>
+<tr><td>30</td><td>Mobile: create/assign task, raise ticket, complete task, review task, pass/fail test, reply to ticket, UAT approval, live verification</td><td>—</td><td>1–2</td><td>✓ 2x</td></tr>
+</tbody></table>
+
+<h2>3. Role and permission matrix</h2>
+<p>Permissions are stored as <code>resource:action</code> strings on roles; roles are per-organization. Legend: <b>A</b> all in tenant · <b>T</b> own team / assigned projects · <b>O</b> own only · <b>P</b> public (client-visible) only · — none.</p>
+<table style="font-size:10.5px"><thead><tr><th style="width:22%">Capability</th><th>Super Admin</th><th>PM</th><th>Team Lead</th><th>Developer</th><th>Tester</th><th>Support</th><th>Int. Employee</th><th>Client Admin</th><th>Client Emp.</th></tr></thead><tbody>
+<tr><td>Manage organizations, users, roles, branding</td><td>A</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>O (own users)</td><td>—</td></tr>
+<tr><td>Create / edit projects, contracts</td><td>A</td><td>A</td><td>T (edit)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>P (view)</td><td>P (view)</td></tr>
+<tr><td>Create &amp; assign tasks</td><td>A</td><td>A</td><td>T</td><td>O (self-assign)</td><td>O</td><td>T (from ticket)</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Start / send for review / complete task</td><td>A</td><td>A</td><td>T + O</td><td>O</td><td>O</td><td>O</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Approve / reject review</td><td>A</td><td>A</td><td>T</td><td>—</td><td>T (test)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Internal comments &amp; estimates</td><td>A</td><td>A</td><td>T</td><td>T</td><td>T</td><td>A</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Publish client update</td><td>A</td><td>A</td><td>T</td><td>—</td><td>—</td><td>T (tickets)</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Raise ticket</td><td>A</td><td>A</td><td>A</td><td>A</td><td>A</td><td>A</td><td>O</td><td>O</td><td>O</td></tr>
+<tr><td>Triage / assign / resolve ticket</td><td>A</td><td>A</td><td>T</td><td>O (assigned)</td><td>O</td><td>A</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Public ticket replies</td><td>A</td><td>A</td><td>T</td><td>O</td><td>O</td><td>A</td><td>O</td><td>O</td><td>O</td></tr>
+<tr><td>View reports</td><td>A</td><td>A</td><td>T</td><td>O</td><td>O</td><td>O</td><td>—</td><td>P (project)</td><td>—</td></tr>
+<tr><td>Approve files / decisions</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>O</td><td>—</td></tr>
+<tr><td>Support hours, contract terms</td><td>A</td><td>A</td><td>T (view)</td><td>—</td><td>—</td><td>A (view)</td><td>—</td><td>O (view)</td><td>—</td></tr>
+<tr><td>Costs, profit, performance</td><td>A</td><td>A (no profit)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Audit log</td><td>A</td><td>T</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+</tbody></table>
+<p style="margin-top:8px">Enforcement: <code>JwtAuthGuard</code> → <code>TenantGuard</code> (org from token, sets <code>request.tenant</code>) → <code>PermissionsGuard</code> (<code>@RequirePermission('task:approve')</code>) → service-level ownership checks (own/team) → Prisma visibility filter for client roles (<code>visibility = 'CLIENT'</code>, <code>published_at IS NOT NULL</code>).</p>
+
+<h2>4. Module architecture</h2>
+<table><thead><tr><th style="width:150px">Module</th><th>Owns</th><th>Emits / listens</th></tr></thead><tbody>
+<tr><td>Auth</td><td>Login, refresh (rotating tokens, httpOnly cookie), invite, reset, rate limit</td><td>emits user.logged_in</td></tr>
+<tr><td>Users · Teams</td><td>Profiles, team membership, lead</td><td>—</td></tr>
+<tr><td>Organizations</td><td>Tenants (own group cos., clients), type, branding settings</td><td>—</td></tr>
+<tr><td>Roles &amp; Permissions</td><td>Role → permission strings, seeds default roles</td><td>—</td></tr>
+<tr><td>Products</td><td>Sellable software products, versions/releases</td><td>emits release.published</td></tr>
+<tr><td>Projects · Milestones</td><td>Project CRUD, members, progress rollup, milestones</td><td>listens task.completed → recompute progress</td></tr>
+<tr><td>Tasks</td><td>Workflow state machine, status history, dependencies, comments</td><td>emits task.assigned / .review_requested / .completed / .rejected / .blocked</td></tr>
+<tr><td>Tickets</td><td>Numbering (ORG-1042), workflow, SLA policies, convert-to-task</td><td>emits ticket.created / .replied / .sla_at_risk; listens task.completed</td></tr>
+<tr><td>Contracts</td><td>Terms, included hours, payment milestones, renewals, change requests</td><td>listens worklog.created → consume hours; job: expiry alerts</td></tr>
+<tr><td>Work Logs</td><td>Time entries; category inherited from task (Development, Management, Review, Testing …)</td><td>emits worklog.created</td></tr>
+<tr><td>QA / Testing</td><td>Testing assignments, test results (pass/fail/evidence/severity), retest loop, live-verification assignments, tester auto-suggest</td><td>listens task.ready_for_qa / release.published; emits qa.passed / qa.failed / live.verified / live.failed</td></tr>
+<tr><td>Test Environments &amp; Accounts</td><td>Per-project dev/staging/prod URLs + deploy state; role-based reusable test accounts; encrypted secrets; temporary access grants with expiry, rotation, access log</td><td>listens deployment.succeeded; emits credential.revealed (audit)</td></tr>
+<tr><td>GitHub Integration</td><td>GitHub App install per org, repo ↔ project mapping, branch roles, signed webhooks (idempotent), linking branches/commits/PRs/checks/deployments/releases to tasks by <code>AD-###</code></td><td>emits pr.opened / review.approved / checks.completed / deployment.succeeded</td></tr>
+<tr><td>Releases</td><td>Version, included tasks/tickets, approvals per project policy, schedule, publish (dispatches GH workflow or manual), rollback, release notes (internal + client)</td><td>emits release.approved / .published / .rolled_back</td></tr>
+<tr><td>Client UAT</td><td>Optional per project/release; plain-language summary, staging preview, Approve / Request changes / Comment</td><td>emits uat.approved / uat.changes_requested</td></tr>
+<tr><td>Client Updates · Approvals</td><td>Client-visible updates, publish workflow, approval requests</td><td>listens task.completed (visible) → draft update; emits update.published</td></tr>
+<tr><td>Files</td><td>S3 presigned upload/download, visibility flag, virus-scan hook</td><td>—</td></tr>
+<tr><td>Notifications</td><td>In-app (Socket.IO + table), preferences, digest batching; channels: email, WhatsApp (adapters)</td><td>listens all domain events</td></tr>
+<tr><td>Reports</td><td>Daily developer/senior/project reports, computed + cached snapshot</td><td>job: 18:30 IST daily snapshot</td></tr>
+<tr><td>Audit Logs</td><td>Immutable who/what/when/diff for all mutations</td><td>Prisma middleware</td></tr>
+</tbody></table>
+<h3>Cross-cutting</h3>
+<ul>
+<li><b>Events</b>: NestJS <code>EventEmitter2</code> in-process; side effects that need retry (email, WhatsApp, report snapshots, SLA checks) are enqueued to BullMQ.</li>
+<li><b>Real-time</b>: Socket.IO gateway; rooms per <code>org:{id}</code>, <code>project:{id}</code>, <code>user:{id}</code>. Events: task.updated, ticket.replied, notification.new.</li>
+<li><b>Jobs</b>: sla-monitor (every 5 min), due-date-reminders (08:00 IST), daily-report-snapshot (18:30 IST), contract-expiry (daily), ticket-auto-close (daily), notification-digest.</li>
+<li><b>Branding</b>: <code>organization_settings.branding</code> JSON {logoFileId, primary, secondary, accent, productName}. Frontend fetches <code>/branding</code> (public, by host or org) and sets CSS variables on <code>:root</code>. Nothing else in the codebase references a colour literal.</li>
+</ul>
+
+<h2>5. PostgreSQL schema (Prisma)</h2>
+<p>All tenant-scoped tables have <code>organization_id</code>, <code>created_at</code>, <code>updated_at</code>, <code>deleted_at</code> (soft delete), <code>created_by</code>. IDs are UUID v7. Enums in caps. Only key columns shown.</p>
+<pre>organizations        id, name, slug, type ENUM(OWN_GROUP, CORPORATE_CUSTOMER, CONTRACT_CLIENT, AMC_CLIENT),
+                     is_service_provider bool, timezone, currency, settings jsonb (branding, notifications)
+users                id, organization_id, email UNIQUE, name, phone, password_hash, avatar_file_id, status, last_login_at
+roles                id, organization_id NULL(global), name, is_system
+permissions          id, key UNIQUE (e.g. task:approve)      role_permissions (role_id, permission_id)
+user_roles           user_id, role_id, scope_type ENUM(ORG, PROJECT, TEAM), scope_id NULL
+teams                id, organization_id, name, lead_user_id   team_members (team_id, user_id)
+refresh_tokens       id, user_id, token_hash, expires_at, revoked_at, device
+
+products             id, organization_id(owner), name, description
+product_releases     id, product_id, version, notes_public, notes_internal, released_at
+client_products      client_org_id, product_id, since
+
+projects             id, organization_id(provider), client_organization_id, product_id NULL, name, code,
+                     type ENUM(INTERNAL_PRODUCT, INTERNAL_WORK, FIXED_PRICE, MONTHLY_CONTRACT, AMC, DEDICATED_DEV, SUPPORT_ONLY),
+                     description, scope, client_summary, technologies text[], senior_user_id, priority, status,
+                     start_date, delivery_date, progress_pct numeric, internal_notes
+project_members      project_id, user_id, role_in_project
+project_modules      id, project_id, name
+milestones           id, project_id, name, due_date, status, progress_pct, is_client_visible, contract_milestone_id NULL
+
+task_categories      id, organization_id, name, kind ENUM(DEVELOPMENT, MANAGEMENT, REVIEW, TESTING, OTHER), is_active, sort
+                     seeded: Development, Management, Review, Testing, Planning, Client Meeting, Team Follow-up,
+                             Release Approval, Documentation, Administrative
+task_status_labels   organization_id, status (enum key), label, client_label   -- admin renames labels; workflow itself is fixed
+tasks                id, organization_id, project_id, module_id NULL, ticket_id NULL, parent_task_id NULL, category_id, title, description,
+                     status ENUM(DRAFT, ASSIGNED, IN_PROGRESS, DEV_COMPLETED, CODE_REVIEW, READY_FOR_QA, TESTING_STAGING, QA_PASSED,
+                                 CLIENT_UAT, READY_TO_PUBLISH, PUBLISHED_LIVE, LIVE_VERIFICATION, COMPLETED,
+                                 QA_FAILED, RETURNED_TO_DEV, FIX_SUBMITTED, LIVE_FAILED, ROLLBACK_REQUIRED, BLOCKED, CANCELLED),
+                     priority ENUM(LOW, MEDIUM, HIGH, CRITICAL), assigned_by, assigned_to, reviewer_id, tester_id, milestone_id NULL,
+                     start_date, due_date, estimated_minutes, actual_minutes (rollup), acceptance_criteria,
+                     blocked_reason, completed_at, is_client_visible, requires_qa bool, requires_uat bool,
+                     recurrence jsonb NULL (rrule), duplicated_from_task_id NULL, release_id NULL
+                     -- management-kind tasks skip the QA chain: ASSIGNED → IN_PROGRESS → COMPLETED
+task_dependencies    task_id, depends_on_task_id
+task_status_history  id, task_id, from_status, to_status, changed_by, comment, changed_at
+comments             id, organization_id, entity_type ENUM(TASK, TICKET, PROJECT), entity_id, author_id, body,
+                     visibility ENUM(INTERNAL, CLIENT), edited_at
+work_logs            id, organization_id, user_id, task_id NULL, ticket_id NULL, project_id, contract_id NULL,
+                     minutes, work_kind ENUM(DEVELOPMENT, MANAGEMENT, TESTING, SUPPORT), summary, logged_on date,
+                     git_reference, billable bool
+
+tickets              id, organization_id(provider), number (ORG-seq), requester_org_id, requester_user_id,
+                     project_id NULL, product_id NULL, type ENUM(BUG, SUPPORT, CHANGE_REQUEST, FEATURE, TRAINING, ACCESS, OTHER),
+                     category, priority, title, description,
+                     status ENUM(NEW, ASSIGNED, IN_PROGRESS, WAITING_CLIENT, REVIEW, RESOLVED, CLOSED, REOPENED, CANCELLED),
+                     assigned_team_id, assigned_to, sla_policy_id, respond_by, resolve_by, first_response_at,
+                     resolved_at, closed_at, resolution_summary
+                     source ENUM(PORTAL, INTERNAL, EMAIL, WHATSAPP, API), device_info jsonb NULL   -- replies are `comments` rows with entity_type TICKET
+sla_policies         id, organization_id, name, priority, respond_minutes, resolve_minutes, business_hours jsonb
+
+contracts            id, organization_id, client_organization_id, project_id NULL, name,
+                     type ENUM(FIXED_PRICE, RETAINER, AMC, SUPPORT_HOURS, DEDICATED_DEV), scope, start_date, end_date,
+                     renewal_date, included_hours, value_amount, currency, status, notice_days
+contract_hour_ledger id, contract_id, work_log_id NULL, minutes (+/-), reason, period (YYYY-MM)
+payment_milestones   id, contract_id, name, amount, due_date, paid_at, invoice_ref
+change_requests      id, contract_id, project_id, ticket_id NULL, title, description, status, hours_est, amount, approved_by, approved_at
+contract_documents   contract_id, file_id
+
+client_updates       id, organization_id, project_id, task_id NULL, ticket_id NULL, body, author_id, status ENUM(DRAFT, PUBLISHED, REJECTED),
+                     approved_by, published_at, work_date
+approval_requests    id, organization_id, project_id, type ENUM(FILE, DECISION, CHANGE_REQUEST, UPDATE), title, description,
+                     file_id NULL, requested_by, decided_by, decision ENUM(PENDING, APPROVED, CHANGES_REQUESTED), decided_at, note
+files                id, organization_id, key, name, mime, size, visibility ENUM(INTERNAL, CLIENT), entity_type, entity_id, uploaded_by
+
+notifications        id, user_id, type, title, body, entity_type, entity_id, read_at, channel_sent jsonb
+notification_prefs   user_id, type, in_app bool, email bool, whatsapp bool, digest ENUM(INSTANT, HOURLY, DAILY)
+report_snapshots     id, organization_id, kind ENUM(DEVELOPER, SENIOR, PROJECT), subject_id, report_date, payload jsonb
+audit_logs           id, organization_id, actor_id, action, entity_type, entity_id, before jsonb, after jsonb, ip, at
+
+-- v0.2 additions -------------------------------------------------------------------------------------------
+testing_assignments  id, organization_id, task_id, ticket_id NULL, release_id NULL, kind ENUM(QA, RETEST, LIVE_VERIFICATION, UAT),
+                     tester_id, environment ENUM(STAGING, PRODUCTION), staging_url, what_developed, what_to_test, acceptance_criteria,
+                     developer_notes, browser_device text[], pr_id NULL, checks_status, test_account_id NULL, deadline_at,
+                     status ENUM(PENDING, IN_PROGRESS, PASSED, FAILED, CLARIFICATION, CANCELLED), started_at, finished_at
+test_results         id, assignment_id, result ENUM(PASS, FAIL), environment, what_tested, actual_result, failure_description,
+                     severity ENUM(LOW, MEDIUM, HIGH, CRITICAL) NULL, browser_device, comment_for_developer, retest_required bool,
+                     evidence_file_ids uuid[], tester_id, recorded_at
+test_environments    id, project_id, kind ENUM(DEVELOPMENT, STAGING, PRODUCTION), url, status ENUM(UP, DOWN, DEPLOYING, UNKNOWN),
+                     deployed_version, deployed_at, github_environment_name NULL
+test_accounts        id, project_id, environment_id, role_label (Test Admin, Test Customer …), username, secret_ciphertext (KMS/libsodium),
+                     rotation_policy ENUM(AFTER_TEST, DAILY, MANUAL), last_rotated_at, reset_hook_url NULL, is_active
+credential_grants    id, test_account_id, granted_to_user_id, assignment_id NULL, expires_at, revealed_at NULL, revoked_at NULL
+credential_access_log id, grant_id, actor_id, action ENUM(GENERATE, REVEAL, ROTATE, REVOKE), ip, user_agent, at   -- append-only
+
+github_installations id, organization_id, installation_id UNIQUE, account_login, permissions jsonb, suspended_at
+github_repo_links    id, project_id, installation_id, repo_full_name, default_branch, dev_branch, staging_branch, prod_branch,
+                     staging_env_name, prod_env_name, required_checks text[], UNIQUE(project_id, repo_full_name)
+github_refs          id, task_id, repo_link_id, kind ENUM(BRANCH, COMMIT, PULL_REQUEST, REVIEW, CHECK_RUN, WORKFLOW_RUN, DEPLOYMENT, RELEASE),
+                     external_id, title, url, state, author_login, payload jsonb, occurred_at, UNIQUE(repo_link_id, kind, external_id)
+webhook_events       id, provider, delivery_id UNIQUE (X-GitHub-Delivery), event, signature_ok bool, processed_at, error   -- idempotency
+check_overrides      id, task_id, by_user_id, reason, at   -- manager override of failed mandatory checks
+
+releases             id, organization_id, project_id, version, status ENUM(DRAFT, APPROVAL_REQUESTED, APPROVED, SCHEDULED, PUBLISHING,
+                     PUBLISHED, VERIFIED, ROLLED_BACK, FAILED), branch_or_tag, staging_url, production_url, planned_at, published_at,
+                     published_by, deployment_result jsonb, rollback_version, notes_internal, notes_client, uat_required bool
+release_items        release_id, task_id NULL, ticket_id NULL, pr_ref_id NULL
+release_approvals    id, release_id, role_required ENUM(SENIOR, PM, QA_LEAD, CLIENT, DIRECTOR), user_id NULL, decision, note, at
+project_release_policy project_id, approvers ENUM[] , uat_required bool, allow_schedule bool, publishers user_id[]
+uat_requests         id, release_id NULL, task_id NULL, client_org_id, summary_plain, preview_url, checklist text[],
+                     status ENUM(PENDING, APPROVED, CHANGES_REQUESTED), decided_by, note, at
+user_settings        user_id, show_development_section bool DEFAULT true, default_view, timezone
+
+Uniqueness with nullable dimensions: use partial unique indexes, e.g.
+  CREATE UNIQUE INDEX ux_task_active_recurrence ON tasks(project_id, title) WHERE recurrence IS NOT NULL AND deleted_at IS NULL;
+  CREATE UNIQUE INDEX ux_release_item_task ON release_items(release_id, task_id) WHERE task_id IS NOT NULL;
+  CREATE UNIQUE INDEX ux_release_item_ticket ON release_items(release_id, ticket_id) WHERE ticket_id IS NOT NULL;
+  or COALESCE(nullable_col, '00000000-0000-0000-0000-000000000000') in the index expression.
+Row-Level Security: ENABLE RLS on every tenant table; policy USING (organization_id = current_setting('app.tenant_id')::uuid);
+  Prisma sets `SET LOCAL app.tenant_id` per transaction via $transaction middleware. Client-portal role additionally
+  filtered by client_organization_id and visibility = 'CLIENT'.
+
+Indexes: (organization_id, status) on tasks/tickets · (assigned_to, due_date) · (project_id, work_date) on client_updates ·
+GIN on tasks.title/description tsvector · partial index tickets(resolve_by) WHERE status NOT IN (RESOLVED, CLOSED)</pre>
+<p><b>Isolation rule:</b> client roles query through views/services that join on <code>client_organization_id = :org</code> and never receive rows with <code>visibility = INTERNAL</code>. Internal estimates, costs and work_log minutes are excluded from client DTOs by construction (separate <code>ClientTaskDto</code>), not by stripping.</p>
+
+<h2>6. API endpoint plan</h2>
+<p>Base <code>/api/v1</code>. JSON, cursor pagination (<code>?cursor&amp;limit</code>), <code>?q</code> search, <code>?filter[status]=</code>, <code>?sort=</code>. Swagger at <code>/api/docs</code>. Client-portal endpoints live under <code>/api/v1/portal</code> and are served by dedicated controllers returning client DTOs.</p>
+<pre>Auth            POST /auth/login · POST /auth/refresh · POST /auth/logout · POST /auth/forgot · POST /auth/reset
+                POST /auth/invite/accept · GET /auth/me
+Branding        GET  /branding?org=  (public) · PATCH /admin/branding (logo upload via /files)
+Organizations   GET|POST /organizations · GET|PATCH|DELETE /organizations/:id
+Users · Teams   GET|POST /users · PATCH /users/:id · POST /users/:id/roles · GET|POST /teams · POST /teams/:id/members
+Roles           GET /roles · POST /roles · PATCH /roles/:id/permissions · GET /permissions
+Products        GET|POST /products · GET|POST /products/:id/releases
+Projects        GET|POST /projects · GET|PATCH /projects/:id · POST /projects/:id/members · GET /projects/:id/summary
+                GET|POST /projects/:id/milestones · PATCH /milestones/:id · GET /projects/:id/files · GET /projects/:id/updates
+Tasks           GET /tasks?view=my|assigned_by_me|team|today|overdue|completed_today&amp;layout=list|board|calendar
+                POST /tasks · GET|PATCH /tasks/:id · POST /tasks/:id/assign
+                POST /tasks/:id/start · POST /tasks/:id/block · POST /tasks/:id/submit-review  {summary, minutes, files[], gitRef, clientVisible}
+                POST /tasks/:id/approve · POST /tasks/:id/reject {comment} · POST /tasks/:id/reopen · POST /tasks/:id/cancel
+                GET /tasks/:id/history · GET|POST /tasks/:id/comments · POST /tasks/:id/dependencies
+Tickets         GET /tickets · POST /tickets · GET|PATCH /tickets/:id · POST /tickets/:id/assign · POST /tickets/:id/status
+                GET|POST /tickets/:id/replies (visibility) · POST /tickets/:id/convert-to-tasks [{title, assignedTo, dueDate}]
+                POST /tickets/:id/resolve {summary} · POST /tickets/:id/reopen · GET /tickets/:id/activity
+Contracts       GET|POST /contracts · GET|PATCH /contracts/:id · GET /contracts/:id/hours · POST /contracts/:id/hours/adjust
+                GET|POST /contracts/:id/payment-milestones · GET|POST /contracts/:id/change-requests · POST /contracts/:id/documents
+Work logs       GET /work-logs?user&amp;from&amp;to · POST /work-logs · PATCH|DELETE /work-logs/:id
+Client updates  GET /client-updates?status=DRAFT&amp;date= · PATCH /client-updates/:id · POST /client-updates/:id/publish · POST .../reject
+Task workflow   POST /tasks/:id/dev-complete {summary, minutes, clientVisible} · POST /tasks/:id/request-review · POST /tasks/:id/ready-for-qa
+                POST /tasks/:id/send-for-testing {testerId, staging, notes, browsers[]} · POST /tasks/:id/override-checks {reason}
+                POST /tasks/:id/duplicate · POST /tasks/:id/recurrence · GET /tasks/:id/github (refs, PR, checks, deployments)
+QA              GET /qa/assignments?view=mine|ready|today|failed|retest|passed_today|uat|live|overdue · GET /qa/assignments/:id
+                POST /qa/assignments/:id/start · POST /qa/assignments/:id/result {result, environment, whatTested, actual, failure, severity,
+                browserDevice, evidence[], commentForDev, retestRequired} · POST /qa/assignments/:id/clarify {question} · POST .../verify-live
+Environments    GET|POST /projects/:id/environments · PATCH /environments/:id · GET|POST /projects/:id/test-accounts · PATCH /test-accounts/:id
+                POST /test-accounts/:id/grant {assignmentId, ttlMinutes} · POST /grants/:id/reveal (audited, permission qa:credentials:reveal)
+                POST /test-accounts/:id/rotate · POST /test-accounts/:id/reset-data · GET /credential-access-log
+GitHub          GET /github/install-url · POST /github/webhooks (signed, idempotent) · GET /github/installations · GET /github/installations/:id/repos
+                POST /projects/:id/github-link {repo, branches, envs, requiredChecks[]} · DELETE /github-links/:id · POST /github-links/:id/resync
+Releases        GET|POST /releases · GET|PATCH /releases/:id · POST /releases/:id/items · POST /releases/:id/request-approval
+                POST /releases/:id/approve {decision, note} · POST /releases/:id/schedule {at} · POST /releases/:id/publish {confirmVersion}
+                POST /releases/:id/verify-live · POST /releases/:id/rollback {reason} · GET /releases/:id/notes.pdf
+UAT             GET /portal/uat · GET /portal/uat/:id · POST /portal/uat/:id/decide {decision, note} · POST /portal/uat/:id/comments
+Admin           GET|POST|PATCH /admin/task-categories · /admin/status-labels · /admin/ticket-categories · /admin/sla-policies · /admin/testers
+                PATCH /admin/users/:id/settings {showDevelopmentSection} · POST /admin/preview-as {role} (short-lived read-only impersonation token, audited)
+Approvals       GET|POST /approvals · POST /approvals/:id/decide {decision, note}
+Files           POST /files/presign {name, mime, size, entity, visibility} · POST /files/:id/complete · GET /files/:id/url
+Notifications   GET /notifications · POST /notifications/read-all · PATCH /notifications/:id/read · GET|PUT /notification-prefs
+Reports         GET /reports/developer?user&amp;date · GET /reports/senior?team&amp;date · GET /reports/project/:id?from&amp;to · GET /reports/:id/export.pdf
+Dashboards      GET /dashboards/admin · /dashboards/senior · /dashboards/developer · /dashboards/tester · /dashboards/support
+Audit           GET /audit-logs?entity&amp;actor&amp;from&amp;to
+
+Portal (client)  GET /portal/dashboard · GET /portal/projects · GET /portal/projects/:id · GET /portal/projects/:id/updates?range=today|week
+                GET|POST /portal/tickets · GET /portal/tickets/:id · POST /portal/tickets/:id/replies
+                GET /portal/contracts · GET /portal/approvals · POST /portal/approvals/:id/decide · GET /portal/releases
+
+WebSocket       ns /ws  rooms org:{id} project:{id} user:{id}   events task.updated · ticket.updated · notification.new · update.published</pre>
+
+<h2>7. NestJS folder structure</h2>
+<pre>apps/api/
+  prisma/            schema.prisma · migrations/ · seed.ts (roles, permissions, demo org, SLA policies)
+  test/              e2e/ (supertest) · fixtures/
+  src/
+    main.ts          helmet, versioning (URI v1), global ValidationPipe(whitelist, transform), Swagger, rate limit
+    app.module.ts
+    common/
+      decorators/    current-user.ts · require-permission.ts · tenant.ts
+      guards/        jwt-auth.guard.ts · tenant.guard.ts · permissions.guard.ts · client-portal.guard.ts
+      interceptors/  audit.interceptor.ts · transform.interceptor.ts · timeout.interceptor.ts
+      filters/       http-exception.filter.ts · prisma-exception.filter.ts
+      pipes/         parse-cursor.pipe.ts
+      dto/           pagination.dto.ts · id-param.dto.ts
+      prisma/        prisma.service.ts · tenant.middleware.ts (injects organization_id) · soft-delete.middleware.ts
+      events/        domain-events.ts (typed event names + payloads)
+      queue/         queue.module.ts (BullMQ connection) · queues.ts
+      storage/       s3.service.ts
+    modules/
+      auth/          auth.module.ts · auth.controller.ts · auth.service.ts · strategies/ · dto/ · auth.service.spec.ts
+      users/  teams/  organizations/  roles/  products/
+      projects/      projects.controller.ts · projects.service.ts · projects.repository.ts · dto/ · progress.calculator.ts
+      milestones/
+      tasks/         tasks.controller.ts · tasks.service.ts · tasks.repository.ts · task-workflow.ts (state machine)
+                     dto/ (create-task, submit-review, reject-review …) · tasks.listener.ts · tasks.service.spec.ts
+      tickets/       tickets.controller.ts · portal-tickets.controller.ts · tickets.service.ts · ticket-number.service.ts
+                     sla.service.ts · sla.processor.ts (BullMQ) · convert-to-tasks.usecase.ts · dto/
+      contracts/     contracts.* · hour-ledger.service.ts · contract-expiry.processor.ts · change-requests.controller.ts
+      work-logs/
+      client-updates/  client-updates.* · publish.usecase.ts · client-updates.listener.ts (drafts from task.completed)
+      approvals/
+      files/         files.controller.ts · files.service.ts (presign) · file-visibility.guard.ts
+      notifications/ notifications.gateway.ts (Socket.IO) · notifications.service.ts · channels/ (in-app, email, whatsapp adapters)
+                     digest.processor.ts · prefs.controller.ts
+      reports/       reports.controller.ts · developer-report.builder.ts · senior-report.builder.ts · project-report.builder.ts
+                     snapshot.processor.ts
+      dashboards/    one controller, one service per role (reads only)
+      portal/        portal.module.ts (client DTO mappers, read models)
+      audit-logs/
+    health/          terminus health checks (db, redis, s3)
+
+Module template: {name}.module.ts · {name}.controller.ts · {name}.service.ts · {name}.repository.ts · dto/ · entities/ (Prisma types) · *.spec.ts
+Repositories wrap Prisma and accept the tenant context; services never call Prisma directly.</pre>
+
+<h2>8. React component structure</h2>
+<pre>apps/web/src/
+  main.tsx · app.tsx (router, providers: QueryClient, Auth, Branding, Socket)
+  app/
+    router.tsx           role-aware routes; /portal/* for clients
+    providers/           auth-provider · branding-provider (fetches /branding → CSS vars) · socket-provider · toast-provider
+    layout/              AppShell (Sidebar, Topbar, QuickActions) · PortalShell (simplified nav) · MobileNav
+  features/              one folder per domain, each with api.ts (react-query hooks), components/, pages/, types.ts
+    auth/                LoginPage · AcceptInvitePage · ResetPage
+    dashboard/           AdminDashboard · SeniorDashboard · DeveloperDashboard · TesterDashboard · SupportDashboard
+                         widgets/ StatTile · WorkloadBars · ReviewQueue · RiskList · RenewalsList
+    projects/            ProjectsPage · ProjectDetailPage · tabs/ Overview Tasks Milestones Tickets Files Updates Contract
+                         ProjectHeader · MilestoneTimeline · ProgressRing
+    tasks/               TaskBoardPage (views + layout switch) · KanbanBoard · TaskList · TaskCalendar · TaskCard
+                         TaskDetailPanel · TaskForm · CompletionSheet · ReviewDecision · StatusHistory · DependencyList
+    tickets/             TicketListPage · TicketDetailPage · TicketThread (public | internal tabs) · ReplyComposer
+                         RaiseTicketForm · ConvertToTasksDialog · SlaBadge · TicketTriageBar
+    contracts/           ContractsPage · ContractDetailPage · HoursMeter · PaymentMilestones · ChangeRequestList
+    updates/             CompletedTodayPage · UpdateReviewRow · PublishBar
+    reports/             ReportsPage · DeveloperReport · SeniorReport · ProjectReport · DateRangePicker · ExportMenu
+    notifications/       NotificationBell · NotificationList · PreferencesPage
+    admin/               OrganizationsPage · UsersPage · TeamsPage · RolesPage · BrandingPage · AuditLogPage
+    portal/              PortalDashboard · PortalProjectPage · PortalTicketsPage · PortalTicketPage · ApprovalsPage · PortalContractPage
+  shared/
+    components/          re-exports from packages/ui + app-specific: VisibilityBadge · StatusPill · PriorityDot · UserChip
+                         EmptyState · PageHeader · FilterBar · SidePanel · ConfirmDialog · FileDropzone · TimeInput
+    hooks/               usePermission · useTenant · useSocketEvent · useBreakpoint
+    lib/                 api-client (fetch + refresh) · date (IST, DD/MM/YYYY) · money (INR) · permissions
+packages/ui/             Button · Input · Select · Textarea · Checkbox · Badge · Tabs · Table · Card · Dialog · Sheet · Popover
+                         Tooltip · Avatar · Skeleton · Toast · DropdownMenu — headless + tokens via CSS variables (--brand-primary …)
+packages/types/          zod schemas + inferred TS types shared by api DTOs and web (single source of truth for enums)
+packages/config/         eslint · tsconfig · prettier · vite/jest presets</pre>
+<p>Rules: pages compose feature components; no component over ~250 lines; data fetching only in <code>api.ts</code> hooks; every mutation invalidates its query keys and listens to the matching socket event. Strict TS, <code>noUncheckedIndexedAccess</code>, no <code>any</code> without an <code>// any: reason</code> comment.</p>
+
+<h2>9. Wireframes and hi-fi screens</h2>
+<p>The 12 requested screens are in two companion files: <a href="Ashniva Desk - Wireframes.dc.html">Wireframes</a> (structure and flow, low fidelity) and <a href="Ashniva Desk - Hi-fi Screens.dc.html">Hi-fi screens</a> (desktop, plus mobile for task update, ticket reply and client progress). Shared UI system used across screens:</p>
+<ul>
+<li><b>Shell</b>: 220px sidebar (collapses to icons on tablet, bottom bar on mobile), topbar with global search, quick-action button, notifications.</li>
+<li><b>Visibility badges</b>: <span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#e6efe8;color:#1f5a33;font-weight:500">CLIENT-VISIBLE</span> and <span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#ececea;color:#4a4b4e;font-weight:500">INTERNAL</span> on every comment, update, file and estimate. Client portal has no internal chrome at all.</li>
+<li><b>Status pills</b> are neutral with one hue per state family; priority is a dot, not a colour flood.</li>
+<li><b>Quick actions</b> appear contextually at the top of detail views: Start Work · Send for Review · Approve · Reject with Comment · Publish Update · Convert to Task · Raise Ticket.</li>
+<li><b>Branding tokens</b>: <code>--brand-primary</code>, <code>--brand-secondary</code>, <code>--brand-accent</code>, logo slot; temporary values are neutral slate blue on warm grey. Set from Admin → Branding.</li>
+</ul>
+
+<h2>10. Phase-wise development plan</h2>
+<table><thead><tr><th style="width:110px">Phase / weeks</th><th>Backend</th><th>Frontend</th><th>Exit criteria</th></tr></thead><tbody>
+<tr><td><b>0 · Foundation</b><br>Wk 1–2</td><td>Monorepo (pnpm + Turborepo), Docker Compose (api, web, postgres, redis, minio), Prisma schema + migrations + seed, Auth, tenant middleware, guards, audit interceptor, Swagger, CI (lint, test, build)</td><td>Vite app shell, router, packages/ui base, branding provider, login</td><td>Login works; seeded roles; e2e smoke passes in CI</td></tr>
+<tr><td><b>1 · MVP</b><br>Wk 3–8</td><td>Organizations, Users, Teams, Roles, Projects, Tasks (workflow + history + comments + work logs), Tickets (numbering, workflow, replies, convert-to-tasks), Client Updates (draft → publish), Reports (developer/senior/project), Dashboards, Files (S3), Socket.IO, in-app notifications (basic)</td><td>All 12 designed screens; task board (list/kanban/calendar); completion sheet; ticket thread; client portal (dashboard, project, tickets, completed today); Admin: orgs, users, branding</td><td>Team runs daily work in the tool; clients see published updates; no manual reports</td></tr>
+<tr><td><b>2 · Contracts &amp; control</b><br>Wk 9–13</td><td>Contracts, hour ledger, milestones ↔ payment milestones, SLA policies + monitor job, Approvals, Change Requests, Notification preferences + digests, advanced report filters/exports</td><td>Contract detail, hours meter in portal, approvals page, notification preferences, milestone timeline, report exports</td><td>Support hours auto-consumed; SLA risk alerts; client approvals tracked</td></tr>
+<tr><td><b>3 · Integrations</b><br>Wk 14+</td><td>GitHub/GitLab webhooks (link commits/PRs to tasks), email + WhatsApp adapters, release notes generator, billing/invoicing, AI summaries (queued jobs)</td><td>Release notes editor, invoice views; React Native app (shares packages/types, api hooks) for task updates, ticket replies, client progress</td><td>Commits auto-attach; clients receive WhatsApp digests; mobile app in stores</td></tr>
+</tbody></table>
+<h3>Non-functional commitments</h3>
+<ul>
+<li>Testing: unit (services, workflow state machines, permission checks) ≥80% on modules; e2e per controller with Supertest against a test Postgres; frontend component tests with Vitest + Testing Library.</li>
+<li>Security: rate limiting (per IP and per user), refresh-token rotation, password policy, CSRF-safe cookies, presigned S3 URLs with 5-minute expiry, file type allow-list.</li>
+<li>Observability: structured logs (pino), request IDs, error tracking hook (Sentry-compatible), health endpoints.</li>
+<li>Performance targets: P95 API &lt; 300 ms for list endpoints at 10× launch scale; dashboards use cached snapshots refreshed by events.</li>
+</ul>
+
+<h2>11. Development, QA and release workflow</h2>
+<p>One fixed state machine for development-kind tasks. Admin can rename labels, not add states. Management-kind tasks use the short path (Assigned → In Progress → Completed).</p>
+<pre>Happy path
+  ASSIGNED → IN_PROGRESS → DEV_COMPLETED → CODE_REVIEW → READY_FOR_QA → TESTING_STAGING → QA_PASSED
+           → [CLIENT_UAT if project/release requires] → READY_TO_PUBLISH → PUBLISHED_LIVE → LIVE_VERIFICATION → COMPLETED
+Gates (enforced in task-workflow.ts, not the UI)
+  DEV_COMPLETED → CODE_REVIEW      requires linked PR (or manual link) ; creates a Review task for reviewer_id
+  CODE_REVIEW → READY_FOR_QA       requires review APPROVED  AND  all required_checks = success (or check_override with reason by PM/Lead)
+  READY_FOR_QA → TESTING_STAGING   requires staging deployment success for the PR head SHA (webhook) or manual staging URL by dev/manager
+                                   → "Send for Testing": confirm tester → testing_assignment(QA) + credential grant
+  QA_PASSED → READY_TO_PUBLISH     skips UAT unless requires_uat ; UAT approval by client required otherwise
+  READY_TO_PUBLISH → PUBLISHED_LIVE only via a Release publish by a user in project_release_policy.publishers
+  PUBLISHED_LIVE → COMPLETED       only after LIVE_VERIFICATION assignment result = PASS ; then linked tickets → RESOLVED
+Failure paths
+  TESTING_STAGING → QA_FAILED → RETURNED_TO_DEV (auto, carries reason + evidence) → FIX_SUBMITTED → TESTING_STAGING (RETEST assignment)
+  CODE_REVIEW: changes requested → RETURNED_TO_DEV
+  LIVE_VERIFICATION → LIVE_FAILED → ROLLBACK_REQUIRED (release.rollback or hotfix task) → FIX_SUBMITTED → … → republish
+Side states: BLOCKED (from any active state, returns to previous), CANCELLED, DRAFT (unsaved create form)</pre>
+
+<h2>12. Task categories and manager tasks</h2>
+<ul><li>Categories (admin-editable list, seeded): Development · Management · Review · Testing · Planning · Client Meeting · Team Follow-up · Release Approval · Documentation · Administrative. Each has a <code>kind</code> that selects the workflow (Development kind → full chain; others → short path).</li>
+<li>System-generated management tasks: <i>Review PR for AD-124</i> (Review), <i>Approve release v2.4</i> (Release Approval), <i>Resolve blocker: AD-131</i> (Management), <i>Client UAT follow-up</i> (Client Meeting). They land in the manager's My Tasks Today like any other task.</li>
+<li>My Tasks Today (every role): sections <b>My Management Tasks</b> and <b>My Development Tasks</b>; the Development section is hidden when <code>user_settings.show_development_section = false</code> (Admin → Users → toggle). Reports use the same split.</li>
+<li>Create Task: basic fields first (title, company/client, project, assign to, due date, priority, description); everything else under <b>More Options</b>. Actions: Create · Create and Assign · Save as Draft · Create Another (keeps project/client) · Duplicate · Recurring (daily/weekly/monthly, rrule stored).</li></ul>
+
+<h2>13. QA, test environments and test accounts</h2>
+<ul><li><b>Tester dashboard views</b>: Assigned to Me · Ready for Testing · Testing Today · Failed &amp; Returned · Waiting for Retest · Passed Today · Client UAT Pending · Live Verification Pending · Overdue Tests.</li>
+<li><b>Assignment</b> carries: task + ticket, project, what was developed, what to test, acceptance criteria, staging URL, test account (grant), browser/device requirements, developer notes, PR link, checks/build result, deadline.</li>
+<li><b>Test form</b>: Pass/Fail · environment · what was tested · actual result · failure description · browser/device · evidence · comment for developer · retest required · severity (if failed). One-click: Start Testing · Pass · Fail &amp; Return · Request Clarification · Retest · Verify Live. Fail auto-returns the task with reason + evidence and notifies the developer.</li>
+<li><b>Test accounts</b>: created once per project per role (Test Super Admin, Test Admin, Test Manager, Test Employee, Test Customer, Test Vendor, custom). Secrets encrypted at rest (envelope encryption, key in KMS/env, never in DB plaintext). On Send for Testing the system picks the account matching the task's target role (fallback: developer picks). Tester gets a <b>credential grant</b> (default 8h TTL): "Generate temporary access" → "Reveal" (masked, copy button, 60s visible) — every generate/reveal/rotate/revoke is written to <code>credential_access_log</code>. Rotation after test (policy), optional data-reset hook. Passwords never appear in notifications, comments, emails, WhatsApp or commits; notifications carry a secure link only. Manual credentials only via "Special account for this test" (also encrypted, single-use).</li>
+<li><b>Live verification</b>: publishing creates a LIVE_VERIFICATION assignment (production, smoke checklist from the release). Pass → release VERIFIED → tasks COMPLETED → tickets RESOLVED. Fail → release FAILED → rollback/hotfix flow.</li></ul>
+
+<h2>14. GitHub integration</h2>
+<ul><li><b>GitHub App</b> (one app, installed per GitHub org; installation token per request, least-privilege: contents:read, pull_requests:read, checks:read, deployments:read+write, metadata:read, actions:read; write only for workflow_dispatch on release). No shared PAT.</li>
+<li><b>Webhooks</b>: HMAC-SHA256 signature verified against per-app secret; <code>X-GitHub-Delivery</code> stored in <code>webhook_events</code> (unique) → duplicates dropped; processing in BullMQ with retries. Events: push, pull_request, pull_request_review, check_suite/check_run, workflow_run, deployment_status, release.</li>
+<li><b>Linking</b>: regex <code>AD-\d+</code> in branch name, commit message, PR title/body → <code>github_refs</code> rows on the task. Per project mapping: repo, default/dev/staging/prod branches, staging/prod environment names, required check names.</li>
+<li><b>Task shows</b>: repo, branch, latest commits, PR (state, reviewer, merge status), checks (Pending/Running/Passed/Failed/Cancelled), staging &amp; production deployments. Review comments stay in GitHub; status mirrored.</li>
+<li><b>Gating</b>: Ready for QA blocked while any required check ≠ success, unless an authorized manager records an override reason (audited). Automated checks never replace manual QA.</li></ul>
+
+<h2>15. Releases and live publishing</h2>
+<ul><li>Release = version + project + included tasks/tickets/PRs + staging URL + branch/tag + checks + QA results + UAT status + planned time + approvals + publisher + production URL + deployment result + rollback version + notes (internal, client).</li>
+<li>Actions: Create Release · Add Task · Request Approval · Schedule Publishing · Publish to Production · Verify Live · Roll Back. Publish requires all <code>project_release_policy.approvers</code> decisions = APPROVED, all items QA_PASSED (and UAT approved if required), and actor ∈ publishers. Publishing dispatches the production workflow (GitHub) or records a manual deploy; confirmation modal requires typing the version.</li>
+<li>Rollback records target version, reason, and reopens live-verification.</li></ul>
+
+<h2>16. Customer-visible statuses</h2>
+<table><thead><tr><th>Client sees</th><th>Internal statuses mapped</th></tr></thead><tbody>
+<tr><td>Received</td><td>Ticket NEW; Task DRAFT</td></tr><tr><td>Assigned</td><td>ASSIGNED, BLOCKED</td></tr><tr><td>In Development</td><td>IN_PROGRESS, DEV_COMPLETED, CODE_REVIEW, RETURNED_TO_DEV, FIX_SUBMITTED, QA_FAILED, LIVE_FAILED, ROLLBACK_REQUIRED</td></tr><tr><td>Under Testing</td><td>READY_FOR_QA, TESTING_STAGING, QA_PASSED (no UAT)</td></tr><tr><td>Awaiting Your Approval</td><td>CLIENT_UAT</td></tr><tr><td>Scheduled for Release</td><td>READY_TO_PUBLISH, release SCHEDULED</td></tr><tr><td>Published Live</td><td>PUBLISHED_LIVE, LIVE_VERIFICATION</td></tr><tr><td>Completed</td><td>COMPLETED; ticket RESOLVED/CLOSED</td></tr></tbody></table>
+<p>Mapping lives in <code>ClientStatusMapper</code> in packages/types; the portal DTOs never expose internal enums. Failures, rollbacks, review comments and check results are never serialized into client DTOs.</p>
+
+<h2>17. Admin</h2>
+<p>One Admin area with a left list, each page a plain table + slide-over form. Pages: Companies &amp; clients · Projects &amp; products · Teams &amp; departments · Employees &amp; users (incl. "show Development section" toggle, tester flag) · Roles &amp; permissions (matrix) · Task categories · Task status labels · Ticket categories · SLA rules · Testers &amp; QA assignment (default tester per project) · GitHub connections · Test environments &amp; accounts · Branding · Notifications · Audit logs. <b>Preview as</b> (Developer, Manager, Tester, Internal Employee, Client Admin, Client Employee) issues a 15-minute read-only impersonation token, shows a banner, is audited.</p>
+
+<h2>18. Technical and security corrections (v0.2)</h2>
+<ul><li>Removed the duplicate <code>ticket_replies</code> pseudo-table; replies are <code>comments</code> rows. Schema otherwise deduplicated.</li>
+<li>Tenant isolation: tenant-scoped repositories (no raw Prisma in services) + PostgreSQL RLS on all tenant tables + e2e cross-tenant test suite (each endpoint tried with another tenant's IDs must 404).</li>
+<li>Partial unique indexes for nullable dimensions (see §5).</li>
+<li>Secrets (GitHub App private key, webhook secret, test credentials) encrypted with envelope encryption; keys from KMS/env; never returned by list endpoints; reveal endpoint is separate, permissioned and audited.</li>
+<li>Audit log covers task status changes, credential generate/reveal/rotate, QA results, approvals, deployments, publishes, rollbacks, check overrides, preview-as sessions.</li>
+<li>GitHub App least-privilege; signed webhooks; idempotent delivery IDs; no production secrets in any frontend bundle or API response.</li>
+<li>Portal controllers separated from internal controllers; client DTOs built by allow-list mappers.</li></ul>
+
+<h2>19. Smart support routing, recurring-issue detection, RCA and IVR (v0.3)</h2>
+<h3>19.1 Revised ticket workflow</h3>
+<pre>NEW → AUTO_ASSIGNED → ACKNOWLEDGED → IN_PROGRESS (linked task) → [task chain: CODE_REVIEW → STAGING → READY_FOR_QA → QA PASS/FAIL
+    → CLIENT_UAT? → APPROVED_FOR_RELEASE → PRODUCTION_DEPLOY → LIVE_SMOKE_TEST] → RESOLVED → CLOSED
+Side states: WAITING_CLIENT · ESCALATED (level 1 backup, level 2 senior/PM) · REOPENED · CANCELLED
+Routing (ticket-routing.service):  identify client → product/project → module → type → priority → product version → contract/SLA
+  direct-to-developer types (admin-configurable, default Bug · Outage · Performance · Access issue)
+    → module developer → primary support developer → on-call developer → backup ; skip anyone on leave, outside working hours or at workload limit
+  other types (Training · Billing · General · Change request) → support team queue
+Acknowledgement: ack timer (default 15 min) + SLA timers start at assignment; developer + responsible senior notified
+  ack missed → ESCALATED L1 → backup developer ; missed again → ESCALATED L2 → senior / PM ; reassignment always requires a reason ; all steps audited
+QA fail → task RETURNED_TO_DEV with evidence · live smoke fail → ticket REOPENED + INCIDENT (urgent) · emergency production fix needs senior approval (audited)</pre>
+<h3>19.2 Permission additions</h3>
+<table style="font-size:11px"><thead><tr><th>Capability</th><th>Super Admin</th><th>PM</th><th>Team Lead</th><th>Developer</th><th>Tester</th><th>Support</th><th>Client Admin</th><th>Client Emp.</th></tr></thead><tbody>
+<tr><td>Configure support ownership, on-call, routing rules, IVR</td><td>A</td><td>A</td><td>T (ownership only)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Accept ticket / Start work</td><td>A</td><td>A</td><td>T</td><td>O (assigned)</td><td>—</td><td>O</td><td>—</td><td>—</td></tr>
+<tr><td>Reassign (reason required) / Escalate</td><td>A</td><td>A</td><td>T</td><td>O (escalate only)</td><td>—</td><td>A</td><td>—</td><td>—</td></tr>
+<tr><td>Confirm duplicate · link to Problem · create Problem</td><td>A</td><td>A</td><td>T</td><td>suggest only</td><td>suggest only</td><td>A</td><td>—</td><td>—</td></tr>
+<tr><td>Request RCA · assign permanent fix · close Problem</td><td>A</td><td>A</td><td>T</td><td>—</td><td>add preventive test</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Submit RCA</td><td>A</td><td>—</td><td>T</td><td>O (problem owner)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Call client through IVR / accept incoming call</td><td>A</td><td>A</td><td>T</td><td>O (assigned, in hours, on-call)</td><td>—</td><td>A</td><td>—</td><td>—</td></tr>
+<tr><td>See call recordings / internal call notes</td><td>A</td><td>A</td><td>T</td><td>O</td><td>—</td><td>A</td><td>own call times &amp; summaries only</td><td>own</td></tr>
+<tr><td>See other clients' tickets in a Problem</td><td>A</td><td>A</td><td>T</td><td>T</td><td>T</td><td>A</td><td>never</td><td>never</td></tr>
+</tbody></table>
+<h3>19.3 Database changes</h3>
+<pre>support_ownership     project_id PK, primary_dev_id, backup_dev_id, senior_id, tester_id, support_exec_id, working_hours jsonb,
+                      workload_limit int, ack_minutes int, escalation_minutes int, direct_types text[], module_owners jsonb {module: user_id}
+on_call_schedule      id, project_id, date, user_id, backup_user_id, source ENUM(MANUAL, ROTATION)
+user_availability     user_id, status ENUM(AVAILABLE, ON_LEAVE, OUT_OF_HOURS, AT_LIMIT), until
+tickets  (+)          module, product_version, source ENUM(PORTAL, MOBILE, INTERNAL, API, IVR, EMAIL, WHATSAPP), ack_due_at, acknowledged_at,
+                      escalation_level int, routed_by ENUM(RULE, MANUAL, IVR), problem_id NULL, next_update_at, keywords tsvector, fingerprint (hash of module+error+version)
+ticket_assignments    id, ticket_id, from_user_id, to_user_id, kind ENUM(AUTO, ACK, ESCALATE_L1, ESCALATE_L2, REASSIGN, IVR), reason, at   -- append-only
+similarity_matches    id, ticket_id, candidate_ticket_id, score numeric, signals text[], confirmed_by NULL, decision ENUM(PENDING, LINKED, DISMISSED)
+problems              id, number (PRB-###), organization_id, product_id/project_id, module, versions text[], title, severity, status ENUM(OPEN, RCA_REQUESTED,
+                      RCA_SUBMITTED, FIX_ASSIGNED, FIX_RELEASED, CLOSED), owner_id, client_count (derived), fix_task_id NULL, preventive_test_task_id NULL, threshold_hit_at
+problem_tickets       problem_id, ticket_id, relation ENUM(DUPLICATE, RELATED)
+rca_reports           id, problem_id, what, why, affected_clients_versions, introduced_by (release/pr/change), workaround, permanent_fix, prevention, tests_added,
+                      owner_id, target_date, submitted_by, submitted_at, approved_by NULL
+incidents             id, problem_id NULL, ticket_id, severity, opened_at, resolved_at, timeline jsonb   -- urgent flow after live smoke failure
+ivr_providers         id, organization_id, provider ENUM(TATA, OTHER), config_ciphertext, webhook_secret_ciphertext, status, last_event_at
+call_logs             id, ticket_id NULL, client_org_id, caller_ref (masked), agent_user_id, direction, started_at, duration_s, outcome ENUM(CONNECTED, NO_ANSWER,
+                      CALLBACK_REQUESTED, TRANSFERRED, VOICEMAIL), recording_ref NULL, consent bool, disposition, public_summary, internal_note, next_action
+callback_queue        id, call_log_id, ticket_id, due_at, assigned_to, status
+RLS on all; call_logs.internal_note and recording_ref excluded from client DTOs; phone numbers stored hashed + last-4 only.</pre>
+<h3>19.4 API additions</h3>
+<pre>Ownership      GET|PUT /projects/:id/support-ownership · GET|PUT /projects/:id/on-call?week= · PATCH /users/:id/availability
+Routing        GET|PUT /admin/routing-rules {directTypes, ackMinutes, escalationMinutes, duplicateThreshold, similarity} · POST /tickets/:id/route (re-run)
+Ticket flow    POST /tickets/:id/accept · POST /tickets/:id/start · POST /tickets/:id/escalate {level, reason} · POST /tickets/:id/reassign {toUserId, reason}
+               GET /tickets/queue?view=incoming|mine|sla · GET /tickets/:id/similar · POST /tickets/:id/similar/:candId/decide {LINKED|DISMISSED}
+Problems       GET|POST /problems · GET|PATCH /problems/:id · POST /problems/:id/tickets {ticketId, relation} · POST /problems/:id/request-rca {ownerId, due}
+               POST /problems/:id/rca (submit) · POST /problems/:id/ask-developer {question} · POST /problems/:id/assign-fix {taskId|new} · POST /problems/:id/preventive-test
+               POST /problems/:id/close · GET /reports/recurring?by=product|module|version|severity
+IVR            POST /ivr/webhooks/:provider (signed, idempotent; events call.started, call.answered, call.ended, recording.ready)
+               POST /ivr/calls/outbound {ticketId} · POST /ivr/calls/:id/accept · POST /ivr/calls/:id/transfer {toUserId} · POST /ivr/calls/:id/no-answer
+               POST /ivr/calls/:id/callback · POST /ivr/calls/:id/disposition {outcome, publicSummary, internalNote, nextAction} · GET /ivr/health
+               GET /calls?ticket|client|agent · GET /portal/tickets/:id/calls (times + public summary only)
+Modules        ticket-routing · support-ownership · on-call · sla-escalations (BullMQ delayed jobs per ack/SLA deadline) · ivr (provider adapter: TataIvrAdapter first)
+               call-logs · problems · rca · incidents · similarity (keyword + fingerprint now; embedding-based AI match behind an interface)</pre>
+<h3>19.5 Screens added</h3>
+<p>Support Routing Settings · Product/Project Support Ownership · On-Call Schedule · Developer Incoming Ticket Queue · Senior SLA &amp; Escalation Dashboard · Ticket Detail with IVR panel, routing/SLA and similar-issues blocks · Recurring Issues Dashboard · Problem/Incident List · Problem &amp; RCA Detail (RCA form) · Call History · IVR Configuration &amp; Health · Client Support History · Tester/QA Queue (existing) · Release &amp; Live Verification (existing). Mobile adds: incoming queue, accept/start, call through IVR, screen-pop sheet, related issues, escalate, support work today. All in <a href="Ashniva Desk - Hi-fi Screens v2.dc.html">Hi-fi v2 (turn 3)</a>, <a href="Ashniva Desk - Prototype.dc.html">web prototype</a> and <a href="Ashniva Desk - Mobile Prototype.dc.html">mobile prototype</a>.</p>
+
+<h2>20. Mobile app — support, IVR, RCA, QA and release (v0.3)</h2>
+<p>Same NestJS API, PostgreSQL, users, permissions, tickets, tasks, calls and audit as the web. React Native (Expo) + TypeScript; tokens in iOS Keychain / Android Keystore; Socket.IO for live queue updates; push via FCM/APNs deep-links to ticket, test, call or release; all permissions enforced server-side. Layout is fluid for 360 / 390 / 412 px, safe areas and font scaling; every target ≥ 44 px.</p>
+<h3>20.1 Mobile user flows</h3>
+<ol>
+<li><b>Client</b>: Home → Raise ticket (product, module, title, description, urgency, business impact, evidence incl. voice note; "Request a call now / schedule callback") → ticket auto-routed → status + public replies + call history → Reopen or Confirm resolved.</li>
+<li><b>Developer</b>: push "New ticket auto-assigned" → Incoming alert (Accept · View · Snooze 5 min) → Support queue with SLA countdown → Accept → Start work (linked task) → Call through IVR / request callback → public reply or internal note → evidence → Link commit/branch/PR → Send for review → staging → Send for testing. Duplicate warning → Confirm duplicate / Link problem / Create problem (suggest; senior/support confirms). Escalate to senior.</li>
+<li><b>Senior / Manager</b>: Escalation queue (unacknowledged, SLA risk, L1/L2) → Team availability (available · busy · absent · on-call) → Reassign with reason → Call client → Group into Problem → Ask developer → Request/review RCA → Approve emergency fix → Approve release / publish → Recurring issues; support work shown separately from development tasks.</li>
+<li><b>Tester</b>: QA queue → Test detail (staging URL, temporary access, acceptance criteria, checklist, previous failures, build/PR) → Start · Pass · Fail with reason + evidence (auto-returns) → Approve for release → Live smoke test after production.</li>
+<li><b>Support executive</b>: non-technical queue (training, account, access, billing) → reply / resolve; "Route to developer" hands a technical issue to automatic routing.</li>
+<li><b>Admin (mobile-lite)</b>: primary/backup mapping, module ownership, on-call, SLA &amp; escalation rules, routing status, IVR health; everything else on desktop.</li>
+<li><b>IVR</b>: identify caller → open/create ticket → find responsible/on-call developer → app screen-pop with context → Tata IVR bridges both parties (numbers hidden) → unanswered → backup → senior → callback queue → call time, duration, result, recording ref and notes saved on the ticket. The app never dials directly; every call is initiated by the backend through the configured provider, and is disabled offline.</li>
+</ol>
+<h3>20.2 Mobile screens</h3>
+<p>1 Role-based Home · 2 My Support Tickets / Support queue · 3 Incoming Ticket alert · 4 Raise Ticket · 5 Ticket Detail (routing, SLA, similar issues, IVR panel) · 6 IVR Call &amp; Callback (screen pop, in-call, wrap-up, callback) · 7 Recurring Issue warning · 8 Problem / Incident Detail · 9 RCA form · 10 Senior Escalation Queue · 11 Team availability &amp; On-Call · 12 Tester/QA Queue · 13 Test Detail · 14 Release Approval &amp; Publish confirmation · 15 Live Smoke Test · 16 Call History · 17 Recurring Issues · 18 Notifications · 19 Simple Mobile Admin · 20 Offline &amp; sync. All clickable in <a href="Ashniva Desk - Mobile Prototype.dc.html">the mobile prototype</a> (device-width switcher 360 / 390 / 412).</p>
+<h3>Revised phases</h3>
+<ul><li><b>Phase 1 (MVP, wk 3–9)</b>: + full workflow state machine, task categories, manager tasks, QA module (dashboard, assignments, test form), test environments &amp; accounts (manual staging URL), Admin core, tester report. GitHub links entered manually.</li>
+<li><b>Phase 2 (wk 10–15)</b>: GitHub App, Actions gating, Releases &amp; publishing, live verification automation, Client UAT, contracts/SLA/approvals/notifications as before.</li>
+<li><b>Phase 2b (wk 14–17)</b>: support ownership &amp; on-call, direct routing + ack/escalation jobs, duplicate detection (keyword/fingerprint), Problems &amp; RCA, IVR adapter (Tata) with screen pop, call logs, callback queue.</li>
+<li><b>Phase 3</b>: email/WhatsApp, AI similarity matching, release notes generator, billing, React Native, AI summaries.</li></ul>
+
+<h3>Open decisions for you</h3>
+<ol>
+<li>Ticket numbering per client org (ACME-0042) or global (ASH-1042)?</li>
+<li>Auto-close resolved tickets after 5 days — acceptable?</li>
+<li>Should client employees (non-admin) see contract hours, or only Client Admins?</li>
+<li>Daily report snapshot time — 18:30 IST proposed.</li>
+<li>Kanban swimlanes by assignee or by project on the Team board?</li>
+<li>Default credential grant TTL — 8 hours proposed; rotate after every test or daily?</li>
+<li>Should QA be mandatory for every Development task, or can a PM mark small tasks "no QA"?</li>
+<li>Publishers: PM + Director only, or also Team Lead?</li>
+</ol>
+</doc-page>
+</x-dc>
+</body>
+</html>

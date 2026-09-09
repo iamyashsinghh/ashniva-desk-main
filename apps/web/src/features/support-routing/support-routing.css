@@ -1,0 +1,108 @@
+/* Working hours, support ownership and availability. */
+
+.support-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  border: 0;
+  padding: 0;
+  margin: 0 0 var(--space-3);
+}
+
+.support-days__legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.support-days__day {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.support-days__day--on {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft, var(--color-surface-raised));
+  font-weight: 500;
+}
+
+/* One person's row in the team table: the name over the rota it resolves against. */
+.support-person {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.support-person__hours {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.support-module {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+  margin-bottom: var(--space-2);
+}
+
+@media (max-width: 700px) {
+  .support-module {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The routing decision trail. */
+.routing-trail__attempt + .routing-trail__attempt {
+  margin-top: var(--space-3);
+}
+
+.routing-trail__heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.routing-trail__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.routing-trail__row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  font-size: var(--font-size-sm);
+}
+
+.routing-trail__role {
+  color: var(--color-text-muted);
+}
+
+.routing-trail__who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .routing-trail__row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .routing-trail__role {
+    grid-column: 1 / -1;
+  }
+}

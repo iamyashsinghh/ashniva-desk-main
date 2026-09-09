@@ -1,0 +1,10 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Native modules that need a build/prebuilt download step during install.
+onlyBuiltDependencies:
+  - argon2
+  - '@prisma/engines'
+  - prisma
+  - esbuild

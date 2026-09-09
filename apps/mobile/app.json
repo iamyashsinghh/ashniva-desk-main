@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Ashniva Desk",
+    "slug": "ashniva-desk",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "ashnivadesk",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ashniva.desk"
+    },
+    "android": {
+      "package": "com.ashniva.desk",
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ashniva Desk uses your photos so you can attach a screenshot to a task or a ticket."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:3000/api/v1"
+    }
+  }
+}

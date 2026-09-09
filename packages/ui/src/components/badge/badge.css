@@ -1,0 +1,126 @@
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-caps);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ui-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--space-5);
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+
+.ui-pill--sm {
+  height: var(--space-4);
+  padding: 0 var(--space-1);
+  font-size: var(--font-size-2xs);
+}
+
+/*
+ * The outline variant.
+ *
+ * A tone's fill is a soft wash, which disappears on a row that is already washed — a hovered
+ * table row, a selected card. The outline keeps the same colour and reads on any background.
+ */
+.ui-badge--outline,
+.ui-pill--outline {
+  background: transparent;
+}
+
+.ui-tone--neutral {
+  background: var(--tone-neutral-bg);
+  color: var(--tone-neutral-fg);
+}
+.ui-tone--neutral.ui-badge--outline,
+.ui-tone--neutral.ui-pill--outline {
+  border-color: var(--tone-neutral-border);
+}
+.ui-tone--info {
+  background: var(--tone-info-bg);
+  color: var(--tone-info-fg);
+}
+.ui-tone--info.ui-badge--outline,
+.ui-tone--info.ui-pill--outline {
+  border-color: var(--tone-info-border);
+}
+.ui-tone--progress {
+  background: var(--tone-progress-bg);
+  color: var(--tone-progress-fg);
+}
+.ui-tone--progress.ui-badge--outline,
+.ui-tone--progress.ui-pill--outline {
+  border-color: var(--tone-progress-border);
+}
+.ui-tone--warning {
+  background: var(--tone-warning-bg);
+  color: var(--tone-warning-fg);
+}
+.ui-tone--warning.ui-badge--outline,
+.ui-tone--warning.ui-pill--outline {
+  border-color: var(--tone-warning-border);
+}
+.ui-tone--success {
+  background: var(--tone-success-bg);
+  color: var(--tone-success-fg);
+}
+.ui-tone--success.ui-badge--outline,
+.ui-tone--success.ui-pill--outline {
+  border-color: var(--tone-success-border);
+}
+.ui-tone--review {
+  background: var(--tone-review-bg);
+  color: var(--tone-review-fg);
+}
+.ui-tone--review.ui-badge--outline,
+.ui-tone--review.ui-pill--outline {
+  border-color: var(--tone-review-border);
+}
+.ui-tone--danger {
+  background: var(--tone-danger-bg);
+  color: var(--tone-danger-fg);
+}
+.ui-tone--danger.ui-badge--outline,
+.ui-tone--danger.ui-pill--outline {
+  border-color: var(--tone-danger-border);
+}
+
+.ui-priority-dot {
+  display: inline-block;
+  width: var(--priority-dot-size);
+  height: var(--priority-dot-size);
+  border-radius: var(--radius-circle);
+  flex: none;
+}
+.ui-priority-dot--CRITICAL {
+  background: var(--priority-critical);
+}
+.ui-priority-dot--HIGH {
+  background: var(--priority-high);
+}
+.ui-priority-dot--MEDIUM {
+  background: var(--priority-medium);
+}
+.ui-priority-dot--LOW {
+  background: var(--priority-low);
+}
+
+.ui-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}

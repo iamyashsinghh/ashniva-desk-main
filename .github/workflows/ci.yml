@@ -1,0 +1,256 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22
+  PNPM_VERSION: 10.33.0
+
+jobs:
+  quality:
+    name: Format, lint, type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  test:
+    name: Unit and API tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ashniva
+          POSTGRES_PASSWORD: ashniva_ci_password
+          POSTGRES_DB: ashniva_desk_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ashniva -d ashniva_desk_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://ashniva:ashniva_ci_password@localhost:5432/ashniva_desk_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      STORAGE_ENDPOINT: http://localhost:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: ashniva-desk-test
+      STORAGE_ACCESS_KEY: ashniva
+      STORAGE_SECRET_KEY: ashniva_ci_password
+      STORAGE_FORCE_PATH_STYLE: 'true'
+      STORAGE_AUTO_CREATE_BUCKET: 'true'
+      JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production-1234
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production-1234
+      # Phase 3 stores provider credentials encrypted, so the cipher key must be present or every
+      # integration test fails at the first encrypt(). CI-only value, like the JWT secrets above.
+      APP_ENCRYPTION_KEY: YXNobml2YS1jaS10ZXN0LWtleS1ub3QtZm9yLXByb2Q=
+      SEED_USER_PASSWORD: CiSeedPassword123!
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      # GitHub service containers cannot override the image command, so MinIO runs as a plain container.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=ashniva -e MINIO_ROOT_PASSWORD=ashniva_ci_password \
+            minio/minio:latest server /data
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && break
+            sleep 1
+          done
+      - run: pnpm install --frozen-lockfile
+      # The seed and the API import @ashniva/types from its built output.
+      - run: pnpm build:packages
+      - run: pnpm db:generate
+      - run: pnpm db:migrate:deploy
+      - run: pnpm db:seed
+      # Captured, because `pnpm test` runs five workspaces at once and the recursive runner's
+      # own summary does not say which one failed or why — the job log is the only record, and it
+      # is not always reachable from tooling. The same annotation trick the compose smoke test
+      # uses below puts the failing output on the check run itself.
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          pnpm test 2>&1 | tee test.log
+      - name: Surface the failing test output
+        if: failure()
+        run: |
+          # The whole tail, not a grep: the line that says *why* a test failed is several lines
+          # below the one naming it, and a pattern tight enough to be readable drops exactly that.
+          #
+          # dotenv prints a banner per suite, which is most of the log and none of the answer, so
+          # it goes first — otherwise the tail is all banner and the summary never fits in the
+          # annotations GitHub keeps.
+          grep -vE 'injected env|at _log \(|dotenvx\.com|vestauth\.com' test.log \
+            | tail -n 120 \
+            | awk '{ block = block $0 "%0A" } NR % 15 == 0 { print "::error title=pnpm test::" block; block = "" } END { if (block != "") print "::error title=pnpm test::" block }'
+      # Captured for the same reason the unit tests are: an e2e failure that only happens on CI
+      # is exactly the one whose output nobody can read, because the job log is behind a storage
+      # host that tooling often cannot reach. The annotation puts it on the check run itself.
+      - name: API end-to-end tests
+        run: |
+          set -o pipefail
+          pnpm test:e2e 2>&1 | tee e2e.log
+      - name: Surface the failing end-to-end output
+        if: failure()
+        run: |
+          grep -vE 'injected env|at _log \(|dotenvx\.com|vestauth\.com' e2e.log \
+            | tail -n 120 \
+            | awk '{ block = block $0 "%0A" } NR % 15 == 0 { print "::error title=pnpm test:e2e::" block; block = "" } END { if (block != "") print "::error title=pnpm test:e2e::" block }'
+
+  build:
+    name: Production builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      # Builds every workspace, including the Metro bundle for iOS and Android. That bundle is
+      # what catches a native import a type-check cannot see.
+      - run: pnpm build
+      - name: Validate Docker Compose file
+        run: docker compose config --quiet
+
+  compose-smoke:
+    name: Docker Compose smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PREVIEW_SERVICE_TIMEOUT_SECONDS: '300'
+    steps:
+      - uses: actions/checkout@v5
+      # Runs the same script non-technical users run on macOS: builds the images, starts every
+      # service, waits for health, migrates, seeds. Proves the images work end to end.
+      - name: Run the preview script
+        run: |
+          set -o pipefail
+          bash scripts/mac-preview.sh 2>&1 | tee preview.log
+      - name: Surface the preview output as annotations on failure
+        if: failure()
+        run: |
+          # The raw job log is not always reachable from tooling, so the last lines of the preview
+          # output are attached to the check run as error annotations (readable through the API).
+          tail -n 120 preview.log | awk '{ block = block $0 "%0A" } NR % 15 == 0 { print "::error title=preview.log::" block; block = "" } END { if (block != "") print "::error title=preview.log::" block }'
+          docker compose --profile app ps --all 2>&1 | awk '{ block = block $0 "%0A" } END { print "::error title=compose ps::" block }'
+          docker compose --profile app logs --tail=60 api 2>&1 | tail -n 60 | awk '{ block = block $0 "%0A" } NR % 20 == 0 { print "::error title=api logs::" block; block = "" } END { if (block != "") print "::error title=api logs::" block }'
+      - name: Check the running stack
+        run: |
+          set -euo pipefail
+          curl -fsS http://localhost:3000/api/v1/health | tee /dev/stderr | grep -q '"status":"up"'
+          curl -fsS http://localhost:3000/api/docs/json | grep -q '"Ashniva Desk API"'
+          curl -fsS http://localhost:5173/ | grep -q '<div id="root">'
+          curl -fsS http://localhost:5173/api/v1/branding | grep -q '"productName"'
+          curl -fsS http://localhost:5173/login | grep -q '<div id="root">'
+          # The seeded demo director can sign in through the web proxy and gets a session.
+          TOKEN=$(curl -fsS -X POST http://localhost:5173/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"director@example.com","password":"ChangeMe123!"}' \
+            | tee /dev/stderr | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+          test -n "$TOKEN"
+          # Phase 2 in the built images: the seeded contract, its SLA policies and the client
+          # portal all answer for the right audience.
+          curl -fsS http://localhost:5173/api/v1/contracts -H "Authorization: Bearer $TOKEN" \
+            | grep -q 'CT-2026-0001'
+          curl -fsS http://localhost:5173/api/v1/sla/policies -H "Authorization: Bearer $TOKEN" \
+            | grep -q 'Standard support'
+          CLIENT_TOKEN=$(curl -fsS -X POST http://localhost:5173/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"client-admin@example.com","password":"ChangeMe123!"}' \
+            | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+          test -n "$CLIENT_TOKEN"
+          curl -fsS http://localhost:5173/api/v1/portal/contracts -H "Authorization: Bearer $CLIENT_TOKEN" \
+            | tee /tmp/portal-contracts.json | grep -q 'CT-2026-0001'
+          # The portal projection carries no internal cost or notes.
+          ! grep -q 'internalCost' /tmp/portal-contracts.json
+          ! grep -q 'internalNotes' /tmp/portal-contracts.json
+          test "$(curl -fsS -o /dev/null -w '%{http_code}' http://localhost:5173/api/v1/contracts \
+            -H "Authorization: Bearer $CLIENT_TOKEN")" = "403"
+          # The health probe must name the role the server was created with. pg_isready does not
+          # authenticate, so a wrong or missing --username still reports healthy and only shows up
+          # as FATAL noise in the log — which is the one place it can be caught.
+          docker compose logs postgres > /tmp/postgres.log 2>&1
+          ! grep -qE 'FATAL:.*role .* does not exist' /tmp/postgres.log
+          # The project name is pinned, so the volumes are the same whatever the checkout is called.
+          docker volume ls --format '{{.Name}}' | grep -qx 'ashniva-desk_postgres-data'
+          docker compose --profile app ps
+          test "$(docker compose --profile app ps --status running --services | sort | tr '\n' ' ')" = "api minio postgres redis web "
+          # The API runs as the unprivileged node user, never root.
+          test "$(docker compose --profile app exec -T api id -un)" = "node"
+      # The path a person with an existing installation actually takes, over a stack that already
+      # has data. What this proves: the script runs clean end to end, re-running the deployment is
+      # a no-op, it does not re-seed, the data survives and the containers come back healthy.
+      #
+      # What it does NOT prove: the preview step above already applied every migration, so
+      # `migrate` here has nothing to do. The Phase 2 → Phase 3 upgrade itself is proved in
+      # test/permission-rollout.e2e-spec.ts, against databases stamped to the older schema.
+      - name: Run the update script over the running stack
+        run: |
+          set -o pipefail
+          bash scripts/mac-update.sh 2>&1 | tee update.log
+          # No seed ran: the update script must not have re-seeded, and the demo data is still there.
+          ! grep -qi 'seed data loaded' update.log
+      - name: Surface the update output as annotations on failure
+        if: failure()
+        run: |
+          tail -n 120 update.log | awk '{ block = block $0 "%0A" } NR % 15 == 0 { print "::error title=update.log::" block; block = "" } END { if (block != "") print "::error title=update.log::" block }'
+      - name: Check the stack again after the update
+        run: |
+          set -euo pipefail
+          curl -fsS http://localhost:3000/api/v1/health | grep -q '"status":"up"'
+          TOKEN=$(curl -fsS -X POST http://localhost:5173/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"director@example.com","password":"ChangeMe123!"}' \
+            | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+          test -n "$TOKEN"
+          # The data that was there before the update is still there.
+          curl -fsS http://localhost:5173/api/v1/contracts -H "Authorization: Bearer $TOKEN" \
+            | grep -q 'CT-2026-0001'
+          # A Phase 3 screen opens in the built images. This is a smoke test, not the no-seed
+          # proof — the stack was seeded by the preview script before the update ran. That the
+          # permissions come from the migration alone is proved on unseeded throwaway databases
+          # in test/permission-rollout.e2e-spec.ts.
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://localhost:5173/api/v1/invoices \
+            -H "Authorization: Bearer $TOKEN")" = "200"
+      - name: Stop the stack (keeps volumes)
+        if: always()
+        run: bash scripts/mac-stop.sh
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose --profile app logs --tail=200

@@ -1,0 +1,141 @@
+/* Global base styles for every Ashniva Desk web surface. Import once, after tokens.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--surface-page);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-snug);
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+a {
+  /* Not --brand-primary: a brand chosen to carry white text is unreadable as dark-mode body text. */
+  color: var(--brand-primary-text);
+}
+
+a:hover {
+  color: var(--brand-primary-hover);
+}
+
+:root[data-theme='dark'] a:hover {
+  /* The derived hover shade goes the wrong way in dark; brightening is what reads as a hover. */
+  color: color-mix(in srgb, var(--brand-primary-text) 80%, var(--color-text));
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+img,
+svg {
+  max-width: 100%;
+  display: block;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+/* Keyboard focus is always visible; mouse clicks do not show a ring. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/*
+ * A ring drawn as a box-shadow is painted under anything that overlaps the focused element, and
+ * inside a scroll container it is clipped outright. Components whose layout does either — the tab
+ * strip, the segmented control, table rows — state an inset ring instead; see `--focus-ring-inset`.
+ */
+
+::selection {
+  background: var(--brand-primary-soft);
+  color: var(--color-text);
+}
+
+/*
+ * Hidden from sight, present for assistive technology.
+ *
+ * `clip-path` alongside the legacy `clip`: `clip` only applies to absolutely positioned elements
+ * and is deprecated, and the pair is what keeps this working when one of them stops.
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* "Skip to content" link, visible only when focused */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: var(--space-2);
+  z-index: var(--z-toast);
+  padding: var(--space-2) var(--space-3);
+  background: var(--brand-primary);
+  color: var(--color-text-on-brand);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.skip-link:focus {
+  top: var(--space-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

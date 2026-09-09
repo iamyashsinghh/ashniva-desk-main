@@ -1,0 +1,68 @@
+.ui-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.ui-toolbar__spacer {
+  flex: 1 1 auto;
+}
+
+.ui-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--control-height-sm);
+  padding: 0 var(--space-1) 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.ui-filter-chip__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 22rem;
+}
+
+.ui-filter-chip__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--space-4);
+  height: var(--space-4);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-circle);
+  background: none;
+  color: inherit;
+  font-size: var(--font-size-md);
+  line-height: 1;
+}
+
+.ui-filter-chip__remove:hover {
+  background: var(--state-active-bg);
+  color: var(--color-text);
+}
+
+/*
+ * A 16px target is a mouse target. On touch the button grows past the chip and the chip grows to
+ * match, which costs a row of vertical space and buys a filter people can actually clear.
+ */
+@media (pointer: coarse) {
+  .ui-filter-chip {
+    height: var(--touch-target);
+    padding-right: var(--space-half);
+  }
+
+  .ui-filter-chip__remove {
+    width: var(--space-8);
+    height: var(--space-8);
+  }
+}

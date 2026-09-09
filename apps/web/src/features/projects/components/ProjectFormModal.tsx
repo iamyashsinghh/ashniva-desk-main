@@ -1,0 +1,202 @@
+import {
+  PROJECT_STATUS,
+  PROJECT_STATUS_LABELS,
+  PROJECT_TYPE,
+  PROJECT_TYPE_LABELS,
+  type ProjectDetail,
+  type ProjectStatus,
+  type ProjectType,
+} from '@ashniva/types';
+import { Button, FormField, Input, Modal, Select, Switch, Textarea } from '@ashniva/ui';
+import { useState } from 'react';
+
+import { useSubmitHandler } from '../../../shared/hooks/use-submit-handler';
+import { PeoplePicker } from '../../tasks/components/PeoplePicker';
+import { REVIEWER_ROLES } from '../../tasks/components/people-roles';
+import { useOrganizationsQuery, useTeamsQuery } from '../../users/api';
+import { useProjectMutations, type ProjectInput } from '../api';
+
+interface ProjectFormModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSaved: (project: ProjectDetail) => void;
+  /** Editing an existing project; omit to create. */
+  project?: ProjectDetail;
+}
+
+/** Create / edit project: code, name, client, type, status, manager, lead, team, dates, UAT. */
+export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFormModalProps) {
+  const organizations = useOrganizationsQuery();
+  const teams = useTeamsQuery();
+  const { create, update } = useProjectMutations(project?.id);
+  const { error, wrap } = useSubmitHandler(onClose);
+  const [form, setForm] = useState<ProjectInput>({
+    code: project?.code ?? '',
+    name: project?.name ?? '',
+    description: project?.description ?? '',
+    type: project?.type ?? PROJECT_TYPE.FIXED_PRICE,
+    status: project?.status ?? PROJECT_STATUS.ACTIVE,
+    clientOrganizationId: project?.clientOrganization?.id ?? '',
+    managerUserId: project?.manager?.id ?? '',
+    leadUserId: project?.lead?.id ?? '',
+    teamId: project?.team?.id ?? '',
+    startDate: project?.startDate ?? '',
+    targetDate: project?.targetDate ?? '',
+    requiresClientUat: project?.requiresClientUat ?? false,
+  });
+  const set = <TKey extends keyof ProjectInput>(key: TKey, value: ProjectInput[TKey]) =>
+    setForm((current) => ({ ...current, [key]: value }));
+  const valid = /^[A-Za-z][A-Za-z0-9]{1,7}$/.test(form.code) && form.name.trim().length >= 2;
+  const pending = create.isPending || update.isPending;
+
+  const save = () => {
+    const body: ProjectInput = {
+      ...form,
+      code: form.code.toUpperCase(),
+      name: form.name.trim(),
+      description: form.description?.trim() || undefined,
+      clientOrganizationId: form.clientOrganizationId || null,
+      managerUserId: form.managerUserId || null,
+      leadUserId: form.leadUserId || null,
+      teamId: form.teamId || null,
+      startDate: form.startDate || null,
+      targetDate: form.targetDate || null,
+    };
+    if (project) {
+      const { code: _code, ...rest } = body;
+      return update.mutateAsync(rest).then(onSaved);
+    }
+    return create.mutateAsync(body).then(onSaved);
+  };
+
+  return (
+    <Modal
+      open={open}
+      title={project ? 'Edit project' : 'New project'}
+      onClose={onClose}
+      size="lg"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={pending}
+            disabled={!valid}
+            disabledReason="Code (2–8 letters/digits) and name are required"
+            onClick={() => void wrap(save)()}
+          >
+            {project ? 'Save' : 'Create project'}
+          </Button>
+        </>
+      }
+    >
+      <div className="form-grid">
+        <FormField label="Code" required hint="Prefix of task numbers, e.g. ACM-12">
+          <Input
+            value={form.code}
+            onChange={(event) => set('code', event.target.value.toUpperCase())}
+            disabled={Boolean(project)}
+            maxLength={8}
+          />
+        </FormField>
+        <FormField label="Name" required>
+          <Input value={form.name} onChange={(event) => set('name', event.target.value)} />
+        </FormField>
+        <FormField label="Client" hint="Leave empty for an internal project">
+          <Select
+            value={form.clientOrganizationId ?? ''}
+            onChange={(event) => set('clientOrganizationId', event.target.value)}
+            options={[
+              { value: '', label: 'Internal (no client)' },
+              ...(organizations.data ?? [])
+                .filter((organization) => !organization.isServiceProvider)
+                .map((organization) => ({ value: organization.id, label: organization.name })),
+            ]}
+          />
+        </FormField>
+        <FormField label="Type">
+          <Select
+            value={form.type}
+            onChange={(event) => set('type', event.target.value as ProjectType)}
+            options={Object.values(PROJECT_TYPE).map((type) => ({
+              value: type,
+              label: PROJECT_TYPE_LABELS[type],
+            }))}
+          />
+        </FormField>
+        <FormField label="Status">
+          <Select
+            value={form.status ?? PROJECT_STATUS.ACTIVE}
+            onChange={(event) => set('status', event.target.value as ProjectStatus)}
+            options={Object.values(PROJECT_STATUS).map((status) => ({
+              value: status,
+              label: PROJECT_STATUS_LABELS[status],
+            }))}
+          />
+        </FormField>
+        <FormField label="Team">
+          <Select
+            value={form.teamId ?? ''}
+            onChange={(event) => set('teamId', event.target.value)}
+            options={[
+              { value: '', label: 'No team' },
+              ...(teams.data ?? []).map((team) => ({ value: team.id, label: team.name })),
+            ]}
+          />
+        </FormField>
+        <FormField label="Project manager">
+          <PeoplePicker
+            value={form.managerUserId ?? ''}
+            onChange={(userId) => set('managerUserId', userId)}
+            roles={REVIEWER_ROLES}
+            placeholder="Not set"
+          />
+        </FormField>
+        <FormField label="Senior / lead">
+          <PeoplePicker
+            value={form.leadUserId ?? ''}
+            onChange={(userId) => set('leadUserId', userId)}
+            roles={REVIEWER_ROLES}
+            placeholder="Not set"
+          />
+        </FormField>
+        <FormField label="Start date">
+          <Input
+            type="date"
+            value={form.startDate ?? ''}
+            onChange={(event) => set('startDate', event.target.value)}
+          />
+        </FormField>
+        <FormField label="Target delivery">
+          <Input
+            type="date"
+            value={form.targetDate ?? ''}
+            onChange={(event) => set('targetDate', event.target.value)}
+          />
+        </FormField>
+        <div className="form-grid__full">
+          <FormField label="Description">
+            <Textarea
+              rows={3}
+              value={form.description ?? ''}
+              onChange={(event) => set('description', event.target.value)}
+            />
+          </FormField>
+        </div>
+        <div className="form-grid__full">
+          <Switch
+            checked={form.requiresClientUat ?? false}
+            onChange={(checked) => set('requiresClientUat', checked)}
+            label="Client UAT required"
+            description="Used by the release pipeline in Phase 2; recorded now so nothing is lost."
+          />
+        </div>
+      </div>
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </Modal>
+  );
+}

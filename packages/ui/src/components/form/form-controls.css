@@ -1,0 +1,159 @@
+.ui-control {
+  display: block;
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.ui-control::placeholder {
+  color: var(--color-text-faint);
+  /* Firefox dims placeholders by default, which drops them below the contrast floor. */
+  opacity: 1;
+}
+
+.ui-control:hover:not(:disabled):not([readonly]) {
+  border-color: var(--color-border-interactive);
+}
+
+.ui-control:focus-visible {
+  border-color: var(--color-border-focus);
+}
+
+.ui-control[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.ui-control:disabled {
+  background: var(--state-disabled-bg);
+  color: var(--state-disabled-fg);
+  cursor: not-allowed;
+}
+
+.ui-control[readonly] {
+  background: var(--surface-sunken);
+}
+
+/* A native select needs the extra right padding for its own arrow. */
+select.ui-control {
+  padding-right: var(--space-6);
+}
+
+textarea.ui-control {
+  min-height: calc(var(--control-height) * 2.6);
+  padding: var(--space-2);
+  resize: vertical;
+  line-height: var(--line-height-normal);
+}
+
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.ui-field__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.ui-field__required {
+  color: var(--color-danger);
+  margin-left: calc(var(--space-half) * -1);
+}
+
+/* "Optional" is stated rather than implied, so a form with two optional fields reads as one. */
+.ui-field__optional {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text-faint);
+}
+
+.ui-field__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.ui-field__error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+}
+
+/* A disabled field dims its own text; the control already dims itself. */
+.ui-field:has(.ui-control:disabled) .ui-field__label,
+.ui-field-group:disabled .ui-field-group__legend {
+  color: var(--state-disabled-fg);
+}
+
+/* A fieldset carries a default border, padding and margin in every browser. */
+.ui-field-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.ui-field-group__legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+}
+
+.ui-form-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.ui-form-grid--1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ui-form-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ui-form-grid__full {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.ui-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (max-width: 599px) {
+  .ui-form-grid--2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Reversed so the primary action is nearest the thumb, and both are full width. */
+  .ui-form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .ui-form-actions > * {
+    width: 100%;
+  }
+}
+
+@media (pointer: coarse) {
+  .ui-control {
+    min-height: var(--touch-target);
+  }
+}

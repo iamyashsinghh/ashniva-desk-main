@@ -1,0 +1,156 @@
+/* Project plan and timeline. Every colour is a token from packages/ui — see tokens.css. */
+
+.plan-timeline__scroll {
+  overflow-x: auto;
+}
+
+.plan-timeline__chart {
+  min-width: 520px;
+}
+
+.plan-timeline__axis {
+  position: relative;
+  height: 18px;
+  margin-left: 220px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-faint);
+  font-size: var(--font-size-xs);
+}
+
+.plan-timeline__tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.plan-timeline__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-timeline__row {
+  display: grid;
+  grid-template-columns: 220px 1fr 44px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.plan-timeline__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plan-timeline__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+}
+
+.plan-timeline__meta,
+.plan-timeline__range,
+.plan-timeline__note {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.plan-timeline__range {
+  margin: var(--space-2) 0 0 220px;
+}
+
+.plan-timeline__note {
+  margin: var(--space-3) 0 0;
+}
+
+.plan-timeline__track {
+  position: relative;
+  height: 18px;
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-pill);
+}
+
+.plan-timeline__today {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--color-danger);
+  opacity: 0.55;
+}
+
+.plan-timeline__bar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.plan-timeline__fill {
+  display: block;
+  height: 100%;
+  background: currentColor;
+  opacity: 0.85;
+}
+
+.plan-timeline__bar--planned {
+  background: var(--tone-neutral-bg);
+  color: var(--tone-neutral-fg);
+}
+
+.plan-timeline__bar--active {
+  background: var(--tone-progress-bg);
+  color: var(--tone-progress-fg);
+}
+
+.plan-timeline__bar--done {
+  background: var(--tone-success-bg);
+  color: var(--tone-success-fg);
+}
+
+.plan-timeline__bar--late {
+  background: var(--tone-danger-bg);
+  color: var(--tone-danger-fg);
+}
+
+.plan-timeline__undated {
+  position: absolute;
+  left: var(--space-2);
+  top: 1px;
+  color: var(--color-text-faint);
+  font-size: var(--font-size-xs);
+}
+
+.plan-timeline__percent {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* The plan's own summary line: where the percentage came from. */
+.plan-basis {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  margin: 0 0 var(--space-3);
+}
+
+@media (max-width: 720px) {
+  .plan-timeline__axis,
+  .plan-timeline__range {
+    margin-left: 140px;
+  }
+
+  .plan-timeline__row {
+    grid-template-columns: 140px 1fr 40px;
+  }
+
+  .plan-timeline__chart {
+    min-width: 420px;
+  }
+}

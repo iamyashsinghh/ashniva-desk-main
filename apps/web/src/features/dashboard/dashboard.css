@@ -1,0 +1,304 @@
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.dashboard__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.dashboard__grid--equal {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.dashboard__section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 0;
+  font-size: var(--font-size-lg);
+}
+
+.dashboard__section-title span {
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.workload {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workload__row {
+  display: grid;
+  grid-template-columns: minmax(0, 9.5rem) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.workload__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workload__bar {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  overflow: hidden;
+}
+
+.workload__fill {
+  height: 100%;
+  background: var(--brand-primary);
+}
+
+.workload__fill--warn {
+  background: var(--color-danger);
+}
+
+.workload__meta {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.project-list__row {
+  display: grid;
+  grid-template-columns: 8px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  text-decoration: none;
+  color: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.project-list__row:last-child {
+  border-bottom: 0;
+}
+
+.project-list__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.project-list__dot--ON_TRACK {
+  background: var(--brand-accent);
+}
+
+.project-list__dot--AT_RISK {
+  background: var(--priority-medium);
+}
+
+.project-list__dot--DELAYED {
+  background: var(--color-danger);
+}
+
+.project-list__name {
+  font-weight: 500;
+}
+
+.project-list__meta {
+  color: var(--color-text-muted);
+}
+
+.status-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status-bars__row {
+  display: grid;
+  grid-template-columns: minmax(0, 9.5rem) minmax(0, 1fr) var(--space-8);
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.update-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.update-list__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-sm);
+}
+
+.update-list__meta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.task-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.task-cell__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.task-cell__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.muted {
+  color: var(--color-text-faint);
+}
+
+.due--overdue {
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
+/* Operational dashboard (package 7b) --------------------------------------------------------- */
+
+/* Wide content scrolls inside its own box; the page itself never scrolls sideways. */
+.ops-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.ops-projects,
+.ops-team {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.ops-projects th,
+.ops-team th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  white-space: nowrap;
+}
+
+.ops-projects td,
+.ops-team td {
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  vertical-align: top;
+}
+
+.ops-projects tr:last-child td,
+.ops-team tr:last-child td {
+  border-bottom: 0;
+}
+
+.ops-projects__num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ops-projects__num--warn {
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
+.ops-projects__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  text-decoration: none;
+  color: inherit;
+}
+
+.ops-projects__meta {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.ops-projects__team {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  max-width: 260px;
+  color: var(--color-text-muted);
+}
+
+.ops-team__name {
+  font-weight: 500;
+}
+
+.ops-attention,
+.ops-availability {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: var(--font-size-sm);
+}
+
+.ops-attention li,
+.ops-availability li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ops-attention li > .ops-projects__meta,
+.ops-availability li > .ops-projects__meta {
+  flex-basis: 100%;
+}
+
+@media (max-width: 899px) {
+  .dashboard__grid,
+  .dashboard__grid--equal {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-projects__team {
+    max-width: 180px;
+  }
+}

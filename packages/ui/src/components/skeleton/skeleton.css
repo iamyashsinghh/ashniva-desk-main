@@ -1,0 +1,54 @@
+/*
+ * The shimmer is a moving gradient rather than a pulsing opacity, because opacity on a dark
+ * surface reads as a flicker while a sweep reads as progress. Both schemes get the same geometry;
+ * only the two stops change, and they change because they are token colours.
+ */
+.ui-skeleton {
+  display: block;
+  width: 100%;
+  height: calc(var(--font-size-md) * var(--line-height));
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-muted);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--state-hover-bg) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: ui-skeleton-sweep 1400ms var(--ease-standard) infinite;
+}
+
+.ui-skeleton--pill {
+  border-radius: var(--radius-pill);
+}
+
+.ui-skeleton--circle {
+  border-radius: var(--radius-circle);
+}
+
+.ui-skeleton-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+@keyframes ui-skeleton-sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/*
+ * `global.css` already shortens every animation under reduced motion, which would leave this one
+ * sweeping 700 times a second. A skeleton that does not move is still a skeleton, so it stops.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton {
+    animation: none;
+    background-image: none;
+  }
+}

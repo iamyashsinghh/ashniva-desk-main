@@ -1,0 +1,224 @@
+.problem-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.problem-page__columns {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+@media (max-width: 900px) {
+  .problem-page__columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.problem-page__main,
+.problem-page__aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.problem-page__facts {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* "Reported by 3 clients using version 3.1.4" — the number the whole feature exists to show. */
+.problem-banner {
+  background: var(--tone-warning-bg);
+  border-left: 3px solid var(--tone-warning-fg);
+  border-radius: var(--radius-sm);
+  color: var(--tone-warning-fg);
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+}
+
+.problem-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The server's own sentence, printed under the disabled Close button. */
+.problem-actions__blocker {
+  color: var(--tone-danger-fg);
+  flex-basis: 100%;
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+.problem-actions__warning {
+  color: var(--color-text-muted);
+  flex-basis: 100%;
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+.problem-tickets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.problem-tickets__row {
+  align-items: baseline;
+  display: grid;
+  gap: var(--space-1) var(--space-2);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.problem-tickets__client {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.problem-resolution {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.problem-resolution__row {
+  display: grid;
+  gap: var(--space-1) var(--space-2);
+  grid-template-columns: 160px minmax(0, 1fr);
+}
+
+@media (max-width: 600px) {
+  .problem-resolution__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.rca-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.rca-form__question {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.rca-form__number {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* The suggested-duplicates panel on a ticket. */
+.similar-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.similar-panel__warning {
+  background: var(--tone-warning-bg);
+  border-radius: var(--radius-sm);
+  color: var(--tone-warning-fg);
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+}
+
+.similar-panel__note {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  margin: var(--space-1) 0 0;
+}
+
+.similar-panel__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.similar-panel__row {
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+}
+
+.similar-panel__signals {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.similar-panel__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* The incident timeline: append-only, and read from the top. */
+.incident-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.incident-timeline__entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.incident-timeline__meta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* The composer for what clients may be told. Marked, because publishing it is irreversible. */
+.client-summary {
+  border: 2px solid var(--tone-warning-fg);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.client-summary__label {
+  color: var(--tone-warning-fg);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recurring-bar {
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+  height: 8px;
+  min-width: 40px;
+  overflow: hidden;
+}
+
+.recurring-bar__fill {
+  background: var(--tone-progress-fg);
+  display: block;
+  height: 100%;
+}
+
+.recurring-bar__fill--over {
+  background: var(--tone-danger-fg);
+}

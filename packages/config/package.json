@@ -1,0 +1,33 @@
+{
+  "name": "@ashniva/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared TypeScript and ESLint presets for every Ashniva Desk workspace",
+  "type": "module",
+  "exports": {
+    "./eslint/base": "./eslint/base.mjs",
+    "./eslint/node": "./eslint/node.mjs",
+    "./eslint/browser": "./eslint/browser.mjs",
+    "./eslint/react": "./eslint/react.mjs",
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/node.json": "./tsconfig/node.json",
+    "./tsconfig/browser.json": "./tsconfig/browser.json",
+    "./tsconfig/react.json": "./tsconfig/react.json",
+    "./eslint/react-native": "./eslint/react-native.mjs"
+  },
+  "scripts": {
+    "clean": "rimraf node_modules"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.39.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.6",
+    "globals": "^16.0.0",
+    "typescript-eslint": "^8.69.0"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.3"
+  }
+}

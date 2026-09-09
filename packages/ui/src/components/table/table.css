@@ -1,0 +1,98 @@
+.ui-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.ui-table-wrap--sticky {
+  overflow-y: auto;
+}
+
+.ui-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--font-size-sm);
+}
+
+.ui-table th {
+  padding: var(--space-2) var(--table-cell-px);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-caps);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/*
+ * `border-collapse: separate` above is what makes this work at all: a collapsed table's header
+ * border belongs to the table, not the cell, and it scrolls away leaving the header floating.
+ */
+.ui-table-wrap--sticky .ui-table th {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+}
+
+.ui-table td {
+  padding: var(--table-cell-py) var(--table-cell-px);
+  border-bottom: 1px solid var(--color-divider);
+  vertical-align: middle;
+}
+
+.ui-table--compact td {
+  padding-top: var(--table-cell-py-compact);
+  padding-bottom: var(--table-cell-py-compact);
+}
+
+.ui-table--compact th {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+
+.ui-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ui-table__cell--numeric {
+  /* Digits of the same width, so a column of numbers lines up at the decimal point. */
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-table__cell--nowrap {
+  white-space: nowrap;
+}
+
+.ui-table__row--clickable {
+  cursor: pointer;
+}
+
+.ui-table__row--clickable:hover {
+  background: var(--state-hover-bg);
+}
+
+/*
+ * An outer ring on a table row is clipped by the scroll container on the first and last rows, so
+ * the row states its focus as an inset ring instead of taking the global one.
+ */
+.ui-table__row--clickable:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inset);
+  background: var(--state-hover-bg);
+}
+
+.ui-table__empty {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+@media (max-width: 699px) {
+  .ui-table__cell--desktop {
+    display: none;
+  }
+}

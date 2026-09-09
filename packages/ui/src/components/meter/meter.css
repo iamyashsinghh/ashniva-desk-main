@@ -1,0 +1,47 @@
+.ui-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  width: 100%;
+}
+
+.ui-meter__track {
+  display: block;
+  flex: 1;
+  min-width: var(--space-16);
+  height: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  /*
+   * The track is the same lightness as a muted surface, so on a card it needs an edge to exist
+   * at all — without it an empty meter is indistinguishable from nothing having rendered.
+   */
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.ui-meter--sm .ui-meter__track {
+  height: var(--space-1);
+}
+
+.ui-meter__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--brand-primary);
+  transition: inline-size var(--duration-base) var(--ease-out);
+}
+
+.ui-meter__fill--warn {
+  background: var(--color-danger);
+}
+
+.ui-meter__value {
+  flex: none;
+  min-width: 2.6em;
+  text-align: right;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}

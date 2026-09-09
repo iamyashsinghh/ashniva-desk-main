@@ -1,0 +1,133 @@
+/* QA screens: the assignment detail, the pass/fail sheet and the credential cards. */
+
+.qa-subtitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qa-context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.qa-context__heading {
+  margin: 0 0 4px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.qa-clarification {
+  margin-top: var(--space-3);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-sm);
+}
+
+.qa-clarification p {
+  margin: 0 0 4px;
+}
+
+.qa-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Reveal ------------------------------------------------------------------------------- */
+.qa-reveal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.qa-reveal__secret {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+/* Long generated passwords have to wrap rather than run off a phone screen. */
+.qa-reveal__value {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* Checklist ---------------------------------------------------------------------------- */
+.qa-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.qa-checklist__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+}
+
+/* Results ------------------------------------------------------------------------------ */
+.qa-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.qa-results__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding-bottom: var(--space-3);
+}
+
+.qa-results__item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.qa-results__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Forms -------------------------------------------------------------------------------- */
+.qa-form__switch {
+  display: flex;
+  align-items: center;
+}
+
+.qa-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+}
+
+.qa-evidence__file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}

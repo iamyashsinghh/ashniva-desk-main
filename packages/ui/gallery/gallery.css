@@ -1,0 +1,264 @@
+/*
+ * The gallery's own chrome.
+ *
+ * It reads the same tokens as the components it shows, on purpose: a page that styled itself with
+ * literal colours would look correct in dark while the components under review did not, and the
+ * whole point is to be able to trust what this page shows.
+ */
+.gallery {
+  min-height: 100dvh;
+  background: var(--surface-page);
+}
+
+.gallery__bar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--surface-raised);
+}
+
+.gallery__eyebrow {
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--letter-spacing-caps);
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.gallery__title {
+  font-size: var(--font-size-xl);
+}
+
+.gallery__layout {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr);
+  gap: var(--space-6);
+  padding: var(--space-6);
+  max-width: 1400px;
+}
+
+.gallery__nav {
+  position: sticky;
+  top: calc(var(--topbar-height) + var(--space-6));
+  align-self: start;
+}
+
+.gallery__nav ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gallery__nav a {
+  display: block;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+}
+
+.gallery__nav a:hover {
+  background: var(--state-hover-bg);
+}
+
+.gallery__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  min-width: 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  scroll-margin-top: calc(var(--topbar-height) + var(--space-6));
+}
+
+.section__title {
+  font-size: var(--font-size-2xl);
+  letter-spacing: var(--letter-spacing-tight);
+}
+
+.section__summary {
+  max-width: 70ch;
+  color: var(--color-text-muted);
+  text-wrap: pretty;
+}
+
+.section__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-3);
+}
+
+.specimen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.specimen__label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-caps);
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.specimen__stage {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+.specimen-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.muted {
+  color: var(--color-text-faint);
+  font-size: var(--font-size-sm);
+}
+
+/* Foundations ------------------------------------------------------------------------------- */
+
+.swatch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+}
+
+.swatch__chip {
+  display: block;
+  width: var(--space-16);
+  height: var(--space-8);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.swatch__name {
+  color: var(--color-text-muted);
+}
+
+.tone-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.state-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+}
+
+.ruler {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.ruler__label {
+  width: 6rem;
+  font-family: var(--font-mono);
+}
+
+.ruler__bar {
+  display: block;
+  height: var(--space-3);
+  border-radius: var(--radius-xs);
+  background: var(--brand-primary);
+}
+
+.shape {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-16);
+  height: var(--space-12);
+  border: 1px solid var(--color-border-strong);
+  background: var(--surface-sunken);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.shape--raised {
+  border-color: var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+/* Table cell demos -------------------------------------------------------------------------- */
+
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-half);
+  min-width: 0;
+}
+
+.cell-stack__key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.cell-person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+@media (max-width: 899px) {
+  .gallery__layout {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-4);
+  }
+
+  .gallery__nav {
+    position: static;
+  }
+
+  .gallery__nav ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

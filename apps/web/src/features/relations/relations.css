@@ -1,0 +1,73 @@
+/* Duplicates and related tickets: one list on the ticket screen, one list inside the link dialog. */
+
+.relations-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.relations-panel__row {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.relations-panel__facts {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.relations-panel__meta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.relations-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.relations-candidates__option {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  text-align: left;
+  width: 100%;
+}
+
+.relations-candidates__option:hover:not(:disabled) {
+  border-color: var(--brand-primary);
+}
+
+.relations-candidates__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.relations-candidates__option--selected {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 1px var(--brand-primary);
+}
+
+.relations-candidates__key {
+  font-weight: 600;
+}
