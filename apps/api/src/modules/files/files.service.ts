@@ -1,3 +1,22 @@
+import { randomUUID } from 'node:crypto';
+import type { Readable } from 'node:stream';
+
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  AUDIT_ACTION,
+  AUDIT_ENTITY_TYPE,
+  VISIBILITY,
+  type AuthenticatedUser,
+  type FileSummary,
+  type Visibility,
+} from '@ashniva/types';
+
+import { isInternalUser } from '../../common/auth/access-scope';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { AuditLogService } from '../audit-logs/audit-log.service';
 import { OrganizationsRepository } from '../organizations/organizations.repository';
