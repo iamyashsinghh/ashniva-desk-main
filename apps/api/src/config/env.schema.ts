@@ -175,11 +175,14 @@ export const envSchema = z
     /** PostgreSQL cancels a statement running longer than this. 0 disables the limit. */
     DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).default(30_000),
 
-    STORAGE_ENDPOINT: z.string().url(),
+    STORAGE_PROVIDER: z.enum(['s3', 'local']).default('s3'),
+    STORAGE_LOCAL_PATH: z.string().default('./storage-data'),
+
+    STORAGE_ENDPOINT: z.string().url().optional(),
     STORAGE_REGION: z.string().min(1).default('us-east-1'),
-    STORAGE_BUCKET: z.string().min(3),
-    STORAGE_ACCESS_KEY: z.string().min(1),
-    STORAGE_SECRET_KEY: z.string().min(1),
+    STORAGE_BUCKET: z.string().min(3).optional(),
+    STORAGE_ACCESS_KEY: z.string().min(1).optional(),
+    STORAGE_SECRET_KEY: z.string().min(1).optional(),
     STORAGE_FORCE_PATH_STYLE: booleanFromString,
     STORAGE_AUTO_CREATE_BUCKET: booleanFromString,
 
@@ -400,6 +403,19 @@ export const envSchema = z
         path: ['APP_ENCRYPTION_KEY'],
         message: 'APP_ENCRYPTION_KEY must decode to exactly 32 bytes (openssl rand -base64 32)',
       });
+    }
+
+    if (env.STORAGE_PROVIDER === 's3') {
+      const requiredS3Fields = ['STORAGE_ENDPOINT', 'STORAGE_BUCKET', 'STORAGE_ACCESS_KEY', 'STORAGE_SECRET_KEY'] as const;
+      for (const field of requiredS3Fields) {
+        if (!env[field]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `${field} is required when STORAGE_PROVIDER is s3`,
+          });
+        }
+      }
     }
   })
   /**

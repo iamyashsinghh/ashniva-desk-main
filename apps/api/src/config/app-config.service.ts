@@ -72,6 +72,8 @@ export class AppConfigService {
 
   get storage() {
     return {
+      provider: this.get('STORAGE_PROVIDER'),
+      localPath: this.get('STORAGE_LOCAL_PATH'),
       endpoint: this.get('STORAGE_ENDPOINT'),
       region: this.get('STORAGE_REGION'),
       bucket: this.get('STORAGE_BUCKET'),

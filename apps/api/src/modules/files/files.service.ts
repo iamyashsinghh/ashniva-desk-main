@@ -1,23 +1,3 @@
-import { randomUUID } from 'node:crypto';
-import type { Readable } from 'node:stream';
-
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import {
-  AUDIT_ACTION,
-  AUDIT_ENTITY_TYPE,
-  VISIBILITY,
-  type AuthenticatedUser,
-  type FileSummary,
-  type Visibility,
-} from '@ashniva/types';
-
-import { isInternalUser } from '../../common/auth/access-scope';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { AuditLogService } from '../audit-logs/audit-log.service';
 import { OrganizationsRepository } from '../organizations/organizations.repository';
@@ -116,15 +96,12 @@ export class FilesService {
 
     const name = sanitizeName(file.originalname);
     const storageKey = `${organizationId}/${randomUUID()}/${name}`;
-    await this.storage.client.send(
-      new PutObjectCommand({
-        Bucket: this.storage.bucket,
-        Key: storageKey,
-        Body: file.buffer,
-        ContentType: file.mimetype,
-        ContentLength: file.size,
-      }),
-    );
+    await this.storage.putObject({
+      key: storageKey,
+      body: file.buffer,
+      contentType: file.mimetype,
+      contentLength: file.size,
+    });
     const row = await this.files.create({
       organizationId,
       uploadedById: actor.userId,
@@ -168,14 +145,9 @@ export class FilesService {
 
   async download(actor: AuthenticatedUser, id: string): Promise<DownloadableFile> {
     const row = await this.requireDownloadable(actor, id);
-    const object = await this.storage.client.send(
-      new GetObjectCommand({ Bucket: this.storage.bucket, Key: row.storageKey }),
-    );
-    if (!object.Body) {
-      throw new NotFoundException('File content is missing');
-    }
+    const object = await this.storage.getObject(row.storageKey);
     return {
-      stream: object.Body as Readable,
+      stream: object.stream as Readable,
       name: row.name,
       contentType: row.contentType,
       sizeBytes: row.sizeBytes,
@@ -201,9 +173,7 @@ export class FilesService {
       );
     }
     await this.files.softDelete(id);
-    await this.storage.client.send(
-      new DeleteObjectCommand({ Bucket: this.storage.bucket, Key: row.storageKey }),
-    );
+    await this.storage.deleteObject(row.storageKey);
     await this.auditLog.record({
       action: AUDIT_ACTION.FILE_DELETED,
       entityType: AUDIT_ENTITY_TYPE.FILE,

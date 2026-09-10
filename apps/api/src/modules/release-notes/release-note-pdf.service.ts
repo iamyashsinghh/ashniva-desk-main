@@ -1,5 +1,4 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
 import PDFDocument from 'pdfkit';
 import { RELEASE_NOTE_STATUS, type AuthenticatedUser } from '@ashniva/types';
@@ -82,14 +81,11 @@ export class ReleaseNotePdfService {
 
     const bytes = await this.render(renderable);
     const storageKey = `release-notes/${note.organizationId}/${note.id}/${randomUUID()}.pdf`;
-    await this.storage.client.send(
-      new PutObjectCommand({
-        Bucket: this.storage.bucket,
-        Key: storageKey,
-        Body: bytes,
-        ContentType: 'application/pdf',
-      }),
-    );
+    await this.storage.putObject({
+      key: storageKey,
+      body: bytes,
+      contentType: 'application/pdf',
+    });
 
     const file = await this.prisma.file.create({
       data: {

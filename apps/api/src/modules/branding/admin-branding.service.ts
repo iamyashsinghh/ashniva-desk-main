@@ -1,6 +1,5 @@
 import type { Readable } from 'node:stream';
 
-import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   AUDIT_ACTION,
@@ -150,14 +149,14 @@ export class AdminBrandingService {
     if (!row || !LOGO_CONTENT_TYPES.has(row.contentType)) {
       throw new NotFoundException('This organization has no uploaded logo');
     }
-    const object = await this.storage.client.send(
-      new GetObjectCommand({ Bucket: this.storage.bucket, Key: row.storageKey }),
-    );
-    if (!object.Body) {
+    let object;
+    try {
+      object = await this.storage.getObject(row.storageKey);
+    } catch {
       throw new NotFoundException('The logo file is missing from storage');
     }
     return {
-      stream: object.Body as Readable,
+      stream: object.stream as Readable,
       contentType: row.contentType,
       sizeBytes: row.sizeBytes,
     };

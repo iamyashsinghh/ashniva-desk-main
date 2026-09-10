@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 
-import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { MAX_INGRESS_ATTACHMENTS } from '@ashniva/types';
 
@@ -69,15 +68,12 @@ export class IngressAttachmentsService {
       // The key is composed here, never supplied: a caller-chosen key is a caller-chosen path
       // into another tenant's objects.
       const storageKey = `${product.organizationId}/${product.productId}/${randomUUID()}/${name}`;
-      await this.storage.client.send(
-        new PutObjectCommand({
-          Bucket: this.storage.bucket,
-          Key: storageKey,
-          Body: buffer,
-          ContentType: attachment.contentType,
-          ContentLength: buffer.byteLength,
-        }),
-      );
+      await this.storage.putObject({
+        key: storageKey,
+        body: buffer,
+        contentType: attachment.contentType,
+        contentLength: buffer.byteLength,
+      });
       staged.push({
         name,
         contentType: attachment.contentType,
@@ -91,9 +87,7 @@ export class IngressAttachmentsService {
   /** Best-effort cleanup. A delete that fails costs storage, never correctness. */
   async discard(staged: readonly StagedAttachment[]): Promise<void> {
     for (const file of staged) {
-      await this.storage.client
-        .send(new DeleteObjectCommand({ Bucket: this.storage.bucket, Key: file.storageKey }))
-        .catch(() => null);
+      await this.storage.deleteObject(file.storageKey).catch(() => null);
     }
   }
 }
