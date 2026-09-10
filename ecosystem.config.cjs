@@ -4,8 +4,8 @@ module.exports = {
       name: 'ashniva-api',
       script: 'dist/main.js',
       cwd: './apps/api',
-      instances: 1, // Change to 'max' for cluster mode if scaling
-      exec_mode: 'fork', 
+      instances: 'max', 
+      exec_mode: 'cluster', // <--- Ise 'fork' se 'cluster' kar dein
       env: {
         NODE_ENV: 'production',
         PORT: 5511
