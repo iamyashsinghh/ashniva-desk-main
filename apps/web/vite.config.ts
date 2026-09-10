@@ -5,14 +5,14 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: 5510,
     // The web app talks to the API through this proxy, so it stays same-origin and needs no CORS.
     // That is true of the *web app* only. The embedded support SDK runs on a customer's own site
     // and is genuinely cross-origin; the API decides those requests per product — see
     // `apps/api/src/widget-cors.ts`.
     proxy: {
-      '/api': { target: 'http://localhost:3000', changeOrigin: true },
-      '/ws': { target: 'http://localhost:3000', ws: true },
+      '/api': { target: 'http://localhost:5511', changeOrigin: true },
+      '/ws': { target: 'http://localhost:5511', ws: true },
     },
   },
   build: {
