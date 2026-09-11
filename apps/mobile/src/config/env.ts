@@ -18,7 +18,7 @@ interface MobileEnv {
 }
 
 const DEFAULTS = {
-  apiBaseUrl: 'http://localhost:3000/api/v1',
+  apiBaseUrl: 'https://desk.ashniva.com/api/v1',
   requestTimeoutMs: 20_000,
 } as const;
 
