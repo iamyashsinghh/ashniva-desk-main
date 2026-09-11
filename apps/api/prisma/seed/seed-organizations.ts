@@ -27,36 +27,6 @@ export async function seedOrganizations(prisma: PrismaClient): Promise<SeededOrg
     },
   });
 
-  const groupCompany = await prisma.organization.upsert({
-    where: { slug: 'grouphr' },
-    update: {},
-    create: {
-      name: 'GroupHR Services',
-      slug: 'grouphr',
-      type: ORGANIZATION_TYPE.OWN_GROUP,
-    },
-  });
-
-  const acme = await prisma.organization.upsert({
-    where: { slug: 'acme-retail' },
-    update: {},
-    create: {
-      name: 'Acme Retail Pvt Ltd',
-      slug: 'acme-retail',
-      type: ORGANIZATION_TYPE.CORPORATE_CUSTOMER,
-    },
-  });
-
-  const zenith = await prisma.organization.upsert({
-    where: { slug: 'zenith-logistics' },
-    update: {},
-    create: {
-      name: 'Zenith Logistics Ltd',
-      slug: 'zenith-logistics',
-      type: ORGANIZATION_TYPE.AMC_CLIENT,
-    },
-  });
-
-  console.warn('Organizations: 4');
-  return { serviceProvider, groupCompany, acme, zenith };
+  console.warn('Organizations: 1');
+  return { serviceProvider } as unknown as SeededOrganizations;
 }

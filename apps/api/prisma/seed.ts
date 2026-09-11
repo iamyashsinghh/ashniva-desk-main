@@ -45,20 +45,22 @@ async function main(): Promise<void> {
     const rolesByKey = await seedRoles(prisma, permissionsByKey);
     const organizations = await seedOrganizations(prisma);
     const users = await seedUsers(prisma, { organizations, rolesByKey });
-    const teams = await seedTeams(prisma, organizations, users);
-    const categories = await seedTaskCategories(prisma, organizations);
-    const projects = await seedProjects(prisma, organizations, users, teams);
-    const tasksByNumber = await seedTasks(prisma, { organizations, users, projects, categories });
-    await seedTickets(prisma, { organizations, users, projects, teams, tasksByNumber });
-    await seedDailyReports(prisma, organizations, users);
-    await seedAuditLogs(prisma, organizations, users, projects, tasksByNumber);
-    await seedCustomRole(prisma, organizations, permissionsByKey);
-    const contracts = await seedContracts(prisma, organizations, users, projects);
-    const milestones = await seedMilestones(prisma, organizations, users, projects, contracts);
-    await seedSla(prisma, organizations);
-    await seedChangeRequests(prisma, organizations, users, projects, contracts, milestones);
-    await seedApprovals(prisma, organizations, users, projects, milestones);
-    await seedNotifications(prisma, organizations, users);
+    
+    // The rest of the seeders are commented out as requested.
+    // const teams = await seedTeams(prisma, organizations, users);
+    // const categories = await seedTaskCategories(prisma, organizations);
+    // const projects = await seedProjects(prisma, organizations, users, teams);
+    // const tasksByNumber = await seedTasks(prisma, { organizations, users, projects, categories });
+    // await seedTickets(prisma, { organizations, users, projects, teams, tasksByNumber });
+    // await seedDailyReports(prisma, organizations, users);
+    // await seedAuditLogs(prisma, organizations, users, projects, tasksByNumber);
+    // await seedCustomRole(prisma, organizations, permissionsByKey);
+    // const contracts = await seedContracts(prisma, organizations, users, projects);
+    // const milestones = await seedMilestones(prisma, organizations, users, projects, contracts);
+    // await seedSla(prisma, organizations);
+    // await seedChangeRequests(prisma, organizations, users, projects, contracts, milestones);
+    // await seedApprovals(prisma, organizations, users, projects, milestones);
+    // await seedNotifications(prisma, organizations, users);
     console.warn('Seed completed.');
   } finally {
     await prisma.$disconnect();
