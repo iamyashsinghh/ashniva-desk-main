@@ -26,7 +26,7 @@ export function configureApp(app: INestApplication<Express>): void {
   // A hop count, never `true`: see TRUST_PROXY in env.schema.ts.
   app.getHttpAdapter().getInstance().set('trust proxy', config.server.trustProxy);
 
-  app.use(helmet());
+  app.use(helmet({ crossOriginResourcePolicy: false }));
   // Only the refresh-token cookie is read (auth routes); nothing else uses cookies.
   app.use(cookieParser());
   // Per request, because the embedded support widget answers to origins that live in the database
