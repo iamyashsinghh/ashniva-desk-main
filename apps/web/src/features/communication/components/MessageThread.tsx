@@ -28,7 +28,6 @@ export interface MessageThreadProps {
   isLoadingEarlier: boolean;
   onLoadEarlier: () => void;
   onEdit: (input: { messageId: string; body: string }) => Promise<void>;
-  onDelete: (messageId: string) => Promise<void>;
   onReply?: (message: MessageSummary) => void;
   onLoadRevisions?: (messageId: string) => Promise<MessageRevisionSummary[]>;
 }
@@ -62,7 +61,6 @@ export function MessageThread({
   isLoadingEarlier,
   onLoadEarlier,
   onEdit,
-  onDelete,
   onReply,
   onLoadRevisions,
 }: MessageThreadProps) {
@@ -119,7 +117,6 @@ export function MessageThread({
                     // run is the same person still talking.
                     continuesRun={index > 0 && message.id !== firstUnreadId}
                     onEdit={onEdit}
-                    onDelete={onDelete}
                     {...(onReply ? { onReply } : {})}
                     {...(onLoadRevisions ? { onLoadRevisions } : {})}
                   />

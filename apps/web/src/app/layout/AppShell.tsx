@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { Outlet, useMatches } from 'react-router';
 
 import { LiveMessageToasts } from '../../features/communication/components/LiveMessageToasts';
+import { MessengerDock } from '../../features/communication/components/MessengerDock';
+import { MessengerProvider } from '../../features/communication/messenger-context';
 import { RealtimeProvider } from '../providers/RealtimeProvider';
 import { MobileTabBar } from './MobileTabBar';
 import { Sidebar, SidebarPanel } from './Sidebar';
@@ -59,7 +61,10 @@ export function AppShell({ homePath = '/' }: AppShellProps) {
         </div>
         {/* Mounted here rather than on the messages screen: a message arriving while somebody is
             on a task board is exactly the case a corner notice is for. */}
-        <LiveMessageToasts />
+        <MessengerProvider>
+          <LiveMessageToasts />
+          <MessengerDock />
+        </MessengerProvider>
       </div>
     </RealtimeProvider>
   );

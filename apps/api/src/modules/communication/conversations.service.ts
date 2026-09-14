@@ -7,7 +7,9 @@ import {
   CONVERSATION_KIND,
   CONVERSATION_MEMBERSHIP,
   PAIR_MEMBERSHIP_KINDS,
+  PERMISSIONS,
   administersGroup,
+  canUsePersonalChat,
   membershipOf,
   type AuthenticatedUser,
   type ConversationAbilities,
@@ -160,9 +162,13 @@ export class ConversationsService {
     // Resolved once and used twice: as the predicate the page is built with, and as the facts the
     // policy re-checks each row against below. Two uses of one snapshot, not two snapshots.
     const taskChatScope = await this.taskChatScope.resolve(actor);
+    const kind = peopleInboxKindFor(actor, query);
+    if (kind === null) {
+      return [];
+    }
     const rows = await this.conversations.listFor(actor.organizationId, actor.userId, {
       projectId: query.projectId,
-      kind: query.kind,
+      ...(kind ? { kind } : {}),
       limit: query.limit ?? 50,
       taskScope: taskChatWhere(taskChatScope),
     });
@@ -377,4 +383,29 @@ export class ConversationsService {
       after,
     });
   }
+}
+
+/**
+ * What the people inbox may ask the list for.
+ *
+ * Developers and the other non-management roles only post in the project team group, so a page
+ * of direct messages they cannot read must not spend the `limit` and push that group off the
+ * end. `null` is "this chip has nothing for you": they asked for Direct, and Direct is not
+ * theirs. Project, task and ticket lists are unchanged — those hang off a `projectId`.
+ */
+function peopleInboxKindFor(
+  actor: AuthenticatedUser,
+  query: ListConversationsQueryDto,
+): ConversationKind | undefined | null {
+  if (
+    query.projectId ||
+    canUsePersonalChat(actor.roleKey) ||
+    actor.permissions.includes(PERMISSIONS.CONVERSATION_REACH_ORGANIZATION)
+  ) {
+    return query.kind;
+  }
+  if (query.kind && query.kind !== CONVERSATION_KIND.GROUP) {
+    return null;
+  }
+  return CONVERSATION_KIND.GROUP;
 }

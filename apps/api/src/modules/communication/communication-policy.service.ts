@@ -6,6 +6,7 @@ import {
   COMMUNICATION_REFUSAL_LABELS,
   PERMISSIONS,
   canCommunicate,
+  canUsePersonalChat,
   type AuthenticatedUser,
   type CommunicationAction,
   type CommunicationDecision,
@@ -303,6 +304,9 @@ export class CommunicationPolicyService {
       canCall: actor.permissions.includes(PERMISSIONS.CONVERSATION_CALL),
       canInspect: actor.permissions.includes(PERMISSIONS.CONVERSATION_INSPECT),
       canPlayRecording: actor.permissions.includes(PERMISSIONS.CONVERSATION_RECORDING_PLAY),
+      personalChat:
+        canUsePersonalChat(actor.roleKey) ||
+        actor.permissions.includes(PERMISSIONS.CONVERSATION_REACH_ORGANIZATION),
     };
     return {
       actorProjectRole,

@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 
 import { ApprovalDetailScreen, ApprovalsScreen } from '../features/approvals/ApprovalsScreen';
 import { useSession } from '../features/auth/SessionProvider';
-import { canUseInternalChat } from '../features/chat/chat-access';
+import { canStartPersonalChat, canUseInternalChat } from '../features/chat/chat-access';
 import { ConversationScreen } from '../features/chat/ConversationScreen';
 import { ConversationsScreen } from '../features/chat/ConversationsScreen';
 import { GroupScreen } from '../features/chat/GroupScreen';
@@ -47,7 +47,6 @@ export function SignedInStack() {
   const { user } = useSession();
   const tabs = useMemo(() => (user ? tabsFor(user).map((tab) => tab.name) : []), [user]);
   const openChat = useChatNavigation();
-  const canChat = canUseInternalChat(user);
 
   useNotificationTaps(tabs);
 
@@ -114,11 +113,12 @@ export function SignedInStack() {
         name="Conversations"
         options={{ title: 'Messages' }}
         children={({ navigation }) => (
-          <ConversationsScreen
+            <ConversationsScreen
             onOpen={(id) => navigation.navigate('Conversation', { id })}
+            personalChat={canStartPersonalChat(user)}
             // Null rather than a button that fails: a client has no internal conversations
             // anywhere in the system, and the API refuses them at the first check of every route.
-            {...(canChat ? { onStart: () => navigation.navigate('NewConversation') } : {})}
+            {...(canStartPersonalChat(user) ? { onStart: () => navigation.navigate('NewConversation') } : {})}
           />
         )}
       />

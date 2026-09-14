@@ -25,3 +25,6 @@ process.env.SUPPORT_CALLBACK_TRANSPORT = 'mock';
 // prove that an unreachable Theme Manager breaks nothing. Forced here rather than defaulted so a
 // developer's own `.env` cannot decide what every other suite is testing.
 process.env.THEME_PROVIDER = 'local';
+
+// A developer's GEMINI_API_KEY in apps/api/.env must not let unit or e2e tests call a live model.
+delete process.env.GEMINI_API_KEY;

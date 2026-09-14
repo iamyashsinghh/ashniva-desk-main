@@ -14,6 +14,7 @@ import {
 
 import { isInternalUser } from '../../common/auth/access-scope';
 import { AuditLogService } from '../audit-logs/audit-log.service';
+import { ProjectTeamGroupService } from '../communication/project-team-group.service';
 import { OrganizationsRepository } from '../organizations/organizations.repository';
 import type {
   CreateProjectDto,
@@ -41,6 +42,7 @@ export class ProjectsService {
     private readonly projects: ProjectsRepository,
     private readonly organizations: OrganizationsRepository,
     private readonly auditLog: AuditLogService,
+    private readonly projectGroups: ProjectTeamGroupService,
   ) {}
 
   async list(actor: AuthenticatedUser, query: ListProjectsQueryDto): Promise<ProjectSummary[]> {
@@ -56,12 +58,14 @@ export class ProjectsService {
       actor.organizationId,
       rows.map((row) => row.id),
     );
+    await this.projectGroups.ensureMany(rows.map((row) => row.id));
     return rows.map((row) => toProjectSummary(row, counts.get(row.id)));
   }
 
   async get(actor: AuthenticatedUser, id: string): Promise<ProjectDetail> {
     this.assertInternal(actor);
     const row = await this.require(actor, id);
+    await this.projectGroups.ensure(row.id);
     const counts = await this.projects.countsByProject(actor.organizationId, [row.id]);
     return toProjectDetail(row, counts.get(row.id));
   }
@@ -88,6 +92,7 @@ export class ProjectsService {
       }
     }
     await this.projects.setMembers(actor.organizationId, row.id, initialMembers);
+    await this.projectGroups.sync(row.id);
     await this.auditLog.record({
       action: AUDIT_ACTION.PROJECT_CREATED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,
@@ -116,6 +121,7 @@ export class ProjectsService {
       startDate: toDate(startDate),
       targetDate: toDate(targetDate),
     });
+    await this.projectGroups.sync(id);
     await this.auditLog.record({
       action: AUDIT_ACTION.PROJECT_UPDATED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,
@@ -134,6 +140,7 @@ export class ProjectsService {
     this.assertInternal(actor);
     await this.require(actor, id);
     await this.projects.setMembers(actor.organizationId, id, dto.members);
+    await this.projectGroups.sync(id);
     await this.auditLog.record({
       action: AUDIT_ACTION.PROJECT_UPDATED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,

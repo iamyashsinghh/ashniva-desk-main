@@ -664,6 +664,24 @@ describe('canCommunicate — a conversation with no project', () => {
     expect(create(false).reason).toBe(COMMUNICATION_REFUSAL.NOT_IN_SCOPE);
   });
 
+  it('refuses a developer a private thread, and still admits them to a listed group', () => {
+    expect(
+      scoped(
+        { action: COMMUNICATION_ACTION.CREATE, personalChat: false },
+        { isListedMember: false, counterpartInScope: true },
+      ).reason,
+    ).toBe(COMMUNICATION_REFUSAL.PRIVATE_CHAT_NOT_ALLOWED);
+    expect(
+      scoped({ action: COMMUNICATION_ACTION.POST, personalChat: false }).reason,
+    ).toBe(COMMUNICATION_REFUSAL.PRIVATE_CHAT_NOT_ALLOWED);
+    expect(
+      scoped(
+        { action: COMMUNICATION_ACTION.POST, personalChat: false },
+        { membership: 'LISTED', memberRole: 'MEMBER' },
+      ).allowed,
+    ).toBe(true);
+  });
+
   it('closes a pair when the reach that opened it goes', () => {
     // The initiator carries the re-check, so a manager who stops managing the project stops
     // reaching the colleague they reached through it — on reading as well as on posting.

@@ -1,4 +1,8 @@
-import { CONVERSATION_KIND_LABELS, type ConversationSummary } from '@ashniva/types';
+import {
+  CONVERSATION_KIND_LABELS,
+  type ConversationSummary,
+  type MessagingScopeContact,
+} from '@ashniva/types';
 
 import { formatDateTime, formatRelative } from '../../../shared/lib/format';
 import { contextLabelOf } from '../conversation-filters';
@@ -9,6 +13,8 @@ export interface ConversationRowProps {
   isSelected: boolean;
   /** Whether an unread mention names this person here. Comes from their own notifications. */
   isMentioned: boolean;
+  /** Corner inbox: name and preview only — the kind label eats the row in 20rem. */
+  compact?: boolean;
   onSelect: () => void;
 }
 
@@ -22,7 +28,13 @@ export interface ConversationRowProps {
  * There is no availability dot, and that is deliberate: the gateway carries no presence, so a
  * green circle here would be decoration asserting something nobody measured.
  */
-export function ConversationRow({ row, isSelected, isMentioned, onSelect }: ConversationRowProps) {
+export function ConversationRow({
+  row,
+  isSelected,
+  isMentioned,
+  compact = false,
+  onSelect,
+}: ConversationRowProps) {
   const name = row.counterpart?.name ?? row.title;
   const context = contextLabelOf(row) ?? CONVERSATION_KIND_LABELS[row.kind];
   const classes = [
@@ -40,7 +52,7 @@ export function ConversationRow({ row, isSelected, isMentioned, onSelect }: Conv
         <span className="chat-list__text">
           <span className="chat-list__title">
             {name}
-            <span className="timeline__note"> · {context}</span>
+            {compact ? null : <span className="timeline__note"> · {context}</span>}
           </span>
           <span className="chat-list__preview">{row.lastMessagePreview ?? 'Nothing said yet'}</span>
         </span>
@@ -60,6 +72,34 @@ export function ConversationRow({ row, isSelected, isMentioned, onSelect }: Conv
               </span>
             ) : null}
           </span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
+/** A colleague with no thread yet — listed so anybody can message anybody without hunting. */
+export function PersonRow({
+  contact,
+  opening = false,
+  onSelect,
+}: {
+  contact: MessagingScopeContact;
+  opening?: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        className="chat-list__conversation"
+        disabled={opening}
+        onClick={onSelect}
+      >
+        <ConversationAvatar name={contact.name} imageFileId={null} size="md" />
+        <span className="chat-list__text">
+          <span className="chat-list__title">{contact.name}</span>
+          <span className="chat-list__preview">{contact.reason}</span>
         </span>
       </button>
     </li>

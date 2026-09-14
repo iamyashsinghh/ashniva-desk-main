@@ -1,16 +1,9 @@
-import {
-  MAX_CONVERSATION_TITLE_LENGTH,
-  MAX_GROUP_MEMBERS,
-  PROJECT_MEMBER_ROLE_LABELS,
-  CONVERSATION_KIND,
-  type MessagingScopeContact,
-} from '@ashniva/types';
+import { MAX_CONVERSATION_TITLE_LENGTH, MAX_GROUP_MEMBERS, type MessagingScopeContact } from '@ashniva/types';
 import { Button, EmptyState, Input, Modal, Tabs } from '@ashniva/ui';
 import { useState } from 'react';
 
 import { QueryState } from '../../../shared/components/QueryState';
 import { errorMessage } from '../../../shared/lib/api-client';
-import { useContactsQuery, useOpenConversation } from '../api';
 import { useMessagingDirectoryQuery, useScopeConversationMutations } from '../scope-api';
 
 export interface NewConversationProps {
@@ -19,21 +12,13 @@ export interface NewConversationProps {
   onOpened: (conversationId: string) => void;
 }
 
-type NewConversationTab = 'direct' | 'group' | 'project';
+type NewConversationTab = 'direct' | 'group';
 
 /**
  * Starting something: a direct message, or a group.
  *
- * Two different sources of permission sit side by side here, and the tabs are the honest way to
- * show that. **Project contacts** are people the caller shares a project with and whose roles the
- * pairing table admits — that has always existed and is untouched. **The directory** is the new
- * one: people inside the caller's *management scope*, which for a developer or a tester is nobody
- * at all, and the entry says which relationship puts them there rather than leaving somebody to
- * guess why a colleague is missing.
- *
- * Neither list is authorization. Both come from the same resolution the create endpoints enforce,
- * so a name shown is a name they accept — and a request for a name that was never shown is
- * refused in the API, not here.
+ * The directory is every eligible colleague in the organization — the same resolution the create
+ * endpoints enforce — so a name shown is a name they accept.
  */
 export function NewConversation({ open, onClose, onOpened }: NewConversationProps) {
   const [error, setError] = useState<string | undefined>();
@@ -64,19 +49,16 @@ export function NewConversation({ open, onClose, onOpened }: NewConversationProp
         items={[
           { key: 'direct', label: 'Direct message' },
           { key: 'group', label: 'Group' },
-          { key: 'project', label: 'On a project' },
         ]}
       />
       {tab === 'direct' ? <DirectTab onStart={opened} /> : null}
       {tab === 'group' ? <GroupTab onStart={opened} /> : null}
-      {tab === 'project' ? <ProjectContactsTab onStart={opened} /> : null}
     </Modal>
   );
 }
 
 type Start = (work: () => Promise<{ id: string }>) => Promise<void>;
 
-/** Somebody inside the caller's management scope, and why they are inside it. */
 function DirectTab({ onStart }: { onStart: Start }) {
   const [search, setSearch] = useState('');
   const directory = useMessagingDirectoryQuery(search);
@@ -99,8 +81,8 @@ function DirectTab({ onStart }: { onStart: Start }) {
       >
         {(directory.data ?? []).length === 0 ? (
           <EmptyState
-            title="Nobody outside a project"
-            description="Reaching somebody without a shared project comes from managing or leading them. Use the project tab for the people you work with."
+            title="Nobody else here"
+            description="There are no other people in your organization to message yet."
           />
         ) : (
           <ul className="chat-list">
@@ -220,61 +202,5 @@ function GroupTab({ onStart }: { onStart: Start }) {
         Create group
       </Button>
     </div>
-  );
-}
-
-/**
- * The people the caller shares a project with.
- *
- * Unchanged from what the messages screen already offered, moved in beside the new tabs so that
- * "start a conversation" is one place rather than two.
- */
-function ProjectContactsTab({ onStart }: { onStart: Start }) {
-  const contacts = useContactsQuery();
-  const open = useOpenConversation();
-
-  return (
-    <QueryState
-      isLoading={contacts.isLoading}
-      isError={contacts.isError}
-      error={contacts.error}
-      onRetry={() => void contacts.refetch()}
-    >
-      {(contacts.data ?? []).length === 0 ? (
-        <EmptyState
-          title="Nobody to message yet"
-          description="You can message people on your own projects whose role pairs with yours."
-        />
-      ) : (
-        <ul className="chat-list">
-          {(contacts.data ?? []).map((contact) => (
-            <li key={`${contact.projectId}:${contact.id}`} className="chat-list__item">
-              <span>
-                {contact.name}
-                <span className="timeline__note">
-                  {' '}
-                  · {contact.projectCode} · {PROJECT_MEMBER_ROLE_LABELS[contact.projectRole]}
-                </span>
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  void onStart(() =>
-                    open.mutateAsync({
-                      kind: CONVERSATION_KIND.DIRECT,
-                      projectId: contact.projectId,
-                      withUserId: contact.id,
-                    }),
-                  )
-                }
-              >
-                {contact.conversationId ? 'Open' : 'Message'}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </QueryState>
   );
 }

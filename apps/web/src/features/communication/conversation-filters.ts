@@ -1,30 +1,23 @@
-import { CONVERSATION_KIND, type ConversationKind, type ConversationSummary } from '@ashniva/types';
+import { CONVERSATION_KIND, DERIVED_MEMBERSHIP_KINDS, PERMISSIONS, canUsePersonalChat, type ConversationKind, type ConversationSummary, type SessionUser } from '@ashniva/types';
 
 /**
  * The filters above the conversation list.
  *
- * Seven chips rather than the two switches the list used to carry, because "which of my threads is
- * this" is the question somebody actually arrives with, and a search box only answers it once they
- * already know the name.
+ * Chats is a people inbox: direct messages and groups. Project, task and ticket channels still
+ * exist on those pages, and they are not listed here.
  *
- * **Five of them are the server's filter and two are not, and that is the split that matters.**
- * `GET /conversations` takes one `kind` and an `unreadOnly` flag, so Unread, Groups, Project, Task
- * and Ticket can be asked for — and must be, because the endpoint answers with the most recent
- * `limit` rows and an unfiltered window would spend those rows on conversations the chip is about
- * to hide, leaving somebody busy with fewer task threads on screen than they actually have.
- * "Direct" is two kinds (`DIRECT` on a project and `SCOPE_DIRECT` outside one) and the parameter
- * takes one, so that chip narrows the window in the browser. The same predicate runs over every
- * filter afterwards regardless, because the previous chip's page stays on screen while the new
- * one loads and must not leak rows into it.
+ * **Two of them are the server's filter and two are not.** `GET /conversations` takes one `kind`
+ * and an `unreadOnly` flag, so Unread and Groups can be asked for. "Direct" is two kinds (`DIRECT`
+ * on a project and `SCOPE_DIRECT` outside one) and the parameter takes one, so that chip narrows
+ * the window in the browser. The same predicate runs over every filter afterwards regardless,
+ * because the previous chip's page stays on screen while the new one loads and must not leak rows
+ * into it.
  */
 export const CONVERSATION_FILTERS = [
   'all',
   'unread',
   'direct',
   'groups',
-  'project',
-  'task',
-  'ticket',
 ] as const;
 
 export type ConversationFilter = (typeof CONVERSATION_FILTERS)[number];
@@ -34,9 +27,6 @@ export const CONVERSATION_FILTER_LABELS: Record<ConversationFilter, string> = {
   unread: 'Unread',
   direct: 'Direct',
   groups: 'Groups',
-  project: 'Project',
-  task: 'Task',
-  ticket: 'Ticket',
 };
 
 /**
@@ -49,9 +39,6 @@ export const CONVERSATION_FILTER_LABELS: Record<ConversationFilter, string> = {
 const KINDS_BY_FILTER: Partial<Record<ConversationFilter, readonly ConversationKind[]>> = {
   direct: [CONVERSATION_KIND.DIRECT, CONVERSATION_KIND.SCOPE_DIRECT],
   groups: [CONVERSATION_KIND.GROUP],
-  project: [CONVERSATION_KIND.PROJECT],
-  task: [CONVERSATION_KIND.TASK],
-  ticket: [CONVERSATION_KIND.TICKET],
 };
 
 /** What the request carries for this chip. Absent fields are simply not sent. */
@@ -75,8 +62,40 @@ export function serverQueryFor(filter: ConversationFilter): ConversationListQuer
   return kinds?.length === 1 ? { kind: kinds[0] as ConversationKind } : {};
 }
 
+/** Direct messages and groups — not project, task or ticket channels. */
+export function isPeopleInboxKind(kind: ConversationKind): boolean {
+  return !DERIVED_MEMBERSHIP_KINDS.includes(kind);
+}
+
+/** Roles that cannot private-chat only see the team group in Chats. */
+export function isGroupOnlyInboxKind(kind: ConversationKind): boolean {
+  return kind === CONVERSATION_KIND.GROUP;
+}
+
+export function inboxFiltersFor(personalChat: boolean): readonly ConversationFilter[] {
+  return personalChat ? CONVERSATION_FILTERS : (['all', 'unread', 'groups'] as const);
+}
+
+/** Managers, leads, and anyone holding org-wide reach. Everyone else is group-only. */
+export function inboxAllowsPersonalChat(user: Pick<SessionUser, 'roleKey' | 'permissions'>): boolean {
+  return (
+    canUsePersonalChat(user.roleKey) ||
+    user.permissions.includes(PERMISSIONS.CONVERSATION_REACH_ORGANIZATION)
+  );
+}
+
 /** Whether a row belongs under this chip. Applied to every row, server-narrowed or not. */
-export function matchesFilter(row: ConversationSummary, filter: ConversationFilter): boolean {
+export function matchesFilter(
+  row: ConversationSummary,
+  filter: ConversationFilter,
+  personalChat = true,
+): boolean {
+  if (!isPeopleInboxKind(row.kind)) {
+    return false;
+  }
+  if (!personalChat && !isGroupOnlyInboxKind(row.kind)) {
+    return false;
+  }
   if (filter === 'unread') {
     return row.unreadCount > 0;
   }

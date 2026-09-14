@@ -32,7 +32,6 @@ export interface MessageItemProps {
    */
   continuesRun?: boolean;
   onEdit: (input: { messageId: string; body: string }) => Promise<void>;
-  onDelete: (messageId: string) => Promise<void>;
   /** Addresses this person in the composer. Absent where the viewer cannot post. */
   onReply?: (message: MessageSummary) => void;
   /** Only offered to an administrator reading somebody else's conversation. */
@@ -48,10 +47,8 @@ export interface MessageItemProps {
  * This component renders that answer and never computes one of its own; a control it draws is a
  * request the API will accept, and a control it withholds is one the API would refuse.
  *
- * **Withdrawing is administrative and is labelled as such.** `canDelete` is false for everybody
- * without `conversation:inspect` — the person who wrote the message included — so an ordinary
- * reader is offered nothing here to press. The refusal is the API's; the absence of the button is
- * only what stops somebody being invited into it.
+ * **Messages are not deleted from the thread.** There is no withdraw control here; the conversation
+ * keeps every line so people can read what was said.
  *
  * **There is no delivered or read tick**, and there is no data for one: the schema has no delivery
  * state at all, and another person's read cursor is deliberately not broadcast — `conversation.read`
@@ -66,7 +63,6 @@ export function MessageItem({
   startsUnread = false,
   continuesRun = false,
   onEdit,
-  onDelete,
   onReply,
   onLoadRevisions,
 }: MessageItemProps) {
@@ -178,18 +174,6 @@ export function MessageItem({
             {message.canEdit ? (
               <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
                 Edit
-              </Button>
-            ) : null}
-            {message.canDelete ? (
-              // Reached only by somebody holding `conversation:inspect`, and named for what it is:
-              // a moderation act on somebody else's words, audited on the server.
-              <Button
-                variant="ghost"
-                size="sm"
-                title="Withdrawing a message is an administrative act and is recorded"
-                onClick={() => void run(() => onDelete(message.id))}
-              >
-                Withdraw
               </Button>
             ) : null}
             {onLoadRevisions && message.editedAt && !revisions ? (

@@ -50,3 +50,14 @@ export function isClientRole(roleKey: RoleKey): boolean {
 export function isManagerRole(roleKey: RoleKey): boolean {
   return MANAGER_ROLE_KEYS.includes(roleKey);
 }
+
+/**
+ * Who may start a one-to-one chat.
+ *
+ * Super admin, project manager and team lead message people on their teams (or, for admin, the
+ * whole organization) in private as well as in the project group. Developers and every other
+ * staff role only post in that group.
+ */
+export function canUsePersonalChat(roleKey: RoleKey): boolean {
+  return isManagerRole(roleKey);
+}

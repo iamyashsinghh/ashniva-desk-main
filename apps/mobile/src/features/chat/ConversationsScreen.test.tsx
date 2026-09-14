@@ -90,7 +90,7 @@ function respond(options: { rows?: ConversationSummary[]; inbox?: NotificationLi
   );
 }
 
-function renderList(props: { onStart?: () => void } = {}): Promise<RenderResult> {
+function renderList(props: { onStart?: () => void; personalChat?: boolean } = {}): Promise<RenderResult> {
   return render(
     <SafeAreaProvider
       initialMetrics={{
@@ -188,7 +188,7 @@ describe('ConversationsScreen', () => {
     const view = await renderList();
     await view.findByText('Priya S');
 
-    await fireEvent.press(view.getByLabelText('Ticket conversations'));
+    await fireEvent.press(view.getByLabelText('Unread conversations'));
 
     expect(await view.findByText('Nothing here')).toBeTruthy();
   });
@@ -226,5 +226,12 @@ describe('ConversationsScreen', () => {
     const view = await renderList();
     await view.findByText('Release crew');
     expect(view.queryByRole('button', { name: 'New conversation' })).toBeNull();
+  });
+
+  it('hides people and the Direct chip when personal chat is off', async () => {
+    const view = await renderList({ personalChat: false });
+    expect(await view.findByText('Release crew')).toBeTruthy();
+    expect(view.queryByText('Priya S')).toBeNull();
+    expect(view.queryByLabelText('Direct conversations')).toBeNull();
   });
 });

@@ -124,9 +124,8 @@ describe('NewConversationScreen', () => {
     expect(create.props.accessibilityState.disabled).toBe(true);
   });
 
-  it('tells somebody with no reach why the directory is empty', async () => {
-    // A developer holds none of the relations that create reach, so the endpoint returns nothing.
+  it('tells somebody when the directory is empty', async () => {
     const view = await renderScreen([]);
-    expect(await view.findByText('Nobody outside a project')).toBeTruthy();
+    expect(await view.findByText('Nobody else here')).toBeTruthy();
   });
 });

@@ -50,6 +50,7 @@ export class ResetPasswordDto {
 
 export class ReauthDto {
   @ApiProperty()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MinLength(1)
   @MaxLength(200)

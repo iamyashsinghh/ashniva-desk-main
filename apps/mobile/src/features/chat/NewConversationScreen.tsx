@@ -90,8 +90,8 @@ export function NewConversationScreen({ onOpened }: { onOpened: (id: string) => 
         ListEmptyComponent={
           directory.isLoading ? null : (
             <EmptyState
-              title="Nobody outside a project"
-              description="Reaching somebody without a shared project comes from managing or leading them. Open a project, task or ticket thread for the people you work with."
+              title="Nobody else here"
+              description="There are no other people in your organization to message yet."
             />
           )
         }

@@ -1,4 +1,4 @@
-import { PERMISSIONS, isClientRole, type SessionUser } from '@ashniva/types';
+import { canUsePersonalChat, PERMISSIONS, isClientRole, type SessionUser } from '@ashniva/types';
 
 /**
  * Who gets an internal chat entry point at all.
@@ -18,4 +18,13 @@ export function canUseInternalChat(user: SessionUser | null): boolean {
     return false;
   }
   return user.permissions.includes(PERMISSIONS.CONVERSATION_PARTICIPATE);
+}
+
+/** Managers and leads may start a 1:1. Developers and other staff only use the team group. */
+export function canStartPersonalChat(user: SessionUser | null): boolean {
+  return (
+    canUseInternalChat(user) &&
+    (canUsePersonalChat(user!.roleKey) ||
+      user!.permissions.includes(PERMISSIONS.CONVERSATION_REACH_ORGANIZATION))
+  );
 }

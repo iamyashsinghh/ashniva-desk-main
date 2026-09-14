@@ -107,8 +107,14 @@ export async function apiRequest<TResponse>(
   options: RequestOptions = {},
 ): Promise<TResponse> {
   const response = await send(path, options);
-  if (response.status === 401 && !options.skipAuth && (await refreshSession())) {
-    return parse<TResponse>(await send(path, options));
+  if (response.status === 401 && !options.skipAuth) {
+    const body = await readJsonBody(response);
+    // A wrong password on reauth is 401, same as an expired access token. Refreshing and
+    // retrying would send the same password again and can log a person out of a good session.
+    if (!isCredentialRejection(body) && (await refreshSession())) {
+      return parse<TResponse>(await send(path, options));
+    }
+    throw new ApiError(response.status, body, `Request failed with status ${response.status}`);
   }
   return parse<TResponse>(response);
 }
@@ -183,4 +189,15 @@ export function errorMessage(error: unknown): string {
     return error.message;
   }
   return 'Something went wrong';
+}
+
+function isCredentialRejection(body: unknown): boolean {
+  const parsed = apiErrorResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    return false;
+  }
+  return (
+    parsed.data.message === 'Password is incorrect' ||
+    parsed.data.message === 'Invalid email or password'
+  );
 }

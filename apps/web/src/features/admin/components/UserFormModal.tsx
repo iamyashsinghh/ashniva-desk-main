@@ -1,4 +1,4 @@
-import { isClientRole, type TeamSummary, type UserSummary } from '@ashniva/types';
+import { isClientRole, REAUTH_HEADER, type TeamSummary, type UserSummary } from '@ashniva/types';
 import {
   Alert,
   Button,
@@ -13,7 +13,7 @@ import {
 import { useState } from 'react';
 
 import { useSubmitHandler } from '../../../shared/hooks/use-submit-handler';
-import { useReauth } from '../../auth/reauth';
+import { reauthenticate } from '../../auth/api';
 import { useCurrentUser } from '../../auth/session-context';
 import { useUserMutations } from '../../users/api';
 import {
@@ -32,12 +32,15 @@ interface UserFormModalProps {
   onClose: () => void;
 }
 
+function looksLikeEmail(value: string): boolean {
+  return value.includes('@') && /[.]/.test(value);
+}
+
 /**
- * Add or edit a person. New people are invited by link by default (they choose their own
- * password); an initial password is optional. Roles are changed separately with a re-auth.
- *
- * Adding a person asks for the password too: the call picks the new person's role and answers
- * with their invitation link, which is enough to sign in as them. Editing a profile does not.
+ * Add or edit a person. New people are invited by link by default. Creating one needs a fresh
+ * password check for the *signed-in* account. That check is a second step with only a password
+ * field: an email field on the same form made browsers fill the new person's email into the
+ * password box, and reauth then failed with "Password is incorrect".
  */
 export function UserFormModal({
   organizationId,
@@ -48,19 +51,21 @@ export function UserFormModal({
 }: UserFormModalProps) {
   const me = useCurrentUser();
   const { create, update } = useUserMutations();
-  const reauth = useReauth();
   const [invitation, setInvitation] = useState<{
     name: string;
     link: string;
     expiresAt: string;
   } | null>(null);
+  const [step, setStep] = useState<'details' | 'confirm'>('details');
+  const [autofillLocked, setAutofillLocked] = useState(true);
   const { error, wrap } = useSubmitHandler();
   const choices = useRoleChoices(organizationId, targetOrganization);
   const [form, setForm] = useState({
     email: user?.email ?? '',
     name: user?.name ?? '',
-    mode: 'password' as 'invite' | 'password',
+    mode: 'invite' as 'invite' | 'password',
     password: '',
+    ownPassword: '',
     role: user
       ? `key:${user.roleKey}`
       : defaultRoleChoice(isClientRole(me.roleKey), targetOrganization),
@@ -68,15 +73,20 @@ export function UserFormModal({
     showDevelopmentSection: user?.showDevelopmentSection ?? true,
     teamIds: user?.teams.map((team) => team.id) ?? [],
   });
-  const valid =
+  const detailsValid =
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email) &&
     form.name.trim().length > 0 &&
     (user
       ? form.password.length === 0 || form.password.length >= 10
       : form.mode === 'invite' || form.password.length >= 10);
+  const confirmValid =
+    form.ownPassword.trim().length > 0 && !looksLikeEmail(form.ownPassword.trim());
 
+  const patchForm = (patch: Partial<typeof form>) => {
+    setForm((current) => ({ ...current, ...patch }));
+  };
   const newPersonLabel = form.mode === 'invite' ? 'Invite' : 'Add person';
-  const saveLabel = user ? 'Save' : newPersonLabel;
+  const confirming = !user && step === 'confirm';
 
   const save = async () => {
     if (user) {
@@ -93,9 +103,21 @@ export function UserFormModal({
       onClose();
       return;
     }
-    const token = await reauth.request();
+    if (step === 'details') {
+      patchForm({ ownPassword: '' });
+      setAutofillLocked(true);
+      setStep('confirm');
+      return;
+    }
+    const password = form.ownPassword.trim();
+    if (looksLikeEmail(password)) {
+      throw new Error(
+        `That is an email address. Type the password you use to sign in as ${me.name} (${me.email}).`,
+      );
+    }
+    const token = await reauthenticate(password);
     const created = await create.mutateAsync({
-      headers: reauth.headers(token),
+      headers: { [REAUTH_HEADER]: token },
       email: form.email.trim(),
       name: form.name.trim(),
       password: form.mode === 'password' ? form.password : undefined,
@@ -117,42 +139,82 @@ export function UserFormModal({
   }
 
   return (
-    <>
-      <Modal
-        open={!reauth.active}
-        title={user ? `Edit ${user.name}` : 'Add person'}
-        onClose={onClose}
-        footer={
-          <>
-            <Button onClick={onClose}>Cancel</Button>
+    <Modal
+      open
+      title={user ? `Edit ${user.name}` : confirming ? 'Confirm it is you' : 'Add person'}
+      description={
+        confirming
+          ? `Creating ${form.name}. Enter the password for ${me.name} (${me.email}) — the one you used to sign in to Desk.`
+          : undefined
+      }
+      onClose={onClose}
+      footer={
+        <>
+          {confirming ? (
             <Button
-              variant="primary"
-              loading={create.isPending || update.isPending || reauth.active}
-              disabled={!valid}
-              disabledReason={
-                user
-                  ? 'Email and name are required (a new password needs 10+ characters)'
-                  : 'Email and name are required (a password needs 10+ characters)'
-              }
-              onClick={() => void wrap(save)()}
+              onClick={() => {
+                patchForm({ ownPassword: '' });
+                setStep('details');
+              }}
             >
-              {saveLabel}
+              Back
             </Button>
-          </>
-        }
-      >
+          ) : (
+            <Button onClick={onClose}>Cancel</Button>
+          )}
+          <Button
+            variant="primary"
+            loading={create.isPending || update.isPending}
+            disabled={confirming ? !confirmValid : !detailsValid}
+            disabledReason={
+              confirming
+                ? 'Type your Desk sign-in password, not an email'
+                : user
+                  ? 'Email and name are required (a new password needs 10+ characters)'
+                  : 'Email and name are required'
+            }
+            onClick={() => void wrap(save)()}
+          >
+            {user ? 'Save' : confirming ? 'Create person' : newPersonLabel}
+          </Button>
+        </>
+      }
+    >
+      {confirming ? (
+        <FormField label={`Password for ${me.email}`} required>
+          <Input
+            type="password"
+            name="ashniva-admin-password"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            readOnly={autofillLocked}
+            value={form.ownPassword}
+            onFocus={() => setAutofillLocked(false)}
+            onChange={(event) => patchForm({ ownPassword: event.target.value })}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && confirmValid) {
+                void wrap(save)();
+              }
+            }}
+          />
+        </FormField>
+      ) : (
         <FormGrid>
           <FormField label="Email" required>
             <Input
               type="email"
+              name="new-person-email"
+              autoComplete="off"
               value={form.email}
-              onChange={(event) => setForm({ ...form, email: event.target.value })}
+              onChange={(event) => patchForm({ email: event.target.value })}
             />
           </FormField>
           <FormField label="Name" required>
             <Input
+              autoComplete="off"
               value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              onChange={(event) => patchForm({ name: event.target.value })}
             />
           </FormField>
           {!user ? (
@@ -160,12 +222,12 @@ export function UserFormModal({
               <FormField
                 label="How they sign in the first time"
                 required
-                hint="Saving asks for your own password, then creates the person"
+                hint="Invitation link is the default. They choose their own password."
               >
                 <Select
                   value={form.mode}
                   onChange={(event) =>
-                    setForm({ ...form, mode: event.target.value as typeof form.mode })
+                    patchForm({ mode: event.target.value as typeof form.mode })
                   }
                   options={[
                     {
@@ -184,16 +246,17 @@ export function UserFormModal({
                 >
                   <Input
                     type="password"
+                    name="new-person-password"
                     autoComplete="new-password"
                     value={form.password}
-                    onChange={(event) => setForm({ ...form, password: event.target.value })}
+                    onChange={(event) => patchForm({ password: event.target.value })}
                   />
                 </FormField>
               ) : null}
               <FormField label="Role" required>
                 <Select
                   value={form.role}
-                  onChange={(event) => setForm({ ...form, role: event.target.value })}
+                  onChange={(event) => patchForm({ role: event.target.value })}
                   options={choices}
                 />
               </FormField>
@@ -209,7 +272,7 @@ export function UserFormModal({
                   type="password"
                   autoComplete="new-password"
                   value={form.password}
-                  onChange={(event) => setForm({ ...form, password: event.target.value })}
+                  onChange={(event) => patchForm({ password: event.target.value })}
                 />
               </FormField>
               <FormField
@@ -223,7 +286,7 @@ export function UserFormModal({
           <FormField label="Title">
             <Input
               value={form.title}
-              onChange={(event) => setForm({ ...form, title: event.target.value })}
+              onChange={(event) => patchForm({ title: event.target.value })}
               placeholder="e.g. Team Lead, Store Manager"
             />
           </FormField>
@@ -235,8 +298,7 @@ export function UserFormModal({
                   size={Math.min(4, teams.length)}
                   value={form.teamIds}
                   onChange={(event) =>
-                    setForm({
-                      ...form,
+                    patchForm({
                       teamIds: Array.from(event.target.selectedOptions).map(
                         (option) => option.value,
                       ),
@@ -251,16 +313,15 @@ export function UserFormModal({
             <FormGridFull>
               <Switch
                 checked={form.showDevelopmentSection}
-                onChange={(checked) => setForm({ ...form, showDevelopmentSection: checked })}
+                onChange={(checked) => patchForm({ showDevelopmentSection: checked })}
                 label="Show Development section"
                 description="Seniors who no longer code can hide their own-development dashboard section."
               />
             </FormGridFull>
           ) : null}
         </FormGrid>
-        {error ? <Alert tone="danger">{error}</Alert> : null}
-      </Modal>
-      {reauth.modal}
-    </>
+      )}
+      {error ? <Alert tone="danger">{error}</Alert> : null}
+    </Modal>
   );
 }

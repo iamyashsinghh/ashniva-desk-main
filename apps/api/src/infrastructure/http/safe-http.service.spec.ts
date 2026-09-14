@@ -307,6 +307,7 @@ describe('SafeHttpService.fetch — credentials do not follow a redirect off-ori
       headers: {
         authorization: asText(headers.authorization),
         'x-ashniva-signature': asText(headers['x-ashniva-signature']),
+        'x-goog-api-key': asText(headers['x-goog-api-key']),
         'content-type': asText(headers['content-type']),
       },
     });
@@ -358,6 +359,7 @@ describe('SafeHttpService.fetch — credentials do not follow a redirect off-ori
     headers: {
       authorization: 'Bearer super-secret-token',
       'X-Ashniva-Signature': 'sha256=deadbeef',
+      'x-goog-api-key': 'gemini-secret',
       'content-type': 'application/json',
     },
   };
@@ -373,10 +375,12 @@ describe('SafeHttpService.fetch — credentials do not follow a redirect off-ori
     // The hop the caller chose still carries them.
     expect(first?.headers.authorization).toBe('Bearer super-secret-token');
     expect(first?.headers['x-ashniva-signature']).toBe('sha256=deadbeef');
+    expect(first?.headers['x-goog-api-key']).toBe('gemini-secret');
     // The hop it was sent to does not.
     expect(second?.path).toBe('/collected');
     expect(second?.headers.authorization).toBeUndefined();
     expect(second?.headers['x-ashniva-signature']).toBeUndefined();
+    expect(second?.headers['x-goog-api-key']).toBeUndefined();
     // Everything that is not a credential travels, so the request still means what it meant.
     expect(second?.headers['content-type']).toBe('application/json');
   });

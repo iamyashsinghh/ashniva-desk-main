@@ -13,7 +13,7 @@ import {
  * The filters, as a scrollable row of chips.
  *
  * A row rather than the web app's sidebar, and scrollable rather than a segmented control: there
- * are seven of them and a segmented control that holds seven on a phone holds none of them
+ * are four of them and a segmented control that holds four on a phone holds none of them
  * legibly, least of all at a large text size. Horizontal scrolling keeps every label whole and
  * every target at 44 points.
  *
@@ -23,9 +23,11 @@ import {
 export function FilterChips({
   value,
   onChange,
+  filters = CONVERSATION_FILTERS,
 }: {
   value: ConversationFilter;
   onChange: (filter: ConversationFilter) => void;
+  filters?: readonly ConversationFilter[];
 }) {
   const theme = useTheme();
   return (
@@ -35,7 +37,7 @@ export function FilterChips({
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ gap: theme.spacing.sm, paddingVertical: theme.spacing.xs }}
     >
-      {CONVERSATION_FILTERS.map((filter) => {
+      {filters.map((filter) => {
         const selected = filter === value;
         return (
           <Pressable

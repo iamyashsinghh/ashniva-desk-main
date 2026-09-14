@@ -1,6 +1,6 @@
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, ROLE_KEYS, type SessionUser } from '@ashniva/types';
 
-import { canUseInternalChat } from './chat-access';
+import { canStartPersonalChat, canUseInternalChat } from './chat-access';
 
 /**
  * The client boundary, on the one feature that has no client shape at all.
@@ -118,5 +118,13 @@ describe('internal staff', () => {
         permissions.includes(PERMISSIONS.CONVERSATION_PARTICIPATE),
       );
     }
+  });
+
+  it('lets only managers and leads start a private chat', () => {
+    expect(canStartPersonalChat(userWith({ roleKey: ROLE_KEYS.PROJECT_MANAGER }))).toBe(true);
+    expect(canStartPersonalChat(userWith({ roleKey: ROLE_KEYS.TEAM_LEAD }))).toBe(true);
+    expect(canStartPersonalChat(userWith({ roleKey: ROLE_KEYS.SUPER_ADMIN }))).toBe(true);
+    expect(canStartPersonalChat(userWith({ roleKey: ROLE_KEYS.DEVELOPER }))).toBe(false);
+    expect(canStartPersonalChat(userWith({ roleKey: ROLE_KEYS.TESTER }))).toBe(false);
   });
 });

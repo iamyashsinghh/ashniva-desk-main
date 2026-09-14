@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router';
 
 import { formatTime } from '../../../shared/lib/format';
 import { useLiveMessageToasts } from '../live-messages';
+import { useMessenger } from '../messenger-context';
 import { ConversationAvatar } from './ConversationAvatar';
+
+import '../communication.css';
 
 /**
  * The bottom-right stack of arriving messages.
@@ -19,6 +22,7 @@ import { ConversationAvatar } from './ConversationAvatar';
 export function LiveMessageToasts() {
   const { toasts, dismiss } = useLiveMessageToasts();
   const navigate = useNavigate();
+  const messenger = useMessenger();
 
   if (toasts.length === 0) {
     return null;
@@ -36,6 +40,10 @@ export function LiveMessageToasts() {
           onDismiss={() => dismiss(toast.key)}
           onOpen={() => {
             dismiss(toast.key);
+            if (messenger) {
+              messenger.openConversation(toast.conversationId);
+              return;
+            }
             void navigate(toast.link);
           }}
         >

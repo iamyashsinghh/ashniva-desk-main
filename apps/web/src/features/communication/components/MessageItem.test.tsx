@@ -50,7 +50,6 @@ function renderItem(
         audience={[]}
         continuesRun={continuesRun}
         onEdit={vi.fn()}
-        onDelete={vi.fn()}
         {...extra}
       />
     </ol>,
@@ -95,12 +94,10 @@ describe('MessageItem', () => {
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
   });
 
-  it('offers withdrawal only where the server marked the message deletable', () => {
-    // Which it does for an inspector, and for nobody else. Named for what it is rather than
-    // "Delete", because it is a moderation act on somebody's words and it is audited.
+  it('never offers a way to delete a message', () => {
     renderItem({ canEdit: false, canDelete: true });
-    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
   it('renders a withdrawn message as a tombstone with nothing to press', () => {

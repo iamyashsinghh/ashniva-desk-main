@@ -23,6 +23,7 @@ import { formatDate } from '../../../shared/lib/format';
 import { usePermission } from '../../auth/session-context';
 import { useProjectsQuery } from '../api';
 import { ProjectFormModal } from '../components/ProjectFormModal';
+import { ProjectWorkPlanModal } from '../components/ProjectWorkPlanModal';
 
 const HEALTH_TONE = { ON_TRACK: 'success', AT_RISK: 'warning', DELAYED: 'danger' } as const;
 
@@ -32,6 +33,7 @@ export function ProjectsPage() {
   const [params, setParams] = useSearchParams();
   const canManage = usePermission(PERMISSIONS.PROJECT_MANAGE);
   const [creating, setCreating] = useState(false);
+  const [summaryId, setSummaryId] = useState<{ id: string; name: string } | null>(null);
   const scope = params.get('scope') === 'mine' ? 'mine' : 'all';
   const search = params.get('search') ?? '';
   const projects = useProjectsQuery({
@@ -109,6 +111,26 @@ export function ProjectsPage() {
     },
   ];
 
+  if (canManage) {
+    columns.push({
+      key: 'summary',
+      header: 'Summary',
+      width: '110px',
+      align: 'right',
+      render: (project) => (
+        <Button
+          size="sm"
+          onClick={(event) => {
+            event.stopPropagation();
+            setSummaryId({ id: project.id, name: project.name });
+          }}
+        >
+          Summary
+        </Button>
+      ),
+    });
+  }
+
   return (
     <div className="tasks-page">
       <PageHeader
@@ -170,6 +192,13 @@ export function ProjectsPage() {
         onClose={() => setCreating(false)}
         onSaved={(project) => void navigate(`/projects/${project.id}`)}
       />
+      {summaryId ? (
+        <ProjectWorkPlanModal
+          projectId={summaryId.id}
+          projectName={summaryId.name}
+          onClose={() => setSummaryId(null)}
+        />
+      ) : null}
     </div>
   );
 }

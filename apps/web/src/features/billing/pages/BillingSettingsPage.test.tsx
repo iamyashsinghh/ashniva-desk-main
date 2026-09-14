@@ -106,7 +106,7 @@ async function saveWithPassword(calls: Call[]): Promise<Call> {
   fireEvent.click(await screen.findByRole('button', { name: 'Save billing details' }));
 
   // The route asks for the password again, so the screen has to ask for it too.
-  const password = await screen.findByLabelText(/Password/);
+  const password = await screen.findByLabelText(/sign-in password/i);
   fireEvent.change(password, { target: { value: 'hunter2' } });
   fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 

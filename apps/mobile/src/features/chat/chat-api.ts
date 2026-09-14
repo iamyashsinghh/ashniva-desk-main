@@ -80,7 +80,11 @@ export interface ConversationList {
  * preview, the unread count — is on the summary the list endpoint returns, and asking about each
  * conversation in turn is the N+1 the backend spent work removing.
  */
-export function useConversationList(filter: ConversationFilter, search: string): ConversationList {
+export function useConversationList(
+  filter: ConversationFilter,
+  search: string,
+  personalChat = true,
+): ConversationList {
   const [limit, setLimit] = useState(CONVERSATION_PAGE_SIZE);
   const [widenedFor, setWidenedFor] = useState(filter);
   const serverQuery = serverQueryFor(filter);
@@ -111,8 +115,11 @@ export function useConversationList(filter: ConversationFilter, search: string):
   const rows = useMemo(() => query.data ?? [], [query.data]);
   const needle = search.trim().toLowerCase();
   const items = useMemo(
-    () => rows.filter((row) => matchesFilter(row, filter) && matchesSearch(row, needle)),
-    [rows, filter, needle],
+    () =>
+      rows.filter(
+        (row) => matchesFilter(row, filter, personalChat) && matchesSearch(row, needle),
+      ),
+    [rows, filter, needle, personalChat],
   );
 
   const { refetch } = query;

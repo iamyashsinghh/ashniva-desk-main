@@ -136,10 +136,8 @@ describe('NewConversation', () => {
     expect(screen.getByRole('button', { name: 'Create group' })).toBeDisabled();
   });
 
-  it('tells somebody with no reach why the directory is empty', async () => {
-    // A developer holds none of the relations that create reach, so the endpoint returns nothing.
-    // An empty box with no explanation reads as a broken screen.
+  it('tells somebody when the directory is empty', async () => {
     renderDialog([]);
-    expect(await screen.findByText('Nobody outside a project')).toBeInTheDocument();
+    expect(await screen.findByText('Nobody else here')).toBeInTheDocument();
   });
 });

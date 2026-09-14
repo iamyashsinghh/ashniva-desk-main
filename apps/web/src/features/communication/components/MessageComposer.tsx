@@ -28,6 +28,8 @@ export interface MessageComposerProps {
   replyingTo?: MessageSummary | null;
   onCancelReply?: () => void;
   onSend: (input: SendMessageDraft) => Promise<void>;
+  /** Corner messenger: short placeholder, no character counter crowding the bar. */
+  compact?: boolean;
 }
 
 /**
@@ -58,6 +60,7 @@ export function MessageComposer({
   replyingTo,
   onCancelReply,
   onSend,
+  compact = false,
 }: MessageComposerProps) {
   const [draft, setDraft] = useState('');
   const [attachmentError, setAttachmentError] = useState<string | undefined>();
@@ -147,7 +150,7 @@ export function MessageComposer({
   }
 
   return (
-    <div className="chat-composer">
+    <div className={`chat-composer${compact ? ' chat-composer--dock' : ''}`}>
       {attachmentError ? (
         <Alert tone="danger" onDismiss={() => setAttachmentError(undefined)}>
           {attachmentError}
@@ -252,9 +255,7 @@ export function MessageComposer({
           value={draft}
           maxLength={MAX_MESSAGE_LENGTH}
           aria-label="Write a message"
-          placeholder={
-            canPost ? 'Write a message. Type @ to mention somebody.' : 'You cannot post here'
-          }
+          placeholder={canPost ? (compact ? 'Aa' : 'Write a message. Type @ to mention somebody.') : 'You cannot post here'}
           disabled={!canPost}
           role="combobox"
           aria-expanded={mentions.search.isOpen}
@@ -290,7 +291,7 @@ export function MessageComposer({
           }}
         />
 
-        {draft.length > 0 ? (
+        {draft.length > 0 && !compact ? (
           <span className={tooLong ? 'form-error' : 'chat-composer__count'} aria-live="polite">
             {draft.length} / {MAX_MESSAGE_LENGTH}
           </span>

@@ -1,4 +1,4 @@
-import { ROLE_KEYS, type ConversationSummary } from '@ashniva/types';
+import { ROLE_KEYS, type ConversationSummary, type MessagingScopeContact } from '@ashniva/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
@@ -9,10 +9,8 @@ import { ConversationListPanel } from './ConversationListPanel';
 /**
  * The conversation list.
  *
- * The two properties worth holding are that it finds things and that it does not fan out: the row
- * is drawn entirely from the summary the list endpoint already returned, so however many
- * conversations somebody has, opening this screen is one request. A test that counted assertions
- * about layout would not catch a regression in either.
+ * The properties worth holding: it finds people, it hides project channels, it lists colleagues
+ * who have no thread yet, and it does not fan out per conversation.
  */
 
 function summary(over: Partial<ConversationSummary> & { id: string }): ConversationSummary {
@@ -31,9 +29,6 @@ function summary(over: Partial<ConversationSummary> & { id: string }): Conversat
     ...over,
   };
 }
-
-/** The panel's first page, mirrored here so a test can put a row behind it. */
-const FIRST_WINDOW = 25;
 
 const ROWS: ConversationSummary[] = [
   summary({ id: 'a' }),
@@ -54,23 +49,48 @@ const ROWS: ConversationSummary[] = [
   }),
 ];
 
-/**
- * The endpoint, as far as this screen can tell: the filters it accepts, applied *before* the
- * window is cut. `rows` is newest-first, as the real one answers.
- */
+const RAVI: MessagingScopeContact = {
+  id: 'user-ravi',
+  name: 'Ravi K',
+  email: 'ravi@example.com',
+  reason: 'In your organization',
+  conversationId: null,
+};
+
 function renderList(
   rows: ConversationSummary[] = ROWS,
-  over: { selectedId?: string; mentioned?: ReadonlySet<string> } = {},
+  over: {
+    selectedId?: string;
+    mentioned?: ReadonlySet<string>;
+    directory?: MessagingScopeContact[];
+    roleKey?: (typeof ROLE_KEYS)[keyof typeof ROLE_KEYS];
+  } = {},
 ) {
-  setAuthenticated('test-token', sessionUserFor(ROLE_KEYS.PROJECT_MANAGER));
+  setAuthenticated('test-token', sessionUserFor(over.roleKey ?? ROLE_KEYS.PROJECT_MANAGER));
   const calls: string[] = [];
-  vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
-    calls.push(String(input));
-    const url = new URL(String(input), 'http://localhost');
-    const kind = url.searchParams.get('kind');
-    const limit = Number(url.searchParams.get('limit') ?? 50);
+  const directory = over.directory ?? [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes('/conversations/directory')) {
+      return Promise.resolve({ ok: true, status: 200, json: async () => directory } as Response);
+    }
+    if (url.includes('/conversations/direct') && (init?.method ?? 'GET') === 'POST') {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () =>
+          summary({
+            id: 'new-dm',
+            counterpart: { id: RAVI.id, name: RAVI.name, email: RAVI.email },
+          }),
+      } as Response);
+    }
+    const parsed = new URL(url, 'http://localhost');
+    const kind = parsed.searchParams.get('kind');
+    const limit = Number(parsed.searchParams.get('limit') ?? 50);
     const body = rows
-      .filter((row) => (url.searchParams.get('unreadOnly') ? row.unreadCount > 0 : true))
+      .filter((row) => (parsed.searchParams.get('unreadOnly') ? row.unreadCount > 0 : true))
       .filter((row) => (kind ? row.kind === kind : true))
       .slice(0, limit);
     return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
@@ -92,13 +112,61 @@ function renderList(
 describe('ConversationListPanel', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('draws every row from the one list request, without asking about each conversation', async () => {
+  it('draws every row from the list request, without asking about each conversation', async () => {
     const { calls } = renderList();
     await screen.findByText('Release crew');
 
-    // The row shows a name, a preview and an unread count, all of which are already on the
-    // summary. Fetching `/conversations/<id>` per row is exactly the N+1 the backend removed.
-    expect(calls.filter((url) => /\/conversations\/[0-9a-z-]+($|\?)/.test(url))).toHaveLength(0);
+    expect(
+      calls.filter((url) => /\/conversations\/(?!directory)[0-9a-z-]+($|\?)/.test(url)),
+    ).toHaveLength(0);
+  });
+
+  it('hides project channels from Chats', async () => {
+    renderList();
+    await screen.findByText('Release crew');
+    expect(screen.queryByText('Acme portal')).not.toBeInTheDocument();
+  });
+
+  it('hides people and the Direct chip for a developer, who only has the team group', async () => {
+    renderList(ROWS, { directory: [RAVI], roleKey: ROLE_KEYS.DEVELOPER });
+    expect(await screen.findByText('Release crew')).toBeInTheDocument();
+    expect(screen.queryByText('Priya S')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ravi K')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Direct' })).not.toBeInTheDocument();
+  });
+
+  it('lists colleagues who have no thread yet', async () => {
+    renderList(ROWS, { directory: [RAVI] });
+    expect(await screen.findByText('Ravi K')).toBeInTheDocument();
+    expect(screen.getByText('In your organization')).toBeInTheDocument();
+  });
+
+  it('opens a direct message when a colleague with no thread is chosen', async () => {
+    const { onSelect, calls } = renderList(ROWS, { directory: [RAVI] });
+    fireEvent.click(await screen.findByText('Ravi K'));
+
+    await waitFor(() =>
+      expect(calls.some((url) => url.endsWith('/conversations/direct'))).toBe(true),
+    );
+    await waitFor(() =>
+      expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'new-dm' })),
+    );
+  });
+
+  it('does not duplicate a colleague who already has a thread', async () => {
+    renderList(ROWS, {
+      directory: [
+        {
+          id: 'user-priya',
+          name: 'Priya S',
+          email: 'priya@example.com',
+          reason: 'In your organization',
+          conversationId: 'a',
+        },
+      ],
+    });
+    await screen.findByText('Priya S');
+    expect(screen.getAllByText('Priya S')).toHaveLength(1);
   });
 
   it('shows the unread count on the conversations that have one', async () => {
@@ -106,7 +174,7 @@ describe('ConversationListPanel', () => {
     expect(await screen.findByLabelText('3 unread')).toHaveTextContent('3');
   });
 
-  it('finds a conversation by name, by preview and by project code', async () => {
+  it('finds a conversation by name and by preview', async () => {
     renderList();
     await screen.findByText('Release crew');
 
@@ -115,39 +183,25 @@ describe('ConversationListPanel', () => {
     });
     expect(screen.getByText('Release crew')).toBeInTheDocument();
     expect(screen.queryByText('Priya S')).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('Search your conversations'), {
-      target: { value: 'ACM' },
-    });
-    expect(screen.getByText('Acme portal')).toBeInTheDocument();
-    expect(screen.queryByText('Release crew')).not.toBeInTheDocument();
   });
 
   it('asks the server for unread conversations rather than filtering the page it holds', async () => {
-    // Unread is a property of the whole list, not of the fifty rows that happen to be loaded.
     const { calls } = renderList();
     await screen.findByText('Release crew');
 
-    // The filters are a single-choice chip set now, so "Unread" is a radio rather than a toggle.
     fireEvent.click(screen.getByRole('radio', { name: /Unread/ }));
 
     await waitFor(() => expect(calls.some((url) => url.includes('unreadOnly=true'))).toBe(true));
-    await waitFor(() => expect(screen.queryByText('Acme portal')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('Priya S')).not.toBeInTheDocument());
   });
 
   it('hands the whole summary back when a conversation is chosen', async () => {
-    // The kind travels with it, which is what lets the thread decide whether calling applies
-    // before its own detail request has come back.
     const { onSelect } = renderList();
     fireEvent.click(await screen.findByText('Release crew'));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'b', kind: 'GROUP' }));
   });
 
-  // This used to assert the opposite — that a kind chip narrowed the page in hand and cost no
-  // request. It was rewritten rather than dropped, because the saved request was buying a wrong
-  // answer: the endpoint returns the most recent `limit` conversations of every kind, so a chip
-  // applied afterwards narrows a window that was already spent on the kinds it is about to hide.
-  it('asks the server for the kind rather than filtering the page it holds', async () => {
+  it('asks the server for groups rather than filtering the page it holds', async () => {
     const { calls } = renderList();
     await screen.findByText('Release crew');
 
@@ -155,44 +209,10 @@ describe('ConversationListPanel', () => {
 
     await waitFor(() => expect(calls.some((url) => url.includes('kind=GROUP'))).toBe(true));
     expect(screen.getByText('Release crew')).toBeInTheDocument();
-    expect(screen.queryByText('Acme portal')).not.toBeInTheDocument();
     expect(screen.queryByText('Priya S')).not.toBeInTheDocument();
   });
 
-  it('shows a thread the unfiltered window would not have reached', async () => {
-    // The bug this guards: one task thread behind a page full of newer group chatter. Filtering
-    // the answer hides it; asking the server for `kind=TASK` does not.
-    const newer = Array.from({ length: FIRST_WINDOW }, (_, index) =>
-      summary({
-        id: `g${index}`,
-        kind: 'GROUP',
-        title: `Group ${index}`,
-        counterpart: null,
-        lastMessageAt: '2026-09-13T09:00:00.000Z',
-      }),
-    );
-    const behindThem = summary({
-      id: 'task',
-      kind: 'TASK',
-      title: 'Sync fix',
-      counterpart: null,
-      task: { id: 'task-1', key: 'TK-42', title: 'Sync fix' },
-      lastMessageAt: '2026-08-01T09:00:00.000Z',
-    });
-
-    renderList([...newer, behindThem]);
-    await screen.findByText('Group 0');
-    expect(screen.queryByText('Sync fix')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Task' }));
-
-    expect(await screen.findByText('Sync fix')).toBeInTheDocument();
-    expect(screen.queryByText('Group 0')).not.toBeInTheDocument();
-  });
-
   it('treats both direct kinds as one filter, which no single kind parameter can ask for', async () => {
-    // `kind` takes one value, so "Direct" is the one chip that still narrows in the browser:
-    // asking for `kind=DIRECT` would quietly drop every `SCOPE_DIRECT` row.
     const { calls } = renderList([
       ...ROWS,
       summary({
@@ -212,25 +232,16 @@ describe('ConversationListPanel', () => {
   });
 
   it('does not let a kind chip change what the Unread badge counts', async () => {
-    // The badge is summed over the window in hand, and since the chips began narrowing that window
-    // on the server the window is no longer always every kind. Left alone it would have read "3"
-    // under All and "0" under Task — the same figure meaning something else — so it is withheld
-    // while a kind chip is active rather than answering a question nobody asked.
     renderList();
     await screen.findByText('Release crew');
     const unreadChip = () => screen.getByRole('radio', { name: /^Unread/ });
 
     expect(unreadChip()).toHaveTextContent('3');
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Task' }));
-    await waitFor(() => expect(screen.queryByText('Release crew')).not.toBeInTheDocument());
-    expect(unreadChip()).toHaveTextContent(/^Unread$/);
-
     fireEvent.click(screen.getByRole('radio', { name: 'Groups' }));
     await waitFor(() => expect(screen.getByText('Release crew')).toBeInTheDocument());
     expect(unreadChip()).toHaveTextContent(/^Unread$/);
 
-    // And it comes back unchanged the moment the window is every kind again.
     fireEvent.click(screen.getByRole('radio', { name: 'All' }));
     await waitFor(() => expect(unreadChip()).toHaveTextContent('3'));
   });
@@ -247,7 +258,6 @@ describe('ConversationListPanel', () => {
     await screen.findByText('Release crew');
     const unreadChip = () => screen.getByRole('radio', { name: /^Unread/ });
 
-    // "Direct" narrows in the browser and sends no `kind`, so the window is still every kind.
     fireEvent.click(screen.getByRole('radio', { name: 'Direct' }));
     await waitFor(() => expect(screen.queryByText('Release crew')).not.toBeInTheDocument());
     expect(unreadChip()).toHaveTextContent('3');

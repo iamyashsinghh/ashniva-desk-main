@@ -121,6 +121,13 @@ export const COMMUNICATION_REFUSAL = {
   /** A pair is two people by definition; there is no third place to add somebody to. */
   NOT_A_GROUP: 'NOT_A_GROUP',
   /**
+   * This role messages through the team group, not in a private chat.
+   *
+   * Developers, testers and the other non-management staff still belong in the project/team
+   * group; they may not open a direct message or an ad-hoc group, and they may not write in one.
+   */
+  PRIVATE_CHAT_NOT_ALLOWED: 'PRIVATE_CHAT_NOT_ALLOWED',
+  /**
    * Telephony is project-anchored, and a scope conversation has no project.
    *
    * Everything an internal call needs comes from one — the fallback destination, the recording
@@ -156,6 +163,7 @@ export const COMMUNICATION_REFUSAL_LABELS: Record<CommunicationRefusal, string> 
   NOT_A_MEMBER: 'You are not in this conversation',
   NOT_GROUP_ADMIN: 'Only the group’s owner or an administrator may do that',
   NOT_A_GROUP: 'A direct conversation is between two people and takes no others',
+  PRIVATE_CHAT_NOT_ALLOWED: 'Your role messages in the team group, not in a private chat',
   CALL_NEEDS_PROJECT: 'Calls are placed from a project conversation',
 };
 
@@ -260,6 +268,14 @@ export interface CommunicationInput {
   canInspect: boolean;
   /** `communication:recording:play` — necessary for playback, and not sufficient. */
   canPlayRecording: boolean;
+  /**
+   * Whether this role may start or take part in a one-to-one (or an ad-hoc group).
+   *
+   * `false` is the developer (and tester, support, …) contract: they still post in the project
+   * team group they are a listed member of. Omitted means unrestricted, so existing tests and
+   * project-anchored channels keep the answers they had.
+   */
+  personalChat?: boolean;
 }
 
 export interface CommunicationDecision {
@@ -332,6 +348,17 @@ export function canCommunicate(input: CommunicationInput): CommunicationDecision
   //     line is therefore reached by exactly the conversations that reached it before.
   if (input.scope) {
     return scopeDecision(input, input.scope);
+  }
+
+  // 1c. Developers and the other non-management staff do not open or write in a 1:1. A project
+  //     channel, a task thread and a ticket thread are not private chats — those still go through
+  //     the pairing below. `counterpartProjectRole` is only set when the action names a person.
+  if (
+    input.personalChat === false &&
+    input.counterpartProjectRole !== undefined &&
+    input.action !== COMMUNICATION_ACTION.INSPECT
+  ) {
+    return refuse(COMMUNICATION_REFUSAL.PRIVATE_CHAT_NOT_ALLOWED);
   }
 
   // 2. Oversight, which is a read grant across the organization and nothing more. Checked before
@@ -445,6 +472,18 @@ function scopeDecision(
   input: CommunicationInput,
   scope: CommunicationScopeContext,
 ): CommunicationDecision {
+  // Developers and other non-management staff may not start a 1:1 or an ad-hoc group, and they
+  // may not write in a pair they were added to. They still post in a listed group they belong to
+  // — that is the project team thread.
+  if (input.personalChat === false) {
+    if (input.action === COMMUNICATION_ACTION.CREATE) {
+      return refuse(COMMUNICATION_REFUSAL.PRIVATE_CHAT_NOT_ALLOWED);
+    }
+    if (scope.membership === 'PAIR' && input.action !== COMMUNICATION_ACTION.INSPECT) {
+      return refuse(COMMUNICATION_REFUSAL.PRIVATE_CHAT_NOT_ALLOWED);
+    }
+  }
+
   // Creating happens before there is a member list to consult, so it turns on three things only:
   // the permission to take part at all, the switch, and whether every person named is inside the
   // actor's reach. That last one is where a super admin's tenant-wide scope enters — and the only

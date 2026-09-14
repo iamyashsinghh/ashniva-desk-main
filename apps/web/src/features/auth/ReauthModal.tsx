@@ -1,5 +1,5 @@
 import { Alert, Button, FormField, Input, Modal } from '@ashniva/ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { errorMessage } from '../../shared/lib/api-client';
 import { reauthenticate } from './api';
@@ -14,12 +14,27 @@ export function ReauthModal({ open, onCancel, onConfirmed }: ReauthModalProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
+  const [autofillLocked, setAutofillLocked] = useState(true);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setPassword('');
+    setError(undefined);
+    setAutofillLocked(true);
+  }, [open]);
 
   async function confirm() {
+    const value = password.trim();
+    if (value.includes('@')) {
+      setError(`That is an email address. Type the password you use to sign in, not an email.`);
+      return;
+    }
     setSubmitting(true);
     setError(undefined);
     try {
-      const token = await reauthenticate(password);
+      const token = await reauthenticate(value);
       setPassword('');
       onConfirmed(token);
     } catch (cause) {
@@ -32,7 +47,8 @@ export function ReauthModal({ open, onCancel, onConfirmed }: ReauthModalProps) {
   return (
     <Modal
       open={open}
-      title="Confirm your password"
+      title="Confirm it's you"
+      description="Enter the password you use to sign in. Not a password for somebody else."
       size="sm"
       onClose={onCancel}
       footer={
@@ -42,7 +58,7 @@ export function ReauthModal({ open, onCancel, onConfirmed }: ReauthModalProps) {
             variant="primary"
             loading={submitting}
             disabled={password.length === 0}
-            disabledReason="Enter your password"
+            disabledReason="Enter your sign-in password"
             onClick={() => void confirm()}
           >
             Confirm
@@ -50,14 +66,14 @@ export function ReauthModal({ open, onCancel, onConfirmed }: ReauthModalProps) {
         </>
       }
     >
-      <p className="actions-card__hint" style={{ marginBottom: 10 }}>
-        Enter <strong>your</strong> sign-in password to confirm — not the new person’s password.
-      </p>
-      <FormField label="Password" required>
+      <FormField label="Your sign-in password" required>
         <Input
           type="password"
-          autoComplete="current-password"
+          name="ashniva-reauth-password"
+          autoComplete="off"
+          readOnly={autofillLocked}
           value={password}
+          onFocus={() => setAutofillLocked(false)}
           onChange={(event) => setPassword(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && password) {

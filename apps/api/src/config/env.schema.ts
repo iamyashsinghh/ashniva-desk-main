@@ -334,6 +334,20 @@ export const envSchema = z
     AI_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5).default(3),
 
     /**
+     * Optional key for Summary PDF analysis. When set, an uploaded brief is sent to Gemini and
+     * the returned phases fill the plan. Tests wipe this so they never call a live model.
+     */
+    GEMINI_API_KEY: z
+      .string()
+      .optional()
+      .transform((value) => {
+        const trimmed = value?.trim();
+        return trimmed ? trimmed : undefined;
+      }),
+    GEMINI_MODEL: z.string().min(1).max(80).default('gemini-3.5-flash'),
+    GEMINI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().max(120_000).default(60_000),
+
+    /**
      * Which IVR adapter to register.
      *
      * `mock` places no telephone call: it records what would have been asked of the provider and

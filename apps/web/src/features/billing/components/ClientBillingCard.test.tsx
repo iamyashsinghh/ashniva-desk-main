@@ -97,7 +97,7 @@ async function chooseAcmeAndSave(calls: Call[]): Promise<Call> {
   await chooseAcme();
   fireEvent.click(await screen.findByRole('button', { name: 'Save client billing details' }));
 
-  fireEvent.change(await screen.findByLabelText(/Password/), { target: { value: 'hunter2' } });
+  fireEvent.change(await screen.findByLabelText(/sign-in password/i), { target: { value: 'hunter2' } });
   fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
   await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
@@ -158,7 +158,7 @@ describe('ClientBillingCard', () => {
     fireEvent.change(screen.getByLabelText(/Postal code/), { target: { value: '400020' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Save client billing details' }));
-    fireEvent.change(await screen.findByLabelText(/Password/), { target: { value: 'hunter2' } });
+    fireEvent.change(await screen.findByLabelText(/sign-in password/i), { target: { value: 'hunter2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));

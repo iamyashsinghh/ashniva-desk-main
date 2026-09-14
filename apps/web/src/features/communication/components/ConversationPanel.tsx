@@ -102,14 +102,21 @@ export function ConversationView({
   title,
   kind,
   embedded = false,
+  compact = false,
   onLeave,
+  onMinimize,
+  onClose,
 }: {
   conversationId: string;
   title?: string;
   kind: ConversationKind;
   embedded?: boolean;
+  /** Corner messenger: shorter header, minimize/close instead of in-thread search. */
+  compact?: boolean;
   /** Called once somebody has taken themselves out of a group, so the screen can close it. */
   onLeave?: () => void;
+  onMinimize?: () => void;
+  onClose?: () => void;
 }) {
   const { user } = useSession();
   const socket = useRealtimeSocket();
@@ -186,7 +193,9 @@ export function ConversationView({
   }
 
   return (
-    <section className={`chat-room${embedded ? ' chat-room--embedded' : ''}`}>
+    <section
+      className={`chat-room${embedded ? ' chat-room--embedded' : ''}${compact ? ' chat-room--dock' : ''}`}
+    >
       {conversation.data ? (
         <ConversationHeader
           conversation={{ ...conversation.data, ...(title ? { title } : {}) }}
@@ -194,6 +203,9 @@ export function ConversationView({
           onSearchChange={setSearch}
           matchCount={visible.length}
           onOpenDetails={() => setShowDetails(true)}
+          compact={compact}
+          {...(onMinimize ? { onMinimize } : {})}
+          {...(onClose ? { onClose } : {})}
         />
       ) : (
         <Skeleton height="var(--control-height-lg)" />
@@ -229,7 +241,6 @@ export function ConversationView({
           isLoadingEarlier={messages.isFetchingNextPage}
           onLoadEarlier={() => void messages.fetchNextPage()}
           onEdit={(input) => mutations.edit.mutateAsync(input).then(() => undefined)}
-          onDelete={(messageId) => mutations.remove.mutateAsync(messageId).then(() => undefined)}
           {...(abilities?.canPost ? { onReply: setReplyingTo } : {})}
           {...(abilities?.viaOversight
             ? { onLoadRevisions: (id: string) => revisions.mutateAsync(id) }
@@ -241,6 +252,7 @@ export function ConversationView({
         conversationId={conversationId}
         canPost={abilities?.canPost ?? false}
         reason={abilities?.reason ?? null}
+        compact={compact}
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
         onSend={send}

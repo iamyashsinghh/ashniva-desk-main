@@ -227,9 +227,10 @@ export class SafeHttpService {
 /**
  * The headers minus anything that proves who the caller is.
  *
- * `authorization` is the obvious one; `x-ashniva-*` covers the outbound callback signature, which
- * is computed over this deployment's per-endpoint secret and is just as much a credential. Both
- * are matched case-insensitively, because a caller may spell a header name however it likes.
+ * `authorization` is the obvious one; `x-goog-api-key` is the Gemini header; `x-ashniva-*` covers
+ * the outbound callback signature, which is computed over this deployment's per-endpoint secret
+ * and is just as much a credential. All are matched case-insensitively, because a caller may
+ * spell a header name however it likes.
  */
 function withoutCredentials(
   headers: Record<string, string> | undefined,
@@ -240,7 +241,11 @@ function withoutCredentials(
   return Object.fromEntries(
     Object.entries(headers).filter(([name]) => {
       const lower = name.toLowerCase();
-      return lower !== 'authorization' && !lower.startsWith('x-ashniva-');
+      return (
+        lower !== 'authorization' &&
+        lower !== 'x-goog-api-key' &&
+        !lower.startsWith('x-ashniva-')
+      );
     }),
   );
 }

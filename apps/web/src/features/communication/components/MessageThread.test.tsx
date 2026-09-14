@@ -49,7 +49,6 @@ function renderThread(
       isLoadingEarlier={false}
       onLoadEarlier={onLoadEarlier}
       onEdit={vi.fn()}
-      onDelete={vi.fn()}
       {...(over.firstUnreadId ? { firstUnreadId: over.firstUnreadId } : {})}
     />,
   );

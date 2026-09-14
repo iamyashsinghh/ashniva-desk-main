@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import {
   PERMISSIONS,
   PROJECT_MEMBER_ROLE,
+  ROLE_KEYS,
+  canUsePersonalChat,
   isClientRole,
   type AuthenticatedUser,
   type MessagingScopeContact,
@@ -28,37 +30,23 @@ const ELIGIBLE_LIMIT = 1000;
  *
  * ## Where the scope comes from
  *
- * **There is no reporting-line table in this product and this file does not invent one.** Reach is
- * derived from relations that already exist and that somebody already maintains, so it changes the
- * moment the relation does — which is the same property the project-anchored policy rests on:
+ * There is no reporting-line table. Reach is derived from relations that already exist:
  *
- *  * **Manager reach** — the members of the projects they manage (`projects.manager_user_id`, or
- *    a `MANAGER` row in `project_members`) and of the teams they lead (`teams.lead_user_id`).
- *  * **Lead reach** — the members of the teams they lead and of the projects they lead
- *    (`projects.lead_user_id`, or a `LEAD` row in `project_members`), **plus the managers of those
- *    projects**, so a lead can always reach the person they report into on that work.
- *  * **Everybody else** — nothing. A developer holds no `manager_user_id`, no `lead_user_id` and
- *    no `MANAGER`/`LEAD` membership, so every query below returns nothing for them and their reach
- *    is empty. That is worth stating plainly: "a developer gets no new reach" is not a rule
- *    written anywhere in this file, it is what these relations already say. Their project, task
- *    and ticket conversations, the project-anchored direct pairing and mentioning anybody on a
- *    shared project are all untouched.
- *  * **`conversation:reach-organization`** — the whole tenant. Held by the super admin by default,
- *    and a permission rather than a role comparison so that a tenant can see it on the roles
- *    screen and take it away.
+ *  * **Admin (`conversation:reach-organization` / super admin)** — every eligible colleague.
+ *  * **Project manager** — the people on the projects they manage and the teams those projects
+ *    (and they) sit on. They may message those people in private and in the project group.
+ *  * **Team lead** — the people on their team and the projects they lead. Same: private and group.
+ *  * **Developer (and other staff)** — nobody in private. They only post in the project team group.
  *
  * ## Who can be reached at all
  *
  * Being named by one of those relations is necessary and not sufficient. Everybody this file
  * returns is also, checked in one query and never inferred:
  *
- *  * a member of the **actor's own organization**, which for an internal actor is the provider
- *    organization — so no client user is ever a candidate, whatever a `project_members` row of
- *    theirs says;
- *  * not holding a **client role**, for the same reason twice over;
+ *  * a member of the **actor's own organization**;
+ *  * not holding a **client role**;
  *  * **active and not deleted**; and
- *  * a holder of **`conversation:participate`**, because offering somebody who cannot read a
- *    conversation would produce a thread that silently reaches nobody.
+ *  * a holder of **`conversation:participate`**.
  */
 @Injectable()
 export class MessagingScopeService {
@@ -77,12 +65,28 @@ export class MessagingScopeService {
     if (!isInternalUser(actor)) {
       return new Map();
     }
-    if (actor.permissions.includes(PERMISSIONS.CONVERSATION_REACH_ORGANIZATION)) {
+
+    if (
+      actor.permissions.includes(PERMISSIONS.CONVERSATION_REACH_ORGANIZATION) ||
+      actor.roleKey === ROLE_KEYS.SUPER_ADMIN
+    ) {
       const everyone = await this.eligible(actor, candidates);
-      return new Map(everyone.map((user) => [user.id, 'In your organization']));
+      const reasons = await this.derivedReach(actor);
+      return new Map(
+        everyone.map((user) => [user.id, reasons.get(user.id) ?? 'In your organization']),
+      );
+    }
+
+    if (!canUsePersonalChat(actor.roleKey)) {
+      return new Map();
     }
 
     const reasons = await this.derivedReach(actor);
+    for (const [id, reason] of await this.teammateReach(actor)) {
+      if (!reasons.has(id)) {
+        reasons.set(id, reason);
+      }
+    }
     if (reasons.size === 0) {
       return new Map();
     }
@@ -115,8 +119,6 @@ export class MessagingScopeService {
       },
       select: { id: true, name: true, email: true },
       orderBy: { name: 'asc' },
-      // A page, not the organization. Somebody holding tenant-wide reach in a company of two
-      // thousand should get a list they can read and a search box, not two thousand rows.
       take: DIRECTORY_PAGE,
     });
     return users.map((user) => ({
@@ -127,11 +129,7 @@ export class MessagingScopeService {
   }
 
   /**
-   * The relational half: every user id a project or team relation puts inside the actor's reach.
-   *
-   * Four queries, none of which grows with the size of the organization: the actor's own manager
-   * and lead relations, then the membership of what those name. Nothing here decides whether a
-   * candidate is internal or active — `eligible` does that, once, for whatever this produces.
+   * Manager and lead reach: the people their projects and teams already name.
    */
   private async derivedReach(actor: AuthenticatedUser): Promise<Map<string, string>> {
     const [ownedProjects, seniorMemberships, ledTeams] = await Promise.all([
@@ -141,7 +139,7 @@ export class MessagingScopeService {
           deletedAt: null,
           OR: [{ managerUserId: actor.userId }, { leadUserId: actor.userId }],
         },
-        select: { id: true, code: true, managerUserId: true, leadUserId: true },
+        select: { id: true, code: true, managerUserId: true, leadUserId: true, teamId: true },
       }),
       this.prisma.projectMember.findMany({
         where: {
@@ -149,7 +147,10 @@ export class MessagingScopeService {
           role: { in: [PROJECT_MEMBER_ROLE.MANAGER, PROJECT_MEMBER_ROLE.LEAD] },
           project: { organizationId: actor.organizationId, deletedAt: null },
         },
-        select: { role: true, project: { select: { id: true, code: true, managerUserId: true } } },
+        select: {
+          role: true,
+          project: { select: { id: true, code: true, managerUserId: true, teamId: true } },
+        },
       }),
       this.prisma.team.findMany({
         where: {
@@ -161,16 +162,15 @@ export class MessagingScopeService {
       }),
     ]);
 
-    /** Project id → how the actor stands on it, and what to call it. */
     const projects = new Map<
       string,
-      { code: string; managerUserId: string | null; led: boolean }
+      { code: string; managerUserId: string | null; teamId: string | null; led: boolean }
     >();
     for (const project of ownedProjects) {
       projects.set(project.id, {
         code: project.code,
         managerUserId: project.managerUserId,
-        // Managing a project is the wider reach, so it wins where somebody holds both.
+        teamId: project.teamId,
         led: project.managerUserId !== actor.userId,
       });
     }
@@ -180,6 +180,7 @@ export class MessagingScopeService {
       projects.set(membership.project.id, {
         code: membership.project.code,
         managerUserId: membership.project.managerUserId,
+        teamId: membership.project.teamId,
         led: existing ? existing.led && led : led,
       });
     }
@@ -195,9 +196,6 @@ export class MessagingScopeService {
       const members = await this.prisma.projectMember.findMany({
         where: {
           projectId: { in: [...projects.keys()] },
-          // A client contact is a client-side person holding a project role. They are refused
-          // again by `eligible`, and excluded here so that two independent things would have to
-          // fail before one appeared in a directory of colleagues.
           role: { not: PROJECT_MEMBER_ROLE.CLIENT_CONTACT },
         },
         select: { userId: true, projectId: true },
@@ -213,11 +211,31 @@ export class MessagingScopeService {
           );
         }
       }
-      // A lead reaches the manager above them on the projects they lead, whether or not that
-      // manager holds a `project_members` row.
       for (const [, project] of projects) {
         if (project.led && project.managerUserId) {
           remember(project.managerUserId, `Manages ${project.code}, which you lead`);
+        }
+      }
+
+      const linkedTeamIds = [
+        ...new Set(
+          [...projects.values()]
+            .map((project) => project.teamId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      if (linkedTeamIds.length > 0) {
+        const teams = await this.prisma.team.findMany({
+          where: { id: { in: linkedTeamIds } },
+          select: { id: true, name: true },
+        });
+        const names = new Map(teams.map((team) => [team.id, team.name]));
+        const teamMembers = await this.prisma.teamMember.findMany({
+          where: { teamId: { in: linkedTeamIds } },
+          select: { userId: true, teamId: true },
+        });
+        for (const member of teamMembers) {
+          remember(member.userId, `In ${names.get(member.teamId) ?? 'your team'}`);
         }
       }
     }
@@ -237,11 +255,93 @@ export class MessagingScopeService {
   }
 
   /**
+   * Developer (and other non-management staff) reach: people they already work with.
+   */
+  private async teammateReach(actor: AuthenticatedUser): Promise<Map<string, string>> {
+    const [projectMemberships, teamMemberships] = await Promise.all([
+      this.prisma.projectMember.findMany({
+        where: {
+          userId: actor.userId,
+          role: { not: PROJECT_MEMBER_ROLE.CLIENT_CONTACT },
+          project: { organizationId: actor.organizationId, deletedAt: null },
+        },
+        select: { project: { select: { id: true, code: true, managerUserId: true, leadUserId: true } } },
+      }),
+      this.prisma.teamMember.findMany({
+        where: {
+          userId: actor.userId,
+          team: { organizationId: actor.organizationId, deletedAt: null },
+        },
+        select: { teamId: true, team: { select: { id: true, name: true } } },
+      }),
+    ]);
+
+    const reasons = new Map<string, string>();
+    const remember = (userId: string, reason: string): void => {
+      if (userId !== actor.userId && !reasons.has(userId)) {
+        reasons.set(userId, reason);
+      }
+    };
+
+    const projectIds = [...new Set(projectMemberships.map((row) => row.project.id))];
+    const teamIds = [...new Set(teamMemberships.map((row) => row.teamId))];
+
+    if (teamIds.length > 0) {
+      const linkedProjects = await this.prisma.project.findMany({
+        where: {
+          organizationId: actor.organizationId,
+          deletedAt: null,
+          teamId: { in: teamIds },
+        },
+        select: { id: true, code: true, managerUserId: true, leadUserId: true },
+      });
+      for (const project of linkedProjects) {
+        if (!projectIds.includes(project.id)) {
+          projectIds.push(project.id);
+          projectMemberships.push({ project });
+        }
+      }
+    }
+
+    if (projectIds.length > 0) {
+      const members = await this.prisma.projectMember.findMany({
+        where: {
+          projectId: { in: projectIds },
+          role: { not: PROJECT_MEMBER_ROLE.CLIENT_CONTACT },
+        },
+        select: { userId: true, projectId: true },
+      });
+      const byId = new Map(projectMemberships.map((row) => [row.project.id, row.project]));
+      for (const member of members) {
+        const project = byId.get(member.projectId);
+        remember(member.userId, `On ${project?.code ?? 'your project'}`);
+      }
+      for (const row of projectMemberships) {
+        if (row.project.managerUserId) {
+          remember(row.project.managerUserId, `Manages ${row.project.code}`);
+        }
+        if (row.project.leadUserId) {
+          remember(row.project.leadUserId, `Leads ${row.project.code}`);
+        }
+      }
+    }
+
+    if (teamIds.length > 0) {
+      const names = new Map(teamMemberships.map((row) => [row.teamId, row.team.name]));
+      const members = await this.prisma.teamMember.findMany({
+        where: { teamId: { in: teamIds } },
+        select: { userId: true, teamId: true },
+      });
+      for (const member of members) {
+        remember(member.userId, `In ${names.get(member.teamId) ?? 'your team'}`);
+      }
+    }
+
+    return reasons;
+  }
+
+  /**
    * Everybody in the tenant this module is willing to name, in one query.
-   *
-   * The four conditions that make somebody a colleague rather than merely a row: a live
-   * membership of the actor's own organization, a role that is not a client role, an account
-   * somebody can sign in to, and `conversation:participate`.
    */
   private async eligible(
     actor: AuthenticatedUser,
@@ -261,8 +361,6 @@ export class MessagingScopeService {
         },
       },
       select: { userId: true, role: { select: { key: true, templateKey: true } } },
-      // Only reached without a candidate list by somebody holding tenant-wide reach, and bounded
-      // for them: an unbounded scope resolution is an unbounded request.
       ...(candidates ? {} : { take: ELIGIBLE_LIMIT }),
     });
     return memberships

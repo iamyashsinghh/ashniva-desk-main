@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../shared/components/st
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { useConversationList } from './chat-api';
 import { ConversationRow } from './ConversationRow';
-import { CONVERSATION_FILTER, type ConversationFilter } from './conversation-filters';
+import { CONVERSATION_FILTER, inboxFiltersFor, type ConversationFilter } from './conversation-filters';
 import { FilterChips } from './FilterChips';
 
 /**
@@ -35,15 +35,20 @@ export interface ConversationsScreenProps {
   onOpen: (conversationId: string) => void;
   /** Opens the "start a conversation" screen. Absent for somebody with no internal chat at all. */
   onStart?: () => void;
+  /**
+   * Managers and leads see people and Direct. Developers only see the project team group.
+   * Defaults on so existing tests of the people inbox keep their Direct chip.
+   */
+  personalChat?: boolean;
 }
 
-export function ConversationsScreen({ onOpen, onStart }: ConversationsScreenProps) {
+export function ConversationsScreen({ onOpen, onStart, personalChat = true }: ConversationsScreenProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ConversationFilter>(CONVERSATION_FILTER.ALL);
 
-  const list = useConversationList(filter, search);
+  const list = useConversationList(filter, search, personalChat);
   const { refresh } = list;
 
   useFocusEffect(
@@ -121,10 +126,16 @@ export function ConversationsScreen({ onOpen, onStart }: ConversationsScreenProp
               value={search}
               onChangeText={setSearch}
             />
-            <FilterChips value={filter} onChange={setFilter} />
+            <FilterChips
+              value={filter}
+              onChange={setFilter}
+              filters={inboxFiltersFor(personalChat)}
+            />
           </View>
         }
-        ListEmptyComponent={<EmptyList filter={filter} searching={search.trim().length > 0} />}
+        ListEmptyComponent={
+          <EmptyList filter={filter} searching={search.trim().length > 0} personalChat={personalChat} />
+        }
         ListFooterComponent={
           list.isLoadingMore ? (
             <View style={{ paddingVertical: theme.spacing.lg }}>
@@ -146,7 +157,15 @@ export function ConversationsScreen({ onOpen, onStart }: ConversationsScreenProp
  * Three different reasons, because "No conversations" under an active filter is a lie about the
  * account rather than an answer about the filter.
  */
-function EmptyList({ filter, searching }: { filter: ConversationFilter; searching: boolean }) {
+function EmptyList({
+  filter,
+  searching,
+  personalChat,
+}: {
+  filter: ConversationFilter;
+  searching: boolean;
+  personalChat: boolean;
+}) {
   if (searching) {
     return <EmptyState title="Nothing matches" description="Try a different search." />;
   }
@@ -160,8 +179,12 @@ function EmptyList({ filter, searching }: { filter: ConversationFilter; searchin
   }
   return (
     <EmptyState
-      title="No conversations"
-      description="Start a direct message or a group, or open one from a project, a task or a ticket."
+      title={personalChat ? 'No conversations' : 'No team group yet'}
+      description={
+        personalChat
+          ? 'Start a direct message or a group with anybody on your projects and teams.'
+          : 'The group for your project team will show up here. You can write there, not in a private chat.'
+      }
     />
   );
 }

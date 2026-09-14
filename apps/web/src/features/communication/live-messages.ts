@@ -13,6 +13,8 @@ import { useRealtimeSocket } from '../../app/providers/realtime-socket-context';
 import { apiRequest } from '../../shared/lib/api-client';
 import { conversationKeys } from './api';
 import { contextLabelOf } from './conversation-filters';
+import { playMessageSound } from './message-sound';
+import { useMessenger } from './messenger-context';
 
 /** How long a card stays up. Long enough to read a line, short enough not to sit in the way. */
 const DISMISS_AFTER_MS = 8000;
@@ -78,7 +80,10 @@ export function useLiveMessageToasts(): {
   const socket = useRealtimeSocket();
   const queryClient = useQueryClient();
   const location = useLocation();
+  const messenger = useMessenger();
   const [toasts, setToasts] = useState<readonly LiveMessageToast[]>([]);
+  const readingId =
+    messenger && !messenger.minimized ? messenger.conversationId : null;
 
   const dismiss = useCallback((key: string) => {
     setToasts((current) => current.filter((toast) => toast.key !== key));
@@ -100,10 +105,14 @@ export function useLiveMessageToasts(): {
       if (document.hasFocus() && notification.link && location.pathname === notification.link) {
         return;
       }
+      if (notification.entityId && readingId === notification.entityId) {
+        return;
+      }
       const conversation = await readIfStillPermitted(queryClient, notification.entityId);
       if (!conversation || !live) {
         return;
       }
+      playMessageSound();
       const toast = toastFor(notification, conversation);
       setToasts((current) =>
         current.some((existing) => existing.key === toast.key)
@@ -118,7 +127,7 @@ export function useLiveMessageToasts(): {
       live = false;
       socket.off('notification.new', handler);
     };
-  }, [socket, queryClient, location.pathname]);
+  }, [socket, queryClient, location.pathname, readingId]);
 
   // The oldest card's remaining time, recomputed whenever the stack changes. Counting from
   // `shownAt` rather than restarting the timer is what stops a second arrival from extending the

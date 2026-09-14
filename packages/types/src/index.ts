@@ -91,6 +91,8 @@ export * from './workflow/call-routing';
 export * from './api/calls';
 export * from './domain/conversation';
 export * from './workflow/communication-policy';
+export * from './workflow/work-plan';
+export * from './api/project-work-plan';
 export * from './api/communication';
 export * from './api/problems';
 export * from './api/search';

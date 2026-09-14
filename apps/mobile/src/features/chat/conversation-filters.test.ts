@@ -2,6 +2,7 @@ import { CONVERSATION_KIND, type ConversationSummary } from '@ashniva/types';
 
 import {
   CONVERSATION_FILTER,
+  inboxFiltersFor,
   matchesFilter,
   matchesSearch,
   serverQueryFor,
@@ -37,9 +38,6 @@ function row(over: Partial<ConversationSummary> = {}): ConversationSummary {
 
 describe('serverQueryFor', () => {
   it('asks the server for the chips it can express', () => {
-    expect(serverQueryFor(CONVERSATION_FILTER.PROJECT)).toEqual({ kind: 'PROJECT' });
-    expect(serverQueryFor(CONVERSATION_FILTER.TASK)).toEqual({ kind: 'TASK' });
-    expect(serverQueryFor(CONVERSATION_FILTER.TICKET)).toEqual({ kind: 'TICKET' });
     expect(serverQueryFor(CONVERSATION_FILTER.GROUPS)).toEqual({ kind: 'GROUP' });
     expect(serverQueryFor(CONVERSATION_FILTER.UNREAD)).toEqual({ unreadOnly: true });
   });
@@ -52,6 +50,18 @@ describe('serverQueryFor', () => {
 });
 
 describe('matchesFilter', () => {
+  it('hides people threads for a role that only uses the team group', () => {
+    expect(matchesFilter(row({ kind: 'SCOPE_DIRECT' }), CONVERSATION_FILTER.ALL, false)).toBe(
+      false,
+    );
+    expect(matchesFilter(row({ kind: 'GROUP' }), CONVERSATION_FILTER.ALL, false)).toBe(true);
+    expect(inboxFiltersFor(false)).toEqual([
+      CONVERSATION_FILTER.ALL,
+      CONVERSATION_FILTER.UNREAD,
+      CONVERSATION_FILTER.GROUPS,
+    ]);
+  });
+
   it('admits both direct kinds under Direct', () => {
     expect(matchesFilter(row({ kind: 'DIRECT' }), CONVERSATION_FILTER.DIRECT)).toBe(true);
     expect(matchesFilter(row({ kind: 'SCOPE_DIRECT' }), CONVERSATION_FILTER.DIRECT)).toBe(true);
@@ -59,8 +69,7 @@ describe('matchesFilter', () => {
   });
 
   it('runs over every row even where the server already narrowed', () => {
-    // A page fetched under one chip must not leak rows into another when the cache is shared.
-    expect(matchesFilter(row({ kind: 'GROUP' }), CONVERSATION_FILTER.PROJECT)).toBe(false);
+    expect(matchesFilter(row({ kind: 'GROUP' }), CONVERSATION_FILTER.DIRECT)).toBe(false);
   });
 
   it('answers Unread from the count the API computed', () => {
@@ -68,8 +77,10 @@ describe('matchesFilter', () => {
     expect(matchesFilter(row({ unreadCount: 2 }), CONVERSATION_FILTER.UNREAD)).toBe(true);
   });
 
-  it('admits everything under All', () => {
-    expect(matchesFilter(row({ kind: 'TICKET' }), CONVERSATION_FILTER.ALL)).toBe(true);
+  it('hides project channels under All', () => {
+    expect(matchesFilter(row({ kind: 'TICKET' }), CONVERSATION_FILTER.ALL)).toBe(false);
+    expect(matchesFilter(row({ kind: 'PROJECT' }), CONVERSATION_FILTER.ALL)).toBe(false);
+    expect(matchesFilter(row({ kind: 'GROUP' }), CONVERSATION_FILTER.ALL)).toBe(true);
   });
 });
 

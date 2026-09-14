@@ -29,6 +29,7 @@ import { InternalCallRoutingService } from './internal-call-routing.service';
 import { MessageModerationService } from './message-moderation.service';
 import { MessagesService } from './messages.service';
 import { MessagingScopeService } from './messaging-scope.service';
+import { ProjectTeamGroupModule } from './project-team-group.module';
 import { ScopeConversationsService } from './scope-conversations.service';
 import { OversightService } from './oversight.service';
 import { TaskVisibilityModule } from '../tasks/task-visibility.module';
@@ -57,6 +58,7 @@ import { TaskVisibilityModule } from '../tasks/task-visibility.module';
     // The task-chat scope: a task conversation admits the people with a place on the task, and
     // that narrower reading of the task relations belongs beside them rather than here.
     TaskVisibilityModule,
+    ProjectTeamGroupModule,
   ],
   // The scope controller first: `GET /conversations/directory` must be matched before
   // `GET /conversations/:id`, and Nest matches in the order this array lists.
@@ -86,6 +88,11 @@ import { TaskVisibilityModule } from '../tasks/task-visibility.module';
     OversightService,
     CommunicationGateway,
   ],
-  exports: [CommunicationPolicyService, ConversationsService, MessagingScopeService],
+  exports: [
+    CommunicationPolicyService,
+    ConversationsService,
+    MessagingScopeService,
+    ProjectTeamGroupModule,
+  ],
 })
 export class CommunicationModule {}

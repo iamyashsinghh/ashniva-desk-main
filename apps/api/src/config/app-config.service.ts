@@ -149,6 +149,14 @@ export class AppConfigService {
     };
   }
 
+  get gemini() {
+    return {
+      apiKey: this.get('GEMINI_API_KEY'),
+      model: this.get('GEMINI_MODEL'),
+      timeoutMs: this.get('GEMINI_REQUEST_TIMEOUT_MS'),
+    };
+  }
+
   get encryption() {
     return { key: this.get('APP_ENCRYPTION_KEY') };
   }

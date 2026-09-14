@@ -969,3 +969,271 @@
   overflow: hidden;
   color: var(--color-text-muted);
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Corner messenger (Facebook-style dock)
+   --------------------------------------------------------------------------------------------- */
+.messenger-dock {
+  position: fixed;
+  right: var(--space-3);
+  bottom: 0;
+  z-index: var(--z-dropdown);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.messenger-dock > * {
+  pointer-events: auto;
+}
+
+.messenger-dock__bubble {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  margin: 0 var(--space-2) var(--space-3) 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-circle);
+  background: var(--brand-primary);
+  color: var(--color-text-on-brand);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+}
+
+.messenger-dock__bubble svg {
+  display: block;
+}
+
+.messenger-dock__bubble:hover {
+  filter: brightness(1.08);
+}
+
+.messenger-dock__bubble:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring), var(--shadow-lg);
+}
+
+.messenger-dock__badge {
+  position: absolute;
+  top: -0.15rem;
+  right: -0.15rem;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--tone-danger-fg);
+  color: var(--color-text-on-brand);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.25rem;
+  text-align: center;
+}
+
+.messenger-dock__inbox,
+.messenger-dock__chat {
+  display: flex;
+  flex-direction: column;
+  width: 20.5rem;
+  height: 28.5rem;
+  max-height: calc(100vh - var(--space-8));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+.messenger-dock__inbox-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex: none;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+}
+
+.messenger-dock__title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+}
+
+.messenger-dock__inbox-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.messenger-dock__inbox .chat-panel {
+  min-height: 0;
+  padding: 0 var(--space-2) var(--space-2);
+  gap: var(--space-2);
+}
+
+.messenger-dock__inbox .chat-panel__search .ui-control {
+  border-radius: var(--radius-pill);
+}
+
+.messenger-dock__inbox .chat-list__conversation--selected {
+  box-shadow: none;
+}
+
+.messenger-dock__chat .chat-room--dock {
+  flex: 1;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.chat-room--dock .chat-room__header {
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.chat-room--dock .chat-room__identity {
+  min-width: 0;
+}
+
+.chat-room--dock .chat-room__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-md);
+}
+
+.chat-room--dock .chat-room__context {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.chat-room--dock .chat-room__tools {
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+.chat-room--dock .chat-thread,
+.chat-room--dock .chat-room__body {
+  background: var(--surface-overlay);
+  padding: var(--space-2) var(--space-3);
+}
+
+.chat-room--dock .chat-room__body--empty {
+  padding: var(--space-4);
+}
+
+.chat-room--dock .chat-message__bubble {
+  max-width: 85%;
+}
+
+.chat-composer--dock {
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 0;
+}
+
+.chat-composer--dock .chat-composer__bar {
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-half) var(--space-1);
+  border-radius: var(--radius-pill);
+}
+
+.chat-composer--dock .chat-composer__input {
+  padding: var(--space-1) var(--space-2);
+  max-height: 6rem;
+}
+
+.messenger-dock__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 16rem;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-bottom: 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-lg);
+}
+
+.messenger-dock__bar .messenger-dock__badge {
+  position: static;
+}
+
+.messenger-dock__bar-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.messenger-dock__bar-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-weight-semibold);
+}
+
+body:has(.messenger-dock) .ui-toasts--bottom-end {
+  right: calc(var(--space-3) + 4rem);
+  bottom: var(--space-4);
+}
+
+body:has(.messenger-dock--open) .ui-toasts--bottom-end {
+  right: calc(var(--space-3) + 20.5rem + 4.5rem);
+}
+
+@media (max-width: 899px) {
+  .messenger-dock {
+    right: 0;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  .messenger-dock__bubble {
+    margin: 0 var(--space-3) var(--space-3) 0;
+  }
+
+  .messenger-dock__inbox,
+  .messenger-dock__chat {
+    position: fixed;
+    inset: auto var(--space-2) calc(64px + env(safe-area-inset-bottom)) var(--space-2);
+    width: auto;
+    height: min(72vh, 34rem);
+    border-radius: var(--radius-xl);
+  }
+
+  .messenger-dock--chat-open .messenger-dock__inbox {
+    display: none;
+  }
+
+  .messenger-dock--open .messenger-dock__bubble,
+  .messenger-dock--chat-open .messenger-dock__bubble {
+    display: none;
+  }
+
+  body:has(.messenger-dock) .ui-toasts--bottom-end {
+    right: var(--space-4);
+    bottom: calc(64px + env(safe-area-inset-bottom) + 5rem);
+  }
+}

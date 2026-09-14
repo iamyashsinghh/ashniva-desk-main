@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { ProjectTeamGroupModule } from '../communication/project-team-group.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { ProjectPlanRepository } from './project-plan.repository';
 import { ProjectPlanService } from './project-plan.service';
@@ -9,7 +10,7 @@ import { ProjectsService } from './projects.service';
 
 /** Projects of every type with members, progress and health (internal API; portal is separate). */
 @Module({
-  imports: [OrganizationsModule],
+  imports: [OrganizationsModule, ProjectTeamGroupModule],
   controllers: [ProjectsController],
   providers: [ProjectsRepository, ProjectsService, ProjectPlanRepository, ProjectPlanService],
   exports: [ProjectsRepository, ProjectsService, ProjectPlanService],

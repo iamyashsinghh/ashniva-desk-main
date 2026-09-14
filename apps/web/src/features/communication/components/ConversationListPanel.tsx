@@ -1,18 +1,24 @@
-import type { ConversationSummary } from '@ashniva/types';
+import { type ConversationSummary, type MessagingScopeContact } from '@ashniva/types';
 import { Button, EmptyState, Input, SegmentedControl, Spinner } from '@ashniva/ui';
 import { useMemo, useState, type ReactNode } from 'react';
 
 import { QueryState } from '../../../shared/components/QueryState';
+import { errorMessage } from '../../../shared/lib/api-client';
+import { useCurrentUser } from '../../auth/session-context';
 import { useConversationsQuery } from '../api';
 import {
-  CONVERSATION_FILTERS,
   CONVERSATION_FILTER_LABELS,
+  inboxFiltersFor,
+  inboxAllowsPersonalChat,
+  isGroupOnlyInboxKind,
+  isPeopleInboxKind,
   matchesFilter,
   matchesSearch,
   serverQueryFor,
   type ConversationFilter,
 } from '../conversation-filters';
-import { ConversationRow } from './ConversationRow';
+import { useMessagingDirectoryQuery, useScopeConversationMutations } from '../scope-api';
+import { ConversationRow, PersonRow } from './ConversationRow';
 
 /** How many conversations a page holds, and how much further "show more" reaches. */
 const PAGE_SIZE = 25;
@@ -26,41 +32,37 @@ export interface ConversationListPanelProps {
   mentioned?: ReadonlySet<string>;
   /** The project picker, when the screen has one to offer. */
   header?: ReactNode;
+  /** Corner inbox: name search only — the chip bar does not fit a 22rem popover. */
+  compact?: boolean;
   onSelect: (conversation: ConversationSummary) => void;
 }
 
+type InboxEntry =
+  | { type: 'thread'; row: ConversationSummary }
+  | { type: 'person'; contact: MessagingScopeContact };
+
 /**
- * Every conversation this person has: searchable, filtered by what it is attached to, and with the
- * unread ones findable.
+ * People this person can message: existing threads, then everybody else they may reach.
  *
- * **The list is the server's answer**, re-checked against the live relationship on every request:
- * a project somebody has left simply stops appearing, and a group they were removed from goes with
- * it, without anything being deleted.
- *
- * **It pages, and it does not fan out.** `GET /conversations` takes a limit and returns everything
- * a row needs, so drawing this list is one request however long it is. The detail request happens
- * once, for the thread that is open.
- *
- * **The chips travel with the request; the search box does not.** The endpoint answers with the
- * most recent `limit` conversations, so a chip applied only to that answer shows somebody busy
- * fewer task threads than they have — the window would already have been spent on the kinds the
- * chip is about to hide. `unreadOnly` and `kind` therefore go to the server; "Direct" is two kinds
- * and the parameter takes one, so that chip alone narrows here. Search stays local because it is
- * per keystroke and the endpoint has no term to take.
- *
- * **The Unread chip's figure is counted over that window, so it is shown only while the window
- * still holds every kind.** See `unread` below.
+ * Project, task and ticket channels are not listed here — they live on those pages. Developers
+ * and other non-management staff only see the project team group; managers and leads also see
+ * the people on their teams so they can open a private thread.
  */
 export function ConversationListPanel({
   projectId,
   selectedId,
   mentioned,
   header,
+  compact = false,
   onSelect,
 }: ConversationListPanelProps) {
+  const personalChat = inboxAllowsPersonalChat(useCurrentUser());
+  const filters = inboxFiltersFor(personalChat);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ConversationFilter>('all');
-  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [limit, setLimit] = useState(compact ? MAX_PAGE : PAGE_SIZE);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | undefined>();
 
   const serverQuery = serverQueryFor(filter);
   const list = useConversationsQuery({
@@ -68,35 +70,54 @@ export function ConversationListPanel({
     limit,
     ...serverQuery,
   });
+  const directory = useMessagingDirectoryQuery(search, personalChat);
+  const { openDirect } = useScopeConversationMutations();
   const rows = useMemo(() => list.data ?? [], [list.data]);
 
   const needle = search.trim().toLowerCase();
-  // Re-checked in the browser even for the chips the server narrowed: the previous chip's page
-  // stays on screen while the new one is fetched, and it must not be read as this chip's answer.
   const visible = useMemo(
-    () => rows.filter((row) => matchesFilter(row, filter) && matchesSearch(row, needle)),
-    [rows, filter, needle],
+    () => mergeInbox(rows, personalChat ? (directory.data ?? []) : [], filter, needle, personalChat),
+    [rows, directory.data, filter, needle, personalChat],
   );
   /**
    * The figure on the Unread chip, or `null` when there is no honest one to show.
    *
-   * It is counted over the window in hand, and since the chips began narrowing that window on the
-   * server that window is no longer always every kind. Under Project, Task, Ticket or Groups the
-   * request carries `?kind=…`, so the same sum silently becomes "unread among the threads of the
-   * kind you are looking at" — a number that changed meaning rather than value, on the one chip
-   * whose whole job is to say how much is waiting everywhere. So it is shown only while the
-   * request carries no `kind`, which is All, Direct and Unread itself.
-   *
-   * Dropping it under a kind chip rather than fetching an unfiltered page for it: a second query
-   * would be a second request in exactly the four cases that need it — the unfiltered key only
-   * dedupes with this one when this one is already unfiltered — and a count nobody asked for is
-   * not worth a request. Nothing is hidden by hiding it; the Unread chip is one click away and
-   * brings the whole figure back with it.
+   * Counted over people threads in the window in hand. Under Groups the request carries
+   * `?kind=GROUP`, so the same sum would silently become "unread among groups" — a number that
+   * changed meaning rather than value. Shown only while the request carries no `kind`.
    */
   const unread =
-    serverQuery.kind === undefined ? rows.reduce((total, row) => total + row.unreadCount, 0) : null;
+    serverQuery.kind === undefined
+      ? rows
+          .filter((row) => (personalChat ? isPeopleInboxKind(row.kind) : isGroupOnlyInboxKind(row.kind)))
+          .reduce((total, row) => total + row.unreadCount, 0)
+      : null;
   const canLoadMore = rows.length >= limit && limit < MAX_PAGE;
   const isNarrowed = needle.length > 0 || filter !== 'all';
+  const isLoading = list.isLoading || (directory.isLoading && directory.data === undefined);
+
+  async function openPerson(contact: MessagingScopeContact) {
+    if (openingId) {
+      return;
+    }
+    if (contact.conversationId) {
+      const existing = rows.find((row) => row.id === contact.conversationId);
+      if (existing) {
+        onSelect(existing);
+        return;
+      }
+    }
+    setOpenError(undefined);
+    setOpeningId(contact.id);
+    try {
+      const conversation = await openDirect.mutateAsync(contact.id);
+      onSelect(conversation);
+    } catch (cause) {
+      setOpenError(errorMessage(cause));
+    } finally {
+      setOpeningId(null);
+    }
+  }
 
   return (
     <div className="chat-panel">
@@ -105,30 +126,38 @@ export function ConversationListPanel({
           type="search"
           value={search}
           aria-label="Search your conversations"
-          placeholder="Search conversations"
+          placeholder={compact ? 'Search chats' : 'Search people'}
           onChange={(event) => setSearch(event.target.value)}
         />
-        {list.isFetching ? <Spinner size="sm" /> : null}
+        {list.isFetching || directory.isFetching ? <Spinner size="sm" /> : null}
       </div>
 
       {header ? <div className="chat-panel__header">{header}</div> : null}
 
-      <div className="chat-panel__filters">
-        <SegmentedControl
-          aria-label="Filter conversations"
-          size="sm"
-          value={filter}
-          onChange={setFilter}
-          options={CONVERSATION_FILTERS.map((key) => ({
-            key,
-            label: CONVERSATION_FILTER_LABELS[key],
-            ...(key === 'unread' && unread !== null && unread > 0 ? { count: unread } : {}),
-          }))}
-        />
-      </div>
+      {compact ? null : (
+        <div className="chat-panel__filters">
+          <SegmentedControl
+            aria-label="Filter conversations"
+            size="sm"
+            value={filter}
+            onChange={setFilter}
+            options={filters.map((key) => ({
+              key,
+              label: CONVERSATION_FILTER_LABELS[key],
+              ...(key === 'unread' && unread !== null && unread > 0 ? { count: unread } : {}),
+            }))}
+          />
+        </div>
+      )}
+
+      {openError ? (
+        <p className="form-error" role="alert">
+          {openError}
+        </p>
+      ) : null}
 
       <QueryState
-        isLoading={list.isLoading}
+        isLoading={isLoading}
         isError={list.isError}
         error={list.error}
         onRetry={() => void list.refetch()}
@@ -136,24 +165,36 @@ export function ConversationListPanel({
         {visible.length === 0 ? (
           <EmptyState
             size="sm"
-            title={isNarrowed ? 'Nothing matches' : 'No conversations yet'}
+            title={isNarrowed ? 'Nothing matches' : personalChat ? 'No one to message yet' : 'No team group yet'}
             description={
               isNarrowed
                 ? 'Try a different search, or choose “All”.'
-                : 'Start a direct message or a group, or open one from a project, task or ticket.'
+                : personalChat
+                  ? 'People you can message will show up here once there is someone on your projects or teams.'
+                  : 'The group for your project team will show up here. You can write there, not in a private chat.'
             }
           />
         ) : (
           <ul className="chat-list chat-list--conversations">
-            {visible.map((row) => (
-              <ConversationRow
-                key={row.id}
-                row={row}
-                isSelected={row.id === selectedId}
-                isMentioned={mentioned?.has(row.id) ?? false}
-                onSelect={() => onSelect(row)}
-              />
-            ))}
+            {visible.map((entry) =>
+              entry.type === 'thread' ? (
+                <ConversationRow
+                  key={entry.row.id}
+                  row={entry.row}
+                  isSelected={entry.row.id === selectedId}
+                  isMentioned={mentioned?.has(entry.row.id) ?? false}
+                  compact={compact}
+                  onSelect={() => onSelect(entry.row)}
+                />
+              ) : (
+                <PersonRow
+                  key={entry.contact.id}
+                  contact={entry.contact}
+                  opening={openingId === entry.contact.id}
+                  onSelect={() => void openPerson(entry.contact)}
+                />
+              ),
+            )}
           </ul>
         )}
       </QueryState>
@@ -170,4 +211,30 @@ export function ConversationListPanel({
       ) : null}
     </div>
   );
+}
+
+function mergeInbox(
+  rows: readonly ConversationSummary[],
+  directory: readonly MessagingScopeContact[],
+  filter: ConversationFilter,
+  needle: string,
+  personalChat: boolean,
+): InboxEntry[] {
+  const threads = rows.filter(
+    (row) => matchesFilter(row, filter, personalChat) && matchesSearch(row, needle),
+  );
+  const named = new Set(
+    threads.flatMap((row) => (row.counterpart?.id ? [row.counterpart.id] : [])),
+  );
+  const entries: InboxEntry[] = threads.map((row) => ({ type: 'thread', row }));
+  if (filter === 'groups' || filter === 'unread') {
+    return entries;
+  }
+  for (const contact of directory) {
+    if (named.has(contact.id)) {
+      continue;
+    }
+    entries.push({ type: 'person', contact });
+  }
+  return entries;
 }

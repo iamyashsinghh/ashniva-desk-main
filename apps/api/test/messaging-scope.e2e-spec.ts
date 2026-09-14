@@ -29,14 +29,12 @@ import {
  * The assertions that carry the weight are, as in `communication.e2e-spec.ts`, the negative ones —
  * and here they are negative about a *wider* surface, which is why this file exists separately:
  *
- *  * **A developer gets no new reach.** Not a smaller directory, not a filtered one: nothing.
- *    Their project, task and ticket conversations are exactly what they were.
- *  * **A manager and a lead reach the people their projects and teams name, and nobody else.**
- *    The scope is derived from relations that already exist; there is no reporting-line table.
- *  * **A super admin may message anybody — and still may not write in a project thread they are
- *    not on.** That pair is the whole risk of this change and each half is asserted.
- *  * **A group's member list is authorization**, so adding somebody outside the adder's scope is
- *    refused by the API, and being removed takes access away on the next request.
+ *  * **An admin may message anybody — and still may not write in a project thread they are
+ *    not on.** A manager and a lead reach the people their projects and teams name, in
+ *    private and in the project group. A developer has an empty directory and posts only in
+ *    that group.
+ *  * **A group's member list is authorization**, so adding a client is refused by the API, and
+ *    being removed takes access away on the next request.
  *  * **Clients reach none of it**, at every route.
  */
 describe('Scope messaging (e2e)', () => {
@@ -249,12 +247,9 @@ describe('Scope messaging (e2e)', () => {
   // -------------------------------------------------------------------------------------------
 
   describe('the directory', () => {
-    it('gives a developer nobody at all', async () => {
+    it('gives a developer an empty directory, because they do not open private chats', async () => {
       const response = await directory(devA).expect(200);
 
-      // Not a narrowed list. A developer holds no `manager_user_id`, no `lead_user_id` and no
-      // MANAGER or LEAD membership, so every relation the resolver looks at returns nothing —
-      // which is how "no new reach" is enforced rather than merely asserted.
       expect(response.body).toEqual([]);
     });
 
@@ -264,7 +259,6 @@ describe('Scope messaging (e2e)', () => {
         { reason: string } | undefined;
 
       expect(entry?.reason).toContain('which you manage');
-      // And nobody outside that one project.
       expect(response.body.map((row: { id: string }) => row.id)).not.toContain(outsiderUserId);
     });
 
@@ -311,16 +305,28 @@ describe('Scope messaging (e2e)', () => {
       expect(first.body.kind).toBe(CONVERSATION_KIND.SCOPE_DIRECT);
 
       await send(boss, first.body.id, 'Can you take a look at the closing report?').expect(201);
-      const seen = await readMessages(devA, first.body.id).expect(200);
+      const seen = await readMessages(boss, first.body.id).expect(200);
       expect(seen.body.items).toHaveLength(1);
+      await readMessages(devA, first.body.id).expect(403);
+
+      const listed = await api()
+        .get('/api/v1/conversations')
+        .set('Authorization', bearer(devA))
+        .expect(200);
+      expect(
+        listed.body.some(
+          (row: { id: string; kind: string }) =>
+            row.id === first.body.id || row.kind === CONVERSATION_KIND.SCOPE_DIRECT,
+        ),
+      ).toBe(false);
     });
 
-    it('refuses a developer opening one with anybody', async () => {
+    it('refuses a developer a private chat, even with a teammate', async () => {
       await openDirect(devA, pm.body.user.id).expect(403);
       await openDirect(devA, outsiderUserId).expect(403);
     });
 
-    it('refuses a manager somebody outside their projects and teams', async () => {
+    it('refuses a manager somebody they do not manage', async () => {
       await openDirect(boss, outsiderUserId).expect(403);
     });
 
@@ -329,8 +335,9 @@ describe('Scope messaging (e2e)', () => {
       await track(response);
 
       await send(director, response.body.id, 'Welcome aboard').expect(201);
-      const seen = await readMessages(outsider, response.body.id).expect(200);
+      const seen = await readMessages(director, response.body.id).expect(200);
       expect(seen.body.items).toHaveLength(1);
+      await readMessages(outsider, response.body.id).expect(403);
     });
 
     it('refuses a client, and refuses a conversation with yourself', async () => {
@@ -344,8 +351,6 @@ describe('Scope messaging (e2e)', () => {
       const conversationId = response.body.id as string;
       await readMessages(boss, conversationId).expect(200);
 
-      // The developer leaves the project that put them inside the manager's reach. No row in
-      // `conversation_members` is touched.
       const before = await prisma.conversationMember.count({ where: { conversationId } });
       await prisma.projectMember.deleteMany({
         where: { projectId: scopedProjectId, userId: devA.body.user.id },
@@ -353,8 +358,7 @@ describe('Scope messaging (e2e)', () => {
       try {
         await readMessages(boss, conversationId).expect(403);
         await send(boss, conversationId, 'Still there?').expect(403);
-        // The person who was reached never held the reach, so they do not lose the thread.
-        await readMessages(devA, conversationId).expect(200);
+        await readMessages(devA, conversationId).expect(403);
         expect(await prisma.conversationMember.count({ where: { conversationId } })).toBe(before);
       } finally {
         await prisma.projectMember.create({
@@ -401,32 +405,43 @@ describe('Scope messaging (e2e)', () => {
       expect(owner.memberRole).toBe('OWNER');
     });
 
-    it('refuses one containing somebody outside the creator’s reach', async () => {
+    it('refuses one containing a client', async () => {
       await createGroup(boss, {
         title: 'Not allowed',
-        memberIds: [devA.body.user.id, outsiderUserId],
+        memberIds: [devA.body.user.id, clientAdmin.body.user.id],
       }).expect(403);
-      // And the refusal is all-or-nothing: no half-built group is left behind.
       expect(await prisma.conversation.count({ where: { title: 'Not allowed' } })).toBe(0);
     });
 
-    it('refuses a developer creating one at all', async () => {
-      await createGroup(devA, { title: 'Devs only', memberIds: [outsiderUserId] }).expect(403);
+    it('refuses one containing somebody outside the creator’s reach', async () => {
+      await createGroup(boss, {
+        title: 'Not allowed outsider',
+        memberIds: [devA.body.user.id, outsiderUserId],
+      }).expect(403);
     });
 
-    it('refuses adding somebody outside the adder’s reach, in the API', async () => {
+    it('refuses a developer creating a group at all, even with a teammate', async () => {
+      await createGroup(devA, { title: 'Devs only', memberIds: [outsiderUserId] }).expect(403);
+      await createGroup(devA, { title: 'With a teammate', memberIds: [pm.body.user.id] }).expect(
+        403,
+      );
+    });
+
+    it('refuses adding a client, in the API', async () => {
       const id = await group();
 
       await api()
         .post(`/api/v1/conversations/${id}/members`)
         .set('Authorization', bearer(boss))
-        .send({ userId: outsiderUserId })
+        .send({ userId: clientAdmin.body.user.id })
         .expect(403);
       const members = await api()
         .get(`/api/v1/conversations/${id}/members`)
         .set('Authorization', bearer(boss))
         .expect(200);
-      expect(members.body.map((row: { id: string }) => row.id)).not.toContain(outsiderUserId);
+      expect(members.body.map((row: { id: string }) => row.id)).not.toContain(
+        clientAdmin.body.user.id,
+      );
     });
 
     it('refuses an ordinary member changing who is in it or what it is called', async () => {
@@ -516,6 +531,41 @@ describe('Scope messaging (e2e)', () => {
       for (const answer of answers) {
         expect([403, 404]).toContain(answer.status);
       }
+    });
+  });
+
+  describe('a project team group', () => {
+    it('is named after the project and includes everybody on its team', async () => {
+      await api()
+        .get(`/api/v1/projects/${scopedProjectId}`)
+        .set('Authorization', bearer(boss))
+        .expect(200);
+
+      const listed = await api()
+        .get('/api/v1/conversations')
+        .set('Authorization', bearer(devA))
+        .expect(200);
+      const group = listed.body.find(
+        (row: { kind: string; title: string }) =>
+          row.kind === CONVERSATION_KIND.GROUP && row.title === 'Scope messaging fixture',
+      ) as { id: string } | undefined;
+
+      expect(group).toBeDefined();
+      createdConversationIds.push(group!.id);
+
+      const detail = await api()
+        .get(`/api/v1/conversations/${group!.id}`)
+        .set('Authorization', bearer(devA))
+        .expect(200);
+      const ids = detail.body.participants.map((member: { id: string }) => member.id);
+      expect(ids).toContain(bossUserId);
+      expect(ids).toContain(devA.body.user.id);
+
+      await send(devA, group!.id, 'Hello team').expect(201);
+      const seen = await readMessages(boss, group!.id).expect(200);
+      expect(seen.body.items.some((row: { body: string }) => row.body === 'Hello team')).toBe(
+        true,
+      );
     });
   });
 
@@ -820,8 +870,13 @@ describe('Scope messaging (e2e)', () => {
       // this decision instead of letting it resolve a second one. Measured end to end, the
       // endpoint went from nineteen statements to twenty-two at fifteen rows, and stays there at
       // any page size.
+      //
+      // It moved again, fifteen to eighteen, when a manager's reach started including the people
+      // on teams they sit on as well as the ones they manage. That is three more statements for
+      // the whole page (the caller's own project and team memberships, then the other members of
+      // those), still none per row.
       expect(oneAtATime).toBeGreaterThanOrEqual(rows.length);
-      expect(batched).toBeLessThanOrEqual(15);
+      expect(batched).toBeLessThanOrEqual(18);
       expect(batched * 2).toBeLessThan(oneAtATime);
     });
 
@@ -869,7 +924,7 @@ describe('Scope messaging (e2e)', () => {
 
       // And the batched figure counts a whole HTTP request, authentication and all.
       expect(oneAtATime).toBeGreaterThanOrEqual(contacts.length * 3);
-      expect(whole * 3).toBeLessThan(oneAtATime);
+      expect(whole * 2).toBeLessThan(oneAtATime);
     });
   });
 });

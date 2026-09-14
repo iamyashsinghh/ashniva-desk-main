@@ -21,6 +21,7 @@ import { TicketTable } from '../../tickets/components/TicketTable';
 import { useProjectQuery } from '../api';
 import { ProjectMembersModal } from '../components/ProjectMembersModal';
 import { ProjectFormModal } from '../components/ProjectFormModal';
+import { ProjectWorkPlanModal } from '../components/ProjectWorkPlanModal';
 import { ProjectOverviewPanel } from '../components/ProjectOverviewPanel';
 import { ProjectPlanPanel } from '../components/ProjectPlanPanel';
 import { ProjectUpdatesPanel } from '../components/ProjectUpdatesPanel';
@@ -56,6 +57,7 @@ function ProjectBody({ project }: { project: ProjectDetail }) {
   const canCreateTask = usePermission(PERMISSIONS.TASK_CREATE);
   const [editing, setEditing] = useState(false);
   const [editingTeam, setEditingTeam] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const tasks = useTasksQuery({ view: 'all', projectId: project.id }, tab === 'tasks');
   const tickets = useTicketsQuery({ view: 'all', projectId: project.id });
   const updates = useClientUpdatesQuery({ projectId: project.id });
@@ -72,6 +74,7 @@ function ProjectBody({ project }: { project: ProjectDetail }) {
         subtitle={`${project.clientOrganization?.name ?? 'Internal'} · ${PROJECT_TYPE_LABELS[project.type]} · ${PROJECT_STATUS_LABELS[project.status]}`}
         actions={
           <>
+            <Button onClick={() => setSummaryOpen(true)}>Summary</Button>
             {canCreateTask ? (
               <Button onClick={() => void navigate(`/tasks/new?projectId=${project.id}`)}>
                 + Task
@@ -168,6 +171,13 @@ function ProjectBody({ project }: { project: ProjectDetail }) {
           project={project}
           onClose={() => setEditing(false)}
           onSaved={() => setEditing(false)}
+        />
+      ) : null}
+      {summaryOpen ? (
+        <ProjectWorkPlanModal
+          projectId={project.id}
+          projectName={project.name}
+          onClose={() => setSummaryOpen(false)}
         />
       ) : null}
     </div>

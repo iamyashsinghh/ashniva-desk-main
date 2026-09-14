@@ -1,4 +1,4 @@
-import { CONVERSATION_KIND, type ConversationKind, type ConversationSummary } from '@ashniva/types';
+import { CONVERSATION_KIND, DERIVED_MEMBERSHIP_KINDS, type ConversationKind, type ConversationSummary } from '@ashniva/types';
 
 /**
  * The filters the conversation list offers, and where each one is applied.
@@ -7,14 +7,11 @@ import { CONVERSATION_KIND, type ConversationKind, type ConversationSummary } fr
  * column the screen does not have, and a chip row is reachable with the thumb that is already
  * holding the phone.
  *
- * **Two of them are the server's filter and the rest are not, and that is a deliberate split.**
- * `GET /conversations` takes one `kind` and an `unreadOnly` flag, so Project, Task, Ticket, Group
- * and Unread can be asked for — which matters, because the endpoint answers with the most recent
- * `limit` rows and an unfiltered window would spend those rows on conversations the chip is about
- * to hide. "Direct" is two kinds (`DIRECT` on a project and `SCOPE_DIRECT` outside one) and the
- * parameter takes one, so that chip filters the window already on the device. The same predicate
- * runs over every filter afterwards regardless, because a cached page fetched under one chip must
- * not leak rows into another.
+ * Chats is a people inbox. Project, task and ticket channels still exist on those pages.
+ *
+ * **Two of them are the server's filter and the rest are not.** `GET /conversations` takes one
+ * `kind` and an `unreadOnly` flag, so Groups and Unread can be asked for. "Direct" is two kinds
+ * and the parameter takes one, so that chip filters the window already on the device.
  */
 
 export const CONVERSATION_FILTER = {
@@ -22,9 +19,6 @@ export const CONVERSATION_FILTER = {
   UNREAD: 'UNREAD',
   DIRECT: 'DIRECT',
   GROUPS: 'GROUPS',
-  PROJECT: 'PROJECT',
-  TASK: 'TASK',
-  TICKET: 'TICKET',
 } as const;
 
 export type ConversationFilter = (typeof CONVERSATION_FILTER)[keyof typeof CONVERSATION_FILTER];
@@ -35,9 +29,6 @@ export const CONVERSATION_FILTERS: readonly ConversationFilter[] = [
   CONVERSATION_FILTER.UNREAD,
   CONVERSATION_FILTER.DIRECT,
   CONVERSATION_FILTER.GROUPS,
-  CONVERSATION_FILTER.PROJECT,
-  CONVERSATION_FILTER.TASK,
-  CONVERSATION_FILTER.TICKET,
 ];
 
 export const CONVERSATION_FILTER_LABELS: Record<ConversationFilter, string> = {
@@ -45,9 +36,6 @@ export const CONVERSATION_FILTER_LABELS: Record<ConversationFilter, string> = {
   UNREAD: 'Unread',
   DIRECT: 'Direct',
   GROUPS: 'Groups',
-  PROJECT: 'Project',
-  TASK: 'Task',
-  TICKET: 'Ticket',
 };
 
 /** The kinds each chip admits. Empty for the two that are not about a kind at all. */
@@ -56,9 +44,6 @@ const FILTER_KINDS: Record<ConversationFilter, readonly ConversationKind[]> = {
   UNREAD: [],
   DIRECT: [CONVERSATION_KIND.DIRECT, CONVERSATION_KIND.SCOPE_DIRECT],
   GROUPS: [CONVERSATION_KIND.GROUP],
-  PROJECT: [CONVERSATION_KIND.PROJECT],
-  TASK: [CONVERSATION_KIND.TASK],
-  TICKET: [CONVERSATION_KIND.TICKET],
 };
 
 /** What the request carries for this chip. Absent fields are simply not sent. */
@@ -81,8 +66,29 @@ export function serverQueryFor(filter: ConversationFilter): ConversationListQuer
   return kinds.length === 1 ? { kind: kinds[0] as ConversationKind } : {};
 }
 
+/** Roles that cannot private-chat only see the team group. Direct is not theirs. */
+export function inboxFiltersFor(personalChat: boolean): readonly ConversationFilter[] {
+  return personalChat
+    ? CONVERSATION_FILTERS
+    : ([
+        CONVERSATION_FILTER.ALL,
+        CONVERSATION_FILTER.UNREAD,
+        CONVERSATION_FILTER.GROUPS,
+      ] as const);
+}
+
 /** Whether a row belongs under this chip. Applied to every row, server-narrowed or not. */
-export function matchesFilter(row: ConversationSummary, filter: ConversationFilter): boolean {
+export function matchesFilter(
+  row: ConversationSummary,
+  filter: ConversationFilter,
+  personalChat = true,
+): boolean {
+  if (DERIVED_MEMBERSHIP_KINDS.includes(row.kind)) {
+    return false;
+  }
+  if (!personalChat && row.kind !== CONVERSATION_KIND.GROUP) {
+    return false;
+  }
   if (filter === CONVERSATION_FILTER.ALL) {
     return true;
   }

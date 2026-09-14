@@ -7,6 +7,7 @@ import {
 } from '@ashniva/types';
 
 import { AuditLogService } from '../audit-logs/audit-log.service';
+import { ProjectTeamGroupService } from '../communication/project-team-group.service';
 import type { CreateTeamDto, SetTeamMembersDto, UpdateTeamDto } from './dto/team.dto';
 import { TeamsRepository, type TeamRow } from './teams.repository';
 
@@ -27,6 +28,7 @@ export class TeamsService {
   constructor(
     private readonly teams: TeamsRepository,
     private readonly auditLog: AuditLogService,
+    private readonly projectGroups: ProjectTeamGroupService,
   ) {}
 
   async list(actor: AuthenticatedUser): Promise<TeamSummary[]> {
@@ -52,6 +54,7 @@ export class TeamsService {
       memberIds.add(dto.leadUserId);
     }
     await this.teams.setMembers(actor.organizationId, created.id, [...memberIds]);
+    await this.projectGroups.syncByTeamId(created.id);
     await this.auditLog.record({
       action: AUDIT_ACTION.TEAM_CREATED,
       entityType: AUDIT_ENTITY_TYPE.TEAM,
@@ -86,6 +89,7 @@ export class TeamsService {
   ): Promise<TeamSummary> {
     await this.require(actor, id);
     await this.teams.setMembers(actor.organizationId, id, [...new Set(dto.userIds)]);
+    await this.projectGroups.syncByTeamId(id);
     await this.auditLog.record({
       action: AUDIT_ACTION.TEAM_UPDATED,
       entityType: AUDIT_ENTITY_TYPE.TEAM,

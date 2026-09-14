@@ -146,6 +146,7 @@ model Organization {
   supportTierPolicies SupportTierPolicy[]
   ticketRelations     TicketRelation[]
   taskRelations       TaskRelation[]
+  workPlans           ProjectWorkPlan[]
 
   @@index([type])
   @@map("organizations")
@@ -310,6 +311,9 @@ model User {
   supportTierPoliciesEdited SupportTierPolicy[]       @relation("SupportTierPolicyEditor")
   ticketRelationsLinked     TicketRelation[]          @relation("TicketRelationAuthor")
   taskRelationsLinked       TaskRelation[]            @relation("TaskRelationAuthor")
+  workPlansCreated          ProjectWorkPlan[]         @relation("WorkPlanCreator")
+  workPlanScores            ProjectWorkPlanScore[]
+  workPlanPointsStarted     ProjectWorkPlanPoint[]    @relation("WorkPlanPointStarter")
 
   @@map("users")
 }
@@ -500,6 +504,12 @@ enum ProjectStatus {
   ON_HOLD
   COMPLETED
   ARCHIVED
+}
+
+enum ProjectWorkPlanSource {
+  PDF
+  MANUAL
+  MIXED
 }
 
 enum ProjectMemberRole {
@@ -699,6 +709,7 @@ model Project {
   messages         Message[]
   problems         Problem[]
   incidents        Incident[]
+  workPlan         ProjectWorkPlan?
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -726,6 +737,93 @@ model ProjectMember {
   @@id([projectId, userId])
   @@index([userId])
   @@map("project_members")
+}
+
+/// One phase plan per project: headings, titles and timed points from a PDF or entered by hand.
+model ProjectWorkPlan {
+  id             String               @id @default(uuid(7)) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  projectId      String               @unique @map("project_id") @db.Uuid
+  sourceFileId   String?              @map("source_file_id") @db.Uuid
+  source         ProjectWorkPlanSource
+  createdById    String               @map("created_by_id") @db.Uuid
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  organization Organization          @relation(fields: [organizationId], references: [id])
+  project      Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceFile   File?                 @relation(fields: [sourceFileId], references: [id])
+  createdBy    User                  @relation("WorkPlanCreator", fields: [createdById], references: [id])
+  phases       ProjectWorkPlanPhase[]
+  scores       ProjectWorkPlanScore[]
+
+  @@index([organizationId])
+  @@map("project_work_plans")
+}
+
+model ProjectWorkPlanPhase {
+  id        String @id @default(uuid(7)) @db.Uuid
+  planId    String @map("plan_id") @db.Uuid
+  heading   String
+  sortOrder Int    @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  plan   ProjectWorkPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  titles ProjectWorkPlanTitle[]
+
+  @@index([planId, sortOrder])
+  @@map("project_work_plan_phases")
+}
+
+model ProjectWorkPlanTitle {
+  id        String @id @default(uuid(7)) @db.Uuid
+  phaseId   String @map("phase_id") @db.Uuid
+  title     String
+  sortOrder Int    @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  phase  ProjectWorkPlanPhase  @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  points ProjectWorkPlanPoint[]
+
+  @@index([phaseId, sortOrder])
+  @@map("project_work_plan_titles")
+}
+
+model ProjectWorkPlanPoint {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  titleId         String    @map("title_id") @db.Uuid
+  body            String
+  estimateMinutes Int       @map("estimate_minutes")
+  sortOrder       Int       @map("sort_order")
+  startedAt       DateTime? @map("started_at")
+  dueAt           DateTime? @map("due_at")
+  completedAt     DateTime? @map("completed_at")
+  startedById     String?   @map("started_by_id") @db.Uuid
+  penaltyApplied  Boolean   @default(false) @map("penalty_applied")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  title     ProjectWorkPlanTitle @relation(fields: [titleId], references: [id], onDelete: Cascade)
+  startedBy User?                @relation("WorkPlanPointStarter", fields: [startedById], references: [id])
+
+  @@index([titleId, sortOrder])
+  @@index([startedById])
+  @@map("project_work_plan_points")
+}
+
+model ProjectWorkPlanScore {
+  planId  String @map("plan_id") @db.Uuid
+  userId  String @map("user_id") @db.Uuid
+  percent Int    @default(100)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  plan ProjectWorkPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([planId, userId])
+  @@map("project_work_plan_scores")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1146,6 +1244,7 @@ model File {
 
   /// Groups using this file as their picture.
   conversationImages Conversation[] @relation("ConversationImage")
+  workPlans          ProjectWorkPlan[]
 
   /// Evidence attached to a root-cause analysis or an incident. Internal by construction: no
   /// client-facing parent, so the existing `files` policy admits no client to these rows.

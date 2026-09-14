@@ -17,6 +17,10 @@ export interface ConversationHeaderProps {
   /** How many of the loaded messages match, so an empty search reads as empty rather than broken. */
   matchCount: number;
   onOpenDetails: () => void;
+  /** Corner messenger: drop the search field and add minimize/close. */
+  compact?: boolean;
+  onMinimize?: () => void;
+  onClose?: () => void;
 }
 
 /**
@@ -37,6 +41,9 @@ export function ConversationHeader({
   onSearchChange,
   matchCount,
   onOpenDetails,
+  compact = false,
+  onMinimize,
+  onClose,
 }: ConversationHeaderProps) {
   const name = conversation.counterpart?.name ?? conversation.title;
   const isGroup = conversation.kind === CONVERSATION_KIND.GROUP;
@@ -49,53 +56,77 @@ export function ConversationHeader({
       <div className="chat-room__identity">
         <h2 className="chat-room__title">{name}</h2>
         <p className="chat-room__context">
-          <span>{CONVERSATION_KIND_LABELS[conversation.kind]}</span>
-          {conversation.project ? (
-            <Link to={`/projects/${conversation.project.id}`}>
-              {conversation.project.code} · {conversation.project.name}
-            </Link>
-          ) : null}
-          {conversation.task ? (
-            <Link to={`/tasks/${conversation.task.id}`}>
-              {conversation.task.key} · {conversation.task.title}
-            </Link>
-          ) : null}
-          {conversation.ticket ? (
-            <Link to={`/tickets/${conversation.ticket.id}`}>
-              {conversation.ticket.key} · {conversation.ticket.title}
-            </Link>
-          ) : null}
-          {isGroup ? <span>{members} members</span> : null}
+          {compact ? (
+            <span>{CONVERSATION_KIND_LABELS[conversation.kind]}</span>
+          ) : (
+            <>
+              <span>{CONVERSATION_KIND_LABELS[conversation.kind]}</span>
+              {conversation.project ? (
+                <Link to={`/projects/${conversation.project.id}`}>
+                  {conversation.project.code} · {conversation.project.name}
+                </Link>
+              ) : null}
+              {conversation.task ? (
+                <Link to={`/tasks/${conversation.task.id}`}>
+                  {conversation.task.key} · {conversation.task.title}
+                </Link>
+              ) : null}
+              {conversation.ticket ? (
+                <Link to={`/tickets/${conversation.ticket.id}`}>
+                  {conversation.ticket.key} · {conversation.ticket.title}
+                </Link>
+              ) : null}
+              {isGroup ? <span>{members} members</span> : null}
+            </>
+          )}
         </p>
       </div>
 
       <div className="chat-room__tools">
-        <div className="chat-room__search">
-          <Input
-            type="search"
-            value={search}
-            aria-label="Search this conversation"
-            placeholder="Search this conversation"
-            onChange={(event) => onSearchChange(event.target.value)}
-          />
-          {search.trim().length > 0 ? (
-            <span className="timeline__note" role="status">
-              {matchCount} in view
-            </span>
-          ) : null}
-        </div>
-
-        <ConversationCalls
-          conversationId={conversation.id}
-          kind={conversation.kind}
-          canCall={conversation.abilities.canCall}
-          canPlayRecording={conversation.abilities.canPlayRecording}
-          {...(conversation.counterpart ? { counterpartId: conversation.counterpart.id } : {})}
-        />
-
-        <Button variant="ghost" size="sm" onClick={onOpenDetails}>
-          Details
-        </Button>
+        {compact ? null : (
+          <>
+            <div className="chat-room__search">
+              <Input
+                type="search"
+                value={search}
+                aria-label="Search this conversation"
+                placeholder="Search this conversation"
+                onChange={(event) => onSearchChange(event.target.value)}
+              />
+              {search.trim().length > 0 ? (
+                <span className="timeline__note" role="status">
+                  {matchCount} in view
+                </span>
+              ) : null}
+            </div>
+            <ConversationCalls
+              conversationId={conversation.id}
+              kind={conversation.kind}
+              canCall={conversation.abilities.canCall}
+              canPlayRecording={conversation.abilities.canPlayRecording}
+              {...(conversation.counterpart ? { counterpartId: conversation.counterpart.id } : {})}
+            />
+            <Button variant="ghost" size="sm" onClick={onOpenDetails}>
+              Details
+            </Button>
+          </>
+        )}
+        {onMinimize ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            aria-label="Minimize conversation"
+            onClick={onMinimize}
+          >
+            –
+          </Button>
+        ) : null}
+        {onClose ? (
+          <Button variant="ghost" size="sm" iconOnly aria-label="Close conversation" onClick={onClose}>
+            ×
+          </Button>
+        ) : null}
       </div>
     </header>
   );

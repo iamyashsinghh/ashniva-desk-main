@@ -47,8 +47,11 @@ const DETAIL: ConversationDetail = {
   },
 };
 
-function renderAt(path: string) {
-  setAuthenticated('test-token', sessionUserFor(ROLE_KEYS.PROJECT_MANAGER));
+function renderAt(
+  path: string,
+  role: (typeof ROLE_KEYS)[keyof typeof ROLE_KEYS] = ROLE_KEYS.PROJECT_MANAGER,
+) {
+  setAuthenticated('test-token', sessionUserFor(role));
   vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
     const url = String(input);
     const body = bodyFor(url);
@@ -73,6 +76,9 @@ function bodyFor(url: string): unknown {
     // The mention badge is read from the viewer's own unread notifications — there is no mention
     // count on `ConversationSummary`, and the notification is the fact the server actually wrote.
     return { items: [], nextCursor: null, unreadCount: 0 };
+  }
+  if (url.includes('/directory')) {
+    return [];
   }
   if (url.includes('/messages')) {
     return { items: [], nextCursor: null };
@@ -104,5 +110,12 @@ describe('MessagesPage', () => {
   it('shows the unread conversation as unread in the list', async () => {
     renderAt('/messages');
     expect(await screen.findByLabelText('2 unread')).toBeInTheDocument();
+  });
+
+  it('hides New conversation for a developer, who only uses the team group', async () => {
+    renderAt('/messages', ROLE_KEYS.DEVELOPER);
+    expect(await screen.findByText('Release crew')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New conversation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Direct' })).not.toBeInTheDocument();
   });
 });

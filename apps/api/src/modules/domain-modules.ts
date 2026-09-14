@@ -25,6 +25,7 @@ import { PortalModule } from './portal/portal.module';
 import { ProblemsModule } from './problems/problems.module';
 import { ProductsModule } from './products/products.module';
 import { ProjectsModule } from './projects/projects.module';
+import { ProjectWorkPlansModule } from './project-work-plans/project-work-plans.module';
 import { QaModule } from './qa/qa.module';
 import { RcaModule } from './rca/rca.module';
 import { RecurringIssuesModule } from './recurring-issues/recurring-issues.module';
@@ -68,6 +69,7 @@ export const DomainModules = [
   SupportTierPolicyModule,
   ProductsModule,
   ProjectsModule,
+  ProjectWorkPlansModule,
   MilestonesModule,
   // Work
   TasksModule,

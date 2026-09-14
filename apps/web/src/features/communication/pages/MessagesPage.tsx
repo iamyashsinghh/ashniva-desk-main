@@ -1,18 +1,19 @@
 import { PERMISSIONS, type ConversationSummary } from '@ashniva/types';
-import { Button, EmptyState, PageHeader, Select } from '@ashniva/ui';
+import { Button, EmptyState, PageHeader } from '@ashniva/ui';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 
 import { QueryState } from '../../../shared/components/QueryState';
 import { formatDateTime } from '../../../shared/lib/format';
-import { usePermission } from '../../auth/session-context';
-import { useConversationsQuery, useOversightConversationsQuery } from '../api';
+import { usePermission, useCurrentUser } from '../../auth/session-context';
+import { useOversightConversationsQuery } from '../api';
 import { useMentionedConversationIds } from '../mention-badges';
 import { CallOversightCard } from '../components/CallOversightCard';
 import { ConversationListPanel } from '../components/ConversationListPanel';
 import { ConversationView } from '../components/ConversationPanel';
 import { NewConversation } from '../components/NewConversation';
 import { OversightCalls } from '../components/OversightCalls';
+import { isPeopleInboxKind, inboxAllowsPersonalChat } from '../conversation-filters';
 
 import '../communication.css';
 
@@ -30,25 +31,15 @@ import '../communication.css';
  */
 export function MessagesPage() {
   const canInspect = usePermission(PERMISSIONS.CONVERSATION_INSPECT);
+  const personalChat = inboxAllowsPersonalChat(useCurrentUser());
   const navigate = useNavigate();
   const { conversationId } = useParams<{ conversationId: string }>();
 
-  const [projectFilter, setProjectFilter] = useState('');
   const [oversight, setOversight] = useState(false);
   const [starting, setStarting] = useState(false);
   const [selected, setSelected] = useState<ConversationSummary | undefined>();
 
-  // Only for the project filter's options; the list panel fetches its own page. One extra request,
-  // not one per conversation.
-  const mine = useConversationsQuery({ limit: 100 });
   const mentioned = useMentionedConversationIds();
-  const projects = new Map<string, string>();
-  for (const row of mine.data ?? []) {
-    // A scope conversation has no project, so it contributes nothing to the project filter.
-    if (row.project) {
-      projects.set(row.project.id, `${row.project.code} · ${row.project.name}`);
-    }
-  }
 
   function open(conversation: ConversationSummary) {
     setSelected(conversation);
@@ -59,12 +50,18 @@ export function MessagesPage() {
     <div className="chat-page">
       <PageHeader
         title="Messages"
-        subtitle="Your project threads, direct messages and groups."
+        subtitle={
+          personalChat
+            ? 'Message the people on your projects and teams. Each project has a group named after it.'
+            : 'Write in your project team group. Private chats are for managers and team leads.'
+        }
         actions={
           <>
-            <Button variant="primary" onClick={() => setStarting(true)}>
-              New conversation
-            </Button>
+            {personalChat ? (
+              <Button variant="primary" onClick={() => setStarting(true)}>
+                New conversation
+              </Button>
+            ) : null}
             {canInspect ? (
               <Button
                 variant={oversight ? 'primary' : 'ghost'}
@@ -77,11 +74,13 @@ export function MessagesPage() {
         }
       />
 
-      <NewConversation
-        open={starting}
-        onClose={() => setStarting(false)}
-        onOpened={(id) => void navigate(`/messages/${id}`)}
-      />
+      {personalChat ? (
+        <NewConversation
+          open={starting}
+          onClose={() => setStarting(false)}
+          onOpened={(id) => void navigate(`/messages/${id}`)}
+        />
+      ) : null}
 
       {oversight ? (
         <p className="chat-oversight" role="status">
@@ -93,27 +92,11 @@ export function MessagesPage() {
       <div className="chat-workspace">
         <aside className="chat-workspace__aside" aria-label="Conversations">
           {oversight ? (
-            <OversightList
-              projectId={projectFilter || undefined}
-              enabled={canInspect}
-              onSelect={open}
-            />
+            <OversightList enabled={canInspect} onSelect={open} />
           ) : (
             <ConversationListPanel
-              {...(projectFilter ? { projectId: projectFilter } : {})}
               {...(conversationId ? { selectedId: conversationId } : {})}
               mentioned={mentioned}
-              header={
-                projects.size > 0 ? (
-                  <Select
-                    options={[...projects].map(([id, label]) => ({ value: id, label }))}
-                    placeholder="Every project"
-                    value={projectFilter}
-                    aria-label="Filter by project"
-                    onChange={(event) => setProjectFilter(event.target.value)}
-                  />
-                ) : undefined
-              }
               onSelect={open}
             />
           )}
@@ -123,7 +106,6 @@ export function MessagesPage() {
           <SecondColumn
             oversight={oversight}
             canInspect={canInspect}
-            {...(projectFilter ? { projectId: projectFilter } : {})}
             {...(conversationId ? { conversationId } : {})}
             {...(selected ? { selected } : {})}
             onLeave={() => {
@@ -137,7 +119,7 @@ export function MessagesPage() {
       {/* The call half of oversight. Threads and calls are two halves of one answer to "what
           happened here", and only the first of them had ever been rendered. */}
       {canInspect && oversight ? (
-        <OversightCalls projectId={projectFilter || undefined} enabled />
+        <OversightCalls enabled />
       ) : null}
     </div>
   );
@@ -148,33 +130,31 @@ export function MessagesPage() {
  * otherwise, and an invitation to start one when nothing is open.
  *
  * The kind comes from the summary the list already holds when there is one, and falls back to a
- * project thread's shape when somebody has arrived on a deep link. Nothing turns on the guess:
+ * direct message's shape when somebody has arrived on a deep link. Nothing turns on the guess:
  * `ConversationView` reads the conversation itself and renders the server's abilities.
  */
 function SecondColumn({
   oversight,
   canInspect,
-  projectId,
   conversationId,
   selected,
   onLeave,
 }: {
   oversight: boolean;
   canInspect: boolean;
-  projectId?: string;
   conversationId?: string;
   selected?: ConversationSummary;
   onLeave: () => void;
 }) {
   if (oversight) {
-    return <CallOversightCard projectId={projectId} enabled={canInspect} />;
+    return <CallOversightCard enabled={canInspect} />;
   }
   if (conversationId) {
     return (
       <ConversationView
         key={conversationId}
         conversationId={conversationId}
-        kind={selected?.id === conversationId ? selected.kind : 'PROJECT'}
+        kind={selected?.id === conversationId ? selected.kind : 'SCOPE_DIRECT'}
         onLeave={onLeave}
       />
     );
@@ -198,15 +178,14 @@ function SecondColumn({
  * than looking something up.
  */
 function OversightList({
-  projectId,
   enabled,
   onSelect,
 }: {
-  projectId?: string;
   enabled: boolean;
   onSelect: (conversation: ConversationSummary) => void;
 }) {
-  const list = useOversightConversationsQuery(projectId, enabled);
+  const list = useOversightConversationsQuery(undefined, enabled);
+  const rows = (list.data ?? []).filter((row) => isPeopleInboxKind(row.kind));
   return (
     <QueryState
       isLoading={list.isLoading}
@@ -214,17 +193,16 @@ function OversightList({
       error={list.error}
       onRetry={() => void list.refetch()}
     >
-      {(list.data ?? []).length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState title="No conversations" description="Nothing matches this filter." />
       ) : (
         <ul className="chat-list">
-          {(list.data ?? []).map((row) => (
+          {rows.map((row) => (
             <li key={row.id} className="chat-list__item">
               <span>
                 <button type="button" className="link-button" onClick={() => onSelect(row)}>
                   {row.title}
                 </button>
-                {row.project ? <span className="timeline__note"> · {row.project.code}</span> : null}
               </span>
               <span className="timeline__note">
                 {row.lastMessageAt ? formatDateTime(row.lastMessageAt) : ''}
