@@ -17,10 +17,18 @@ export function useReauth(): {
   request: () => Promise<string>;
   headers: (token: string) => Record<string, string>;
   modal: ReactNode;
+  /** True while the password prompt is open — hide any other dialog so only one <dialog> is modal. */
+  active: boolean;
 } {
   const [pending, setPending] = useState<Pending | null>(null);
   const request = useCallback(
-    () => new Promise<string>((resolve, reject) => setPending({ resolve, reject })),
+    () =>
+      new Promise<string>((resolve, reject) =>
+        setPending((current) => {
+          current?.reject(new Error('Password confirmation cancelled'));
+          return { resolve, reject };
+        }),
+      ),
     [],
   );
   const modal = (
@@ -36,5 +44,10 @@ export function useReauth(): {
       }}
     />
   );
-  return { request, headers: (token) => ({ [REAUTH_HEADER]: token }), modal };
+  return {
+    request,
+    headers: (token) => ({ [REAUTH_HEADER]: token }),
+    modal,
+    active: pending !== null,
+  };
 }

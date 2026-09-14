@@ -288,6 +288,49 @@ describe('Identity administration (e2e)', () => {
       expect(invited.body.status).toBe('INVITED');
       expect(invited.body.invitation.link).toContain('/invite/');
     });
+
+    it('lets an admin change email and password, then delete the person', async () => {
+      const email = `edit-${Date.now()}@example.com`;
+      const created = await api()
+        .post('/api/v1/users')
+        .set('Authorization', bearer(director))
+        .set(await reauthHeaders(app, director))
+        .send({
+          email,
+          name: 'Editable Person',
+          password: 'LongEnoughPassword1',
+          roleKey: ROLE_KEYS.DEVELOPER,
+        })
+        .expect(201);
+
+      const nextEmail = `renamed-${Date.now()}@example.com`;
+      const updated = await api()
+        .patch(`/api/v1/users/${created.body.id}`)
+        .set('Authorization', bearer(director))
+        .send({ email: nextEmail, password: 'ReplacementPassword9' })
+        .expect(200);
+      expect(updated.body).toMatchObject({ email: nextEmail, name: 'Editable Person' });
+
+      await api().post('/api/v1/auth/login').send({ email, password: 'LongEnoughPassword1' }).expect(401);
+      await loginAs(app, nextEmail, 'ReplacementPassword9');
+
+      await api()
+        .delete(`/api/v1/users/${created.body.id}`)
+        .set('Authorization', bearer(director))
+        .expect(204);
+      await api()
+        .get(`/api/v1/users/${created.body.id}`)
+        .set('Authorization', bearer(director))
+        .expect(404);
+      await api()
+        .post('/api/v1/auth/login')
+        .send({ email: nextEmail, password: 'ReplacementPassword9' })
+        .expect(401);
+      await api()
+        .delete(`/api/v1/users/${director.body.user.id}`)
+        .set('Authorization', bearer(director))
+        .expect(400);
+    });
   });
 
   describe('teams and roles', () => {

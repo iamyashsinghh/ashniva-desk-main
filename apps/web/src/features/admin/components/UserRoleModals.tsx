@@ -6,19 +6,21 @@ import { useSubmitHandler } from '../../../shared/hooks/use-submit-handler';
 import { formatDateTime } from '../../../shared/lib/format';
 import { useReauth } from '../../auth/reauth';
 import { useUserMutations } from '../../users/api';
-import { roleBody, useRoleChoices } from '../user-roles';
+import { roleBody, useRoleChoices, type RoleTargetOrganization } from '../user-roles';
 
 /** Changing someone's role is a permission change: it needs a fresh password check. */
 export function ChangeRoleModal({
   user,
   organizationId,
+  targetOrganization,
   onClose,
 }: {
   user: UserSummary;
   organizationId: string;
+  targetOrganization: RoleTargetOrganization;
   onClose: () => void;
 }) {
-  const choices = useRoleChoices(organizationId);
+  const choices = useRoleChoices(organizationId, targetOrganization);
   const { changeRole } = useUserMutations();
   const reauth = useReauth();
   const { error, wrap } = useSubmitHandler(onClose);
@@ -37,7 +39,7 @@ export function ChangeRoleModal({
   return (
     <>
       <Modal
-        open
+        open={!reauth.active}
         title={`Change role for ${user.name}`}
         onClose={onClose}
         footer={
@@ -45,7 +47,7 @@ export function ChangeRoleModal({
             <Button onClick={onClose}>Cancel</Button>
             <Button
               variant="primary"
-              loading={changeRole.isPending}
+              loading={changeRole.isPending || reauth.active}
               disabled={choice === current}
               disabledReason="Pick a different role"
               onClick={() => void wrap(save)()}

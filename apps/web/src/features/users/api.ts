@@ -92,6 +92,8 @@ export interface CreateUserInput {
 
 export interface UpdateUserInput {
   organizationId?: string;
+  email?: string;
+  password?: string;
   name?: string;
   title?: string | null;
   showDevelopmentSection?: boolean;
@@ -151,6 +153,11 @@ export function useUserMutations() {
     update: useMutation({
       mutationFn: ({ id, ...body }: UpdateUserInput & { id: string }) =>
         apiRequest<UserSummary>(`/users/${id}`, { method: 'PATCH', body }),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: ({ id, organizationId }: { id: string; organizationId?: string }) =>
+        apiRequest<void>(`/users/${id}`, { method: 'DELETE', query: { organizationId } }),
       onSuccess: invalidate,
     }),
     setStatus: useMutation({

@@ -149,11 +149,40 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    if (dto.name !== undefined || dto.phone !== undefined) {
-      await this.users.updateUser(userId, {
-        ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
-      });
+    if (dto.email !== undefined && dto.email !== before.user.email) {
+      const taken = await this.users.findByEmail(dto.email);
+      if (taken && taken.id !== userId) {
+        throw new ConflictException('Another person already uses this email');
+      }
+    }
+
+    const userPatch: {
+      name?: string;
+      email?: string;
+      phone?: string | null;
+      passwordHash?: string;
+      status?: (typeof USER_STATUS)[keyof typeof USER_STATUS];
+    } = {};
+    if (dto.name !== undefined) {
+      userPatch.name = dto.name;
+    }
+    if (dto.email !== undefined) {
+      userPatch.email = dto.email;
+    }
+    if (dto.phone !== undefined) {
+      userPatch.phone = dto.phone;
+    }
+    if (dto.password) {
+      userPatch.passwordHash = await this.passwords.hash(dto.password);
+      if (before.user.status === USER_STATUS.INVITED) {
+        userPatch.status = USER_STATUS.ACTIVE;
+      }
+    }
+    if (Object.keys(userPatch).length > 0) {
+      await this.users.updateUser(userId, userPatch);
+    }
+    if (dto.password) {
+      await this.refreshTokens.revokeAllForUser(userId);
     }
 
     const membershipData: {
@@ -178,10 +207,40 @@ export class UsersService {
       action: AUDIT_ACTION.USER_UPDATED,
       entityType: AUDIT_ENTITY_TYPE.USER,
       entityId: userId,
-      before: { roleKey: before.role.key, title: before.title, name: before.user.name },
-      after: { roleKey: after.roleKey, title: after.title, name: after.name },
+      before: {
+        roleKey: before.role.key,
+        title: before.title,
+        name: before.user.name,
+        email: before.user.email,
+      },
+      after: {
+        roleKey: after.roleKey,
+        title: after.title,
+        name: after.name,
+        email: after.email,
+        passwordChanged: Boolean(dto.password),
+      },
     });
     return after;
+  }
+
+  async remove(actor: AuthenticatedUser, userId: string, organizationId?: string): Promise<void> {
+    const target = this.targetOrganization(actor, organizationId);
+    const row = await this.users.findMembership(target, userId);
+    if (!row) {
+      throw new NotFoundException('User not found');
+    }
+    if (actor.userId === userId) {
+      throw new BadRequestException('You cannot delete yourself');
+    }
+    await this.refreshTokens.revokeAllForUser(userId);
+    await this.users.softDeleteUser(userId);
+    await this.auditLog.record({
+      action: AUDIT_ACTION.USER_DELETED,
+      entityType: AUDIT_ENTITY_TYPE.USER,
+      entityId: userId,
+      after: { email: row.user.email, organizationId: target },
+    });
   }
 
   /** Suspends the person everywhere and signs them out of every device. */

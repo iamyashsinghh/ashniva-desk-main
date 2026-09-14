@@ -15,7 +15,7 @@ export const brandingQueryKey = ['branding'] as const;
 export const adminBrandingQueryKey = ['branding', 'admin'] as const;
 
 export async function fetchBranding(): Promise<Branding> {
-  const response = await apiRequest<unknown>('/branding');
+  const response = await apiRequest<unknown>('/branding', { skipAuth: true });
   return brandingSchema.parse(response);
 }
 

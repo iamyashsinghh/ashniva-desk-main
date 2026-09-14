@@ -56,3 +56,16 @@
   font-size: var(--font-size-xs);
   color: var(--color-text-faint);
 }
+
+.login-card__demo {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted, var(--color-bg-subtle, #f4f4f5));
+  color: var(--color-text-muted, var(--color-text));
+  font-size: var(--font-size-xs);
+}
+
+.login-card__demo code {
+  font-size: 0.95em;
+}

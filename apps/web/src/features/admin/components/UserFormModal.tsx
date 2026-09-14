@@ -16,11 +16,17 @@ import { useSubmitHandler } from '../../../shared/hooks/use-submit-handler';
 import { useReauth } from '../../auth/reauth';
 import { useCurrentUser } from '../../auth/session-context';
 import { useUserMutations } from '../../users/api';
-import { roleBody, useRoleChoices } from '../user-roles';
+import {
+  defaultRoleChoice,
+  roleBody,
+  useRoleChoices,
+  type RoleTargetOrganization,
+} from '../user-roles';
 import { InvitationLinkModal } from './UserRoleModals';
 
 interface UserFormModalProps {
   organizationId: string;
+  targetOrganization: RoleTargetOrganization;
   user?: UserSummary;
   teams: TeamSummary[];
   onClose: () => void;
@@ -33,7 +39,13 @@ interface UserFormModalProps {
  * Adding a person asks for the password too: the call picks the new person's role and answers
  * with their invitation link, which is enough to sign in as them. Editing a profile does not.
  */
-export function UserFormModal({ organizationId, user, teams, onClose }: UserFormModalProps) {
+export function UserFormModal({
+  organizationId,
+  targetOrganization,
+  user,
+  teams,
+  onClose,
+}: UserFormModalProps) {
   const me = useCurrentUser();
   const { create, update } = useUserMutations();
   const reauth = useReauth();
@@ -42,20 +54,16 @@ export function UserFormModal({ organizationId, user, teams, onClose }: UserForm
     link: string;
     expiresAt: string;
   } | null>(null);
-  const { error, wrap } = useSubmitHandler(() => {
-    if (!invitation) {
-      onClose();
-    }
-  });
-  const choices = useRoleChoices(organizationId);
+  const { error, wrap } = useSubmitHandler();
+  const choices = useRoleChoices(organizationId, targetOrganization);
   const [form, setForm] = useState({
     email: user?.email ?? '',
     name: user?.name ?? '',
-    mode: 'invite' as 'invite' | 'password',
+    mode: 'password' as 'invite' | 'password',
     password: '',
     role: user
       ? `key:${user.roleKey}`
-      : `key:${isClientRole(me.roleKey) ? 'CLIENT_EMPLOYEE' : 'DEVELOPER'}`,
+      : defaultRoleChoice(isClientRole(me.roleKey), targetOrganization),
     title: user?.title ?? '',
     showDevelopmentSection: user?.showDevelopmentSection ?? true,
     teamIds: user?.teams.map((team) => team.id) ?? [],
@@ -63,7 +71,9 @@ export function UserFormModal({ organizationId, user, teams, onClose }: UserForm
   const valid =
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email) &&
     form.name.trim().length > 0 &&
-    (user || form.mode === 'invite' || form.password.length >= 10);
+    (user
+      ? form.password.length === 0 || form.password.length >= 10
+      : form.mode === 'invite' || form.password.length >= 10);
 
   const newPersonLabel = form.mode === 'invite' ? 'Invite' : 'Add person';
   const saveLabel = user ? 'Save' : newPersonLabel;
@@ -73,11 +83,14 @@ export function UserFormModal({ organizationId, user, teams, onClose }: UserForm
       await update.mutateAsync({
         id: user.id,
         organizationId,
+        email: form.email.trim(),
         name: form.name.trim(),
+        password: form.password.length >= 10 ? form.password : undefined,
         title: form.title.trim() || null,
         showDevelopmentSection: form.showDevelopmentSection,
         teamIds: form.teamIds,
       });
+      onClose();
       return;
     }
     const token = await reauth.request();
@@ -90,13 +103,13 @@ export function UserFormModal({ organizationId, user, teams, onClose }: UserForm
       organizationId,
       title: form.title.trim() || undefined,
       showDevelopmentSection: form.showDevelopmentSection,
-      teamIds: form.teamIds,
+      teamIds: form.teamIds.length > 0 ? form.teamIds : undefined,
     });
     if (created.invitation) {
       setInvitation({ name: created.name, ...created.invitation });
-    } else {
-      onClose();
+      return;
     }
+    onClose();
   };
 
   if (invitation) {
@@ -106,7 +119,7 @@ export function UserFormModal({ organizationId, user, teams, onClose }: UserForm
   return (
     <>
       <Modal
-        open
+        open={!reauth.active}
         title={user ? `Edit ${user.name}` : 'Add person'}
         onClose={onClose}
         footer={
@@ -114,11 +127,11 @@ export function UserFormModal({ organizationId, user, teams, onClose }: UserForm
             <Button onClick={onClose}>Cancel</Button>
             <Button
               variant="primary"
-              loading={create.isPending || update.isPending}
+              loading={create.isPending || update.isPending || reauth.active}
               disabled={!valid}
               disabledReason={
                 user
-                  ? 'Name is required'
+                  ? 'Email and name are required (a new password needs 10+ characters)'
                   : 'Email and name are required (a password needs 10+ characters)'
               }
               onClick={() => void wrap(save)()}
@@ -133,7 +146,6 @@ export function UserFormModal({ organizationId, user, teams, onClose }: UserForm
             <Input
               type="email"
               value={form.email}
-              disabled={Boolean(user)}
               onChange={(event) => setForm({ ...form, email: event.target.value })}
             />
           </FormField>
@@ -145,7 +157,11 @@ export function UserFormModal({ organizationId, user, teams, onClose }: UserForm
           </FormField>
           {!user ? (
             <>
-              <FormField label="How they sign in the first time" required>
+              <FormField
+                label="How they sign in the first time"
+                required
+                hint="Saving asks for your own password, then creates the person"
+              >
                 <Select
                   value={form.mode}
                   onChange={(event) =>
@@ -183,9 +199,26 @@ export function UserFormModal({ organizationId, user, teams, onClose }: UserForm
               </FormField>
             </>
           ) : (
-            <FormField label="Role" hint="Use “Change role” in the list; it needs a password check">
-              <Input value={user.roleName} disabled />
-            </FormField>
+            <>
+              <FormField
+                label="New password"
+                optional
+                hint="Leave blank to keep the current password. At least 10 characters if you change it."
+              >
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={form.password}
+                  onChange={(event) => setForm({ ...form, password: event.target.value })}
+                />
+              </FormField>
+              <FormField
+                label="Role"
+                hint="Use “Change role” in the list; it needs a password check"
+              >
+                <Input value={user.roleName} disabled />
+              </FormField>
+            </>
           )}
           <FormField label="Title">
             <Input

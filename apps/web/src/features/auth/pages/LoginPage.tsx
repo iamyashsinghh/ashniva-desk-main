@@ -2,6 +2,7 @@ import { Button, FormField, Input } from '@ashniva/ui';
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 
+import { webEnv } from '../../../config/env';
 import { useBranding } from '../../../app/providers/branding-context';
 import { brandingLogoSrc } from '../../branding/api';
 import { errorMessage } from '../../../shared/lib/api-client';
@@ -104,6 +105,11 @@ export function LoginPage() {
         <Button type="submit" variant="primary" loading={submitting}>
           Sign in
         </Button>
+        {webEnv.isDevelopment ? (
+          <p className="login-card__demo">
+            Local login: <code>director@example.com</code> / <code>ChangeMe123!</code>
+          </p>
+        ) : null}
         <p className="login-card__hint">
           <Link to="/forgot-password">Forgot your password?</Link>
         </p>

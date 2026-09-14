@@ -12,6 +12,7 @@ export const AUDIT_ACTION = {
   USER_CREATED: 'user.created',
   USER_UPDATED: 'user.updated',
   USER_DEACTIVATED: 'user.deactivated',
+  USER_DELETED: 'user.deleted',
   TEAM_CREATED: 'team.created',
   TEAM_UPDATED: 'team.updated',
   PROJECT_CREATED: 'project.created',

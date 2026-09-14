@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   EmptyState,
+  Modal,
   PageHeader,
   Select,
   Table,
@@ -41,13 +42,19 @@ export function UsersPage() {
     link: string;
     expiresAt: string;
   } | null>(null);
+  const [deleting, setDeleting] = useState<UserSummary | null>(null);
   const [error, setError] = useState<string | undefined>();
   // A client admin also reaches this screen; the company switcher is the provider's, so the
   // picker is only fetched for internal staff.
   const organizations = useOrganizationsQuery(isInternal);
+  const targetOrganization = {
+    isServiceProvider:
+      organizations.data?.find((organization) => organization.id === organizationId)
+        ?.isServiceProvider ?? me.organization.isServiceProvider,
+  };
   const users = useUsersQuery(organizationId);
   const teams = useTeamsQuery();
-  const { setStatus, invite } = useUserMutations();
+  const { setStatus, invite, remove } = useUserMutations();
   // A fresh invitation link is a fresh credential for that account, so the API asks for the
   // password again before it mints one.
   const reauth = useReauth();
@@ -106,7 +113,7 @@ export function UsersPage() {
     {
       key: 'actions',
       header: '',
-      width: '300px',
+      width: '360px',
       align: 'right',
       render: (user) => (
         <span
@@ -162,6 +169,15 @@ export function UsersPage() {
             }
           >
             {user.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            disabled={user.id === me.id}
+            disabledReason="You cannot delete yourself"
+            onClick={() => setDeleting(user)}
+          >
+            Delete
           </Button>
         </span>
       ),
@@ -219,6 +235,7 @@ export function UsersPage() {
       {editing ? (
         <UserFormModal
           organizationId={organizationId}
+          targetOrganization={targetOrganization}
           user={editing === 'new' ? undefined : editing}
           teams={teams.data ?? []}
           onClose={() => setEditing(null)}
@@ -228,6 +245,7 @@ export function UsersPage() {
         <ChangeRoleModal
           user={changingRole}
           organizationId={organizationId}
+          targetOrganization={targetOrganization}
           onClose={() => setChangingRole(null)}
         />
       ) : null}
@@ -237,6 +255,34 @@ export function UsersPage() {
           invitation={invitation}
           onClose={() => setInvitation(null)}
         />
+      ) : null}
+      {deleting ? (
+        <Modal
+          open
+          size="sm"
+          title={`Delete ${deleting.name}?`}
+          description="They will disappear from this company and will not be able to sign in. This cannot be undone."
+          onClose={() => setDeleting(null)}
+          footer={
+            <>
+              <Button onClick={() => setDeleting(null)}>Cancel</Button>
+              <Button
+                variant="danger"
+                loading={remove.isPending}
+                onClick={() =>
+                  void remove
+                    .mutateAsync({ id: deleting.id, organizationId })
+                    .then(() => setDeleting(null))
+                    .catch((cause) => setError(errorMessage(cause)))
+                }
+              >
+                Delete
+              </Button>
+            </>
+          }
+        >
+          <p className="muted">{deleting.email}</p>
+        </Modal>
       ) : null}
       {reauth.modal}
     </div>

@@ -16,6 +16,13 @@ import { REVIEWER_ROLES } from '../../tasks/components/people-roles';
 import { useOrganizationsQuery, useTeamsQuery } from '../../users/api';
 import { useProjectMutations, type ProjectInput } from '../api';
 
+/** Matches the API: 2–8 letters/digits, first character a letter. Hyphens are the task separator. */
+const PROJECT_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9]{1,7}$/;
+
+function sanitizeProjectCode(value: string): string {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+}
+
 interface ProjectFormModalProps {
   open: boolean;
   onClose: () => void;
@@ -46,13 +53,20 @@ export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFor
   });
   const set = <TKey extends keyof ProjectInput>(key: TKey, value: ProjectInput[TKey]) =>
     setForm((current) => ({ ...current, [key]: value }));
-  const valid = /^[A-Za-z][A-Za-z0-9]{1,7}$/.test(form.code) && form.name.trim().length >= 2;
+  const code = sanitizeProjectCode(form.code);
+  const codeValid = PROJECT_CODE_PATTERN.test(code);
+  const nameValid = form.name.trim().length >= 2;
+  const valid = codeValid && nameValid;
   const pending = create.isPending || update.isPending;
+  const codeError =
+    code.length > 0 && !codeValid
+      ? '2–8 letters or digits, starting with a letter. Hyphens are stripped — tasks become CODE-1.'
+      : undefined;
 
   const save = () => {
     const body: ProjectInput = {
       ...form,
-      code: form.code.toUpperCase(),
+      code,
       name: form.name.trim(),
       description: form.description?.trim() || undefined,
       clientOrganizationId: form.clientOrganizationId || null,
@@ -82,7 +96,11 @@ export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFor
             variant="primary"
             loading={pending}
             disabled={!valid}
-            disabledReason="Code (2–8 letters/digits) and name are required"
+            disabledReason={
+              !codeValid
+                ? 'Code must be 2–8 letters or digits (no hyphen), starting with a letter'
+                : 'Name must be at least 2 characters'
+            }
             onClick={() => void wrap(save)()}
           >
             {project ? 'Save' : 'Create project'}
@@ -91,10 +109,16 @@ export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFor
       }
     >
       <div className="form-grid">
-        <FormField label="Code" required hint="Prefix of task numbers, e.g. ACM-12">
+        <FormField
+          label="Code"
+          required
+          hint="Letters and digits only, 2–8 characters. If you type ACM, tasks become ACM-1, ACM-2."
+          error={codeError}
+        >
           <Input
-            value={form.code}
-            onChange={(event) => set('code', event.target.value.toUpperCase())}
+            value={code}
+            placeholder="ACM"
+            onChange={(event) => set('code', sanitizeProjectCode(event.target.value))}
             disabled={Boolean(project)}
             maxLength={8}
           />

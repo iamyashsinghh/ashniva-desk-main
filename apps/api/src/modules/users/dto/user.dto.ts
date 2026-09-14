@@ -113,6 +113,23 @@ export class UpdateUserDto {
   @IsUUID()
   organizationId?: string;
 
+  @ApiPropertyOptional({ example: 'renamed.person@example.com' })
+  @Transform(lowercaseTrim)
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(254)
+  email?: string;
+
+  @ApiPropertyOptional({
+    minLength: 10,
+    description: 'Optional new password. Omit to leave the current password unchanged.',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(200)
+  password?: string;
+
   @ApiPropertyOptional({ maxLength: 120 })
   @IsOptional()
   @IsString()

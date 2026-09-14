@@ -1,7 +1,12 @@
 import { apiErrorResponseSchema, type ApiErrorResponse } from '@ashniva/types';
 
 import { webEnv } from '../../config/env';
-import { getAccessToken, setAnonymous, setAuthenticated } from '../../features/auth/session-store';
+import {
+  getAccessToken,
+  getSessionState,
+  setAnonymous,
+  setAuthenticated,
+} from '../../features/auth/session-store';
 
 /** Thrown for any non-2xx response; carries the API's structured error body. */
 export class ApiError extends Error {
@@ -67,7 +72,11 @@ export function refreshSession(): Promise<boolean> {
           credentials: 'include',
         });
         if (!response.ok) {
-          setAnonymous();
+          // A login that finished while this refresh was in flight already has a session;
+          // do not wipe it because the anonymous page-load refresh returned 401.
+          if (getSessionState().status !== 'authenticated') {
+            setAnonymous();
+          }
           return false;
         }
         const session = (await response.json()) as {
@@ -77,7 +86,9 @@ export function refreshSession(): Promise<boolean> {
         setAuthenticated(session.accessToken, session.user);
         return true;
       } catch {
-        setAnonymous();
+        if (getSessionState().status !== 'authenticated') {
+          setAnonymous();
+        }
         return false;
       } finally {
         refreshInFlight = null;

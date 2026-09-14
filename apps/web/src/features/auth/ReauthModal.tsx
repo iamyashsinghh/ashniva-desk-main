@@ -51,7 +51,7 @@ export function ReauthModal({ open, onCancel, onConfirmed }: ReauthModalProps) {
       }
     >
       <p className="actions-card__hint" style={{ marginBottom: 10 }}>
-        This change is sensitive, so please re-enter your password to continue.
+        Enter <strong>your</strong> sign-in password to confirm — not the new person’s password.
       </p>
       <FormField label="Password" required>
         <Input

@@ -103,9 +103,28 @@ export class UsersRepository {
 
   updateUser(
     id: string,
-    data: Partial<Pick<User, 'name' | 'phone' | 'status' | 'passwordHash'>>,
+    data: Partial<Pick<User, 'name' | 'email' | 'phone' | 'status' | 'passwordHash' | 'deletedAt'>>,
   ): Promise<User> {
     return this.prisma.user.update({ where: { id }, data });
+  }
+
+  async softDeleteUser(id: string): Promise<void> {
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.organizationMembership.updateMany({
+        where: { userId: id, deletedAt: null },
+        data: { deletedAt: now },
+      }),
+      this.prisma.user.update({
+        where: { id },
+        data: {
+          deletedAt: now,
+          email: `deleted.${id}@deleted.invalid`,
+          passwordHash: null,
+          status: 'SUSPENDED',
+        },
+      }),
+    ]);
   }
 
   upsertMembership(input: UpsertMembershipInput): Promise<MembershipRow> {

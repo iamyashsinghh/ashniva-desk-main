@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -138,7 +139,9 @@ export class UsersController {
   @RequirePermissions(PERMISSIONS.USER_MANAGE)
   // Deliberately not the role: a role change is POST /users/:id/role, which asks for the password
   // again and is audited. Saying "role" here invites someone to make this route honour roleId too.
-  @ApiOperation({ summary: 'Edit profile, title, teams or the Development-section toggle' })
+  @ApiOperation({
+    summary: 'Edit email, password, profile, title, teams or the Development-section toggle',
+  })
   update(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -167,5 +170,17 @@ export class UsersController {
     @Query() query: ListUsersQueryDto,
   ): Promise<UserSummary> {
     return this.users.activate(actor, id, query.organizationId);
+  }
+
+  @Delete(':id')
+  @RequirePermissions(PERMISSIONS.USER_MANAGE)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Permanently remove a person from the organization (soft delete)' })
+  remove(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ListUsersQueryDto,
+  ): Promise<void> {
+    return this.users.remove(actor, id, query.organizationId);
   }
 }
