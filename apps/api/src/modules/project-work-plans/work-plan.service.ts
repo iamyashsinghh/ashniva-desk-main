@@ -83,15 +83,14 @@ export class WorkPlanService {
     dto: SaveWorkPlanDto,
   ): Promise<ProjectWorkPlan> {
     const { flags, project } = await this.access(actor, projectId);
-    if (!flags.canManage) {
-      throw new ForbiddenException('Only a manager can edit this plan');
+    if (!flags.canAssign) {
+      throw new ForbiddenException(
+        'Only an admin, project manager or team lead can edit this plan',
+      );
     }
     this.assertPhases(dto.phases);
     const existing = await this.plans.findByProject(actor.organizationId, projectId);
-    if (existing && this.hasStartedWork(existing)) {
-      throw new ConflictException('Started points cannot be rewritten. Finish them first.');
-    }
-    const row = await this.plans.replace(
+    const row = await this.plans.savePhases(
       actor.organizationId,
       projectId,
       actor.userId,
@@ -99,6 +98,7 @@ export class WorkPlanService {
       existing?.sourceFileId ?? null,
       dto.phases,
     );
+    await this.planTasks.sync(actor, project, row);
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_UPDATED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,
@@ -116,12 +116,16 @@ export class WorkPlanService {
     dto: ParseWorkPlanDto,
   ): Promise<ProjectWorkPlan> {
     const { flags, project } = await this.access(actor, projectId);
-    if (!flags.canManage) {
-      throw new ForbiddenException('Only a manager can upload a brief');
+    if (!flags.canAssign) {
+      throw new ForbiddenException(
+        'Only an admin, project manager or team lead can upload a brief',
+      );
     }
     const existing = await this.plans.findByProject(actor.organizationId, projectId);
     if (existing && this.hasStartedWork(existing)) {
-      throw new ConflictException('Started points cannot be rewritten. Finish them first.');
+      throw new ConflictException(
+        'Started points cannot be replaced by a PDF. Add or edit phases by hand instead.',
+      );
     }
     const file = await this.files.findById(actor.organizationId, dto.fileId);
     if (!file || file.projectId !== projectId) {
@@ -133,7 +137,7 @@ export class WorkPlanService {
       throw new BadRequestException('Upload a PDF');
     }
     const phases = this.draftToDto(await this.phasesFromPdf(pdf));
-    const row = await this.plans.replace(
+    const row = await this.plans.savePhases(
       actor.organizationId,
       projectId,
       actor.userId,
@@ -141,6 +145,7 @@ export class WorkPlanService {
       file.id,
       phases,
     );
+    await this.planTasks.sync(actor, project, row);
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_PARSED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,

@@ -31,8 +31,11 @@ export class WorkPlanController {
   }
 
   @Put()
-  @RequirePermissions(PERMISSIONS.PROJECT_MANAGE)
-  @ApiOperation({ summary: 'Replace the phase plan by hand' })
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({
+    summary:
+      'Save the phase plan by hand. Super admin, project manager and team lead can edit after work has started.',
+  })
   save(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('projectId', ParseUUIDPipe) projectId: string,
@@ -56,7 +59,7 @@ export class WorkPlanController {
   }
 
   @Post('parse')
-  @RequirePermissions(PERMISSIONS.PROJECT_MANAGE)
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
   @ApiOperation({ summary: 'Read an uploaded PDF and divide it into phases' })
   parse(
     @CurrentUser() actor: AuthenticatedUser,

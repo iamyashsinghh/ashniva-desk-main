@@ -43,8 +43,10 @@ export function ProjectWorkPlanModal({
   const [uploading, setUploading] = useState(false);
 
   const data = plan.data;
-  const locked = hasStartedWork(data);
-  const showEditor = Boolean(data?.canManage && editing && draft && !locked);
+  const canEdit = Boolean(data?.canAssign);
+  const pdfLocked = hasStartedWork(data);
+  const showEditor = Boolean(canEdit && editing && draft);
+  const startedIds = startedPointIds(data);
   const assignmentKey = data?.canAssign ? assignmentFingerprint(data) : '';
   const liveAssign = assignDraft ?? (data?.canAssign ? assignmentDraftFrom(data) : null);
   const assignDirty = Boolean(
@@ -60,15 +62,15 @@ export function ProjectWorkPlanModal({
   }, [assignmentKey]);
 
   useEffect(() => {
-    if (!data?.canManage || locked || draft !== null) {
+    if (!canEdit || draft !== null) {
       return;
     }
-    const next = data.phases.length === 0 ? emptyDraft() : toDraft(data.phases);
+    const next = data && data.phases.length === 0 ? emptyDraft() : toDraft(data?.phases ?? []);
     setDraft(next);
-    if (data.phases.length === 0) {
+    if (data && data.phases.length === 0) {
       setEditing(true);
     }
-  }, [data, draft, locked]);
+  }, [canEdit, data, draft]);
 
   async function onUpload(file: File) {
     setError(undefined);
@@ -170,14 +172,14 @@ export function ProjectWorkPlanModal({
       {plan.isError ? <Alert tone="danger">{errorMessage(plan.error)}</Alert> : null}
       {error ? <Alert tone="danger">{error}</Alert> : null}
 
-      {data?.canManage ? (
+      {canEdit ? (
         <div className="work-plan__upload">
           <input
             ref={fileInput}
             className="sr-only"
             type="file"
             accept="application/pdf,.pdf"
-            disabled={uploading || parse.isPending || locked}
+            disabled={uploading || parse.isPending || pdfLocked}
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) {
@@ -189,16 +191,16 @@ export function ProjectWorkPlanModal({
           <div className="work-plan__upload-copy">
             <strong>Upload PDF</strong>
             <span>
-              {locked
-                ? 'This plan already has started work, so the brief cannot be replaced.'
+              {pdfLocked
+                ? 'Someone has already started, so a PDF cannot replace this plan. Edit or add phases by hand instead.'
                 : 'AI reads the brief and divides it into phases. You can still edit every heading, title and point.'}
             </span>
           </div>
           <Button
             size="sm"
             loading={uploading || parse.isPending}
-            disabled={locked}
-            disabledReason={locked ? 'Started points cannot be rewritten.' : undefined}
+            disabled={pdfLocked}
+            disabledReason={pdfLocked ? 'Started points cannot be replaced by a PDF.' : undefined}
             onClick={() => fileInput.current?.click()}
           >
             Choose PDF
@@ -220,7 +222,7 @@ export function ProjectWorkPlanModal({
       {plan.isLoading || !data ? (
         <p className="muted">Loading the plan…</p>
       ) : showEditor && draft ? (
-        <Editor draft={draft} onChange={setDraft} />
+        <Editor draft={draft} startedIds={startedIds} onChange={setDraft} />
       ) : (
         <Reader
           plan={data}
@@ -236,7 +238,7 @@ export function ProjectWorkPlanModal({
           assignment={liveAssign}
           onAssignmentChange={setAssignDraft}
           onEdit={
-            data.canManage && !locked
+            canEdit
               ? () => {
                   setDraft(data.phases.length === 0 ? emptyDraft() : toDraft(data.phases));
                   setEditing(true);
@@ -279,9 +281,11 @@ export function ProjectWorkPlanModal({
 
 function Editor({
   draft,
+  startedIds,
   onChange,
 }: {
   draft: WorkPlanPhaseInput[];
+  startedIds: Set<string>;
   onChange: (next: WorkPlanPhaseInput[]) => void;
 }) {
   function setPhase(index: number, patch: Partial<WorkPlanPhaseInput>) {
@@ -290,154 +294,176 @@ function Editor({
 
   return (
     <div className="work-plan">
-      {draft.map((phase, phaseIndex) => (
-        <section key={phase.id ?? `phase-${phaseIndex}`} className="work-plan__phase">
-          <div className="work-plan__phase-head">
-            <FormField label="Phase heading">
-              <Input
-                value={phase.heading}
-                onChange={(event) => setPhase(phaseIndex, { heading: event.target.value })}
-              />
-            </FormField>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onChange(draft.filter((_, i) => i !== phaseIndex))}
-            >
-              Remove phase
-            </Button>
-          </div>
-          {phase.titles.map((title, titleIndex) => (
-            <div key={title.id ?? `title-${titleIndex}`} className="work-plan__title">
-              <div className="work-plan__title-head">
-                <FormField label="Title">
-                  <Input
-                    value={title.title}
-                    onChange={(event) => {
-                      const titles = phase.titles.map((row, i) =>
-                        i === titleIndex ? { ...row, title: event.target.value } : row,
-                      );
-                      setPhase(phaseIndex, { titles });
-                    }}
-                  />
-                </FormField>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() =>
-                    setPhase(phaseIndex, {
-                      titles: phase.titles.filter((_, i) => i !== titleIndex),
-                    })
-                  }
-                >
-                  Remove title
-                </Button>
-              </div>
-              <div className="work-plan__points">
-                <div className="work-plan__points-head">
-                  <span>Point</span>
-                  <span>Min</span>
-                  <span className="sr-only">Actions</span>
-                </div>
-                {title.points.map((point, pointIndex) => (
-                  <div key={point.id ?? `point-${pointIndex}`} className="work-plan__point-row">
-                    <Textarea
-                      rows={2}
-                      aria-label={`Point ${pointIndex + 1}`}
-                      placeholder="What this step covers"
-                      value={point.body}
-                      onChange={(event) => {
-                        const points = title.points.map((row, i) =>
-                          i === pointIndex ? { ...row, body: event.target.value } : row,
-                        );
-                        const titles = phase.titles.map((row, i) =>
-                          i === titleIndex ? { ...row, points } : row,
-                        );
-                        setPhase(phaseIndex, { titles });
-                      }}
-                    />
-                    <Input
-                      className="work-plan__minutes"
-                      type="number"
-                      min={1}
-                      aria-label={`Minutes for point ${pointIndex + 1}`}
-                      value={point.estimateMinutes}
-                      onChange={(event) => {
-                        const points = title.points.map((row, i) =>
-                          i === pointIndex
-                            ? {
-                                ...row,
-                                estimateMinutes: Math.max(
-                                  1,
-                                  Math.floor(Number(event.target.value)) || 1,
-                                ),
-                              }
-                            : row,
-                        );
-                        const titles = phase.titles.map((row, i) =>
-                          i === titleIndex ? { ...row, points } : row,
-                        );
-                        setPhase(phaseIndex, { titles });
-                      }}
-                    />
+      {draft.map((phase, phaseIndex) => {
+        const phaseStarted = draftHasStarted(phase, startedIds);
+        return (
+          <section key={phase.id ?? `phase-${phaseIndex}`} className="work-plan__phase">
+            <div className="work-plan__phase-head">
+              <FormField label="Phase heading">
+                <Input
+                  value={phase.heading}
+                  onChange={(event) => setPhase(phaseIndex, { heading: event.target.value })}
+                />
+              </FormField>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={phaseStarted}
+                disabledReason={
+                  phaseStarted ? 'This phase has started work, so it stays in the plan.' : undefined
+                }
+                onClick={() => onChange(draft.filter((_, i) => i !== phaseIndex))}
+              >
+                Remove phase
+              </Button>
+            </div>
+            {phase.titles.map((title, titleIndex) => {
+              const titleStarted = titleHasStarted(title, startedIds);
+              return (
+                <div key={title.id ?? `title-${titleIndex}`} className="work-plan__title">
+                  <div className="work-plan__title-head">
+                    <FormField label="Title">
+                      <Input
+                        value={title.title}
+                        onChange={(event) => {
+                          const titles = phase.titles.map((row, i) =>
+                            i === titleIndex ? { ...row, title: event.target.value } : row,
+                          );
+                          setPhase(phaseIndex, { titles });
+                        }}
+                      />
+                    </FormField>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => {
-                        const titles = phase.titles.map((row, i) =>
-                          i === titleIndex
-                            ? { ...row, points: row.points.filter((_, p) => p !== pointIndex) }
-                            : row,
-                        );
-                        setPhase(phaseIndex, { titles });
-                      }}
+                      disabled={titleStarted}
+                      disabledReason={
+                        titleStarted
+                          ? 'This topic has started work, so it stays in the plan.'
+                          : undefined
+                      }
+                      onClick={() =>
+                        setPhase(phaseIndex, {
+                          titles: phase.titles.filter((_, i) => i !== titleIndex),
+                        })
+                      }
                     >
-                      Remove
+                      Remove title
                     </Button>
                   </div>
-                ))}
-              </div>
-              <Button
-                className="work-plan__add"
-                size="sm"
-                onClick={() => {
-                  const titles = phase.titles.map((row, i) =>
-                    i === titleIndex
-                      ? {
-                          ...row,
-                          points: [
-                            ...row.points,
-                            { body: '', estimateMinutes: WORK_PLAN_DEFAULT_ESTIMATE_MINUTES },
-                          ],
-                        }
-                      : row,
-                  );
-                  setPhase(phaseIndex, { titles });
-                }}
-              >
-                Add point
-              </Button>
-            </div>
-          ))}
-          <Button
-            className="work-plan__add"
-            size="sm"
-            onClick={() =>
-              setPhase(phaseIndex, {
-                titles: [
-                  ...phase.titles,
-                  {
-                    title: `Title ${phase.titles.length + 1}`,
-                    points: [{ body: '', estimateMinutes: WORK_PLAN_DEFAULT_ESTIMATE_MINUTES }],
-                  },
-                ],
-              })
-            }
-          >
-            Add title
-          </Button>
-        </section>
-      ))}
+                  <div className="work-plan__points">
+                    <div className="work-plan__points-head">
+                      <span>Point</span>
+                      <span>Min</span>
+                      <span className="sr-only">Actions</span>
+                    </div>
+                    {title.points.map((point, pointIndex) => (
+                      <div key={point.id ?? `point-${pointIndex}`} className="work-plan__point-row">
+                        <Textarea
+                          rows={2}
+                          aria-label={`Point ${pointIndex + 1}`}
+                          placeholder="What this step covers"
+                          value={point.body}
+                          onChange={(event) => {
+                            const points = title.points.map((row, i) =>
+                              i === pointIndex ? { ...row, body: event.target.value } : row,
+                            );
+                            const titles = phase.titles.map((row, i) =>
+                              i === titleIndex ? { ...row, points } : row,
+                            );
+                            setPhase(phaseIndex, { titles });
+                          }}
+                        />
+                        <Input
+                          className="work-plan__minutes"
+                          type="number"
+                          min={1}
+                          aria-label={`Minutes for point ${pointIndex + 1}`}
+                          value={point.estimateMinutes}
+                          onChange={(event) => {
+                            const points = title.points.map((row, i) =>
+                              i === pointIndex
+                                ? {
+                                    ...row,
+                                    estimateMinutes: Math.max(
+                                      1,
+                                      Math.floor(Number(event.target.value)) || 1,
+                                    ),
+                                  }
+                                : row,
+                            );
+                            const titles = phase.titles.map((row, i) =>
+                              i === titleIndex ? { ...row, points } : row,
+                            );
+                            setPhase(phaseIndex, { titles });
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={Boolean(point.id && startedIds.has(point.id))}
+                          disabledReason={
+                            point.id && startedIds.has(point.id)
+                              ? 'This point has already started, so it stays in the plan.'
+                              : undefined
+                          }
+                          onClick={() => {
+                            const titles = phase.titles.map((row, i) =>
+                              i === titleIndex
+                                ? { ...row, points: row.points.filter((_, p) => p !== pointIndex) }
+                                : row,
+                            );
+                            setPhase(phaseIndex, { titles });
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    className="work-plan__add"
+                    size="sm"
+                    onClick={() => {
+                      const titles = phase.titles.map((row, i) =>
+                        i === titleIndex
+                          ? {
+                              ...row,
+                              points: [
+                                ...row.points,
+                                { body: '', estimateMinutes: WORK_PLAN_DEFAULT_ESTIMATE_MINUTES },
+                              ],
+                            }
+                          : row,
+                      );
+                      setPhase(phaseIndex, { titles });
+                    }}
+                  >
+                    Add point
+                  </Button>
+                </div>
+              );
+            })}
+            <Button
+              className="work-plan__add"
+              size="sm"
+              onClick={() =>
+                setPhase(phaseIndex, {
+                  titles: [
+                    ...phase.titles,
+                    {
+                      title: `Title ${phase.titles.length + 1}`,
+                      points: [{ body: '', estimateMinutes: WORK_PLAN_DEFAULT_ESTIMATE_MINUTES }],
+                    },
+                  ],
+                })
+              }
+            >
+              Add title
+            </Button>
+          </section>
+        );
+      })}
       <Button
         className="work-plan__add"
         onClick={() =>
@@ -490,7 +516,7 @@ function Reader({
     return (
       <div className="work-plan">
         <p className="work-plan__hint">
-          {plan.canManage
+          {plan.canAssign
             ? 'Upload a PDF or add a phase by hand.'
             : plan.source
               ? 'Nothing is assigned to you yet.'
@@ -514,7 +540,7 @@ function Reader({
       <div className="work-plan__toolbar">
         <p className="work-plan__hint">
           {plan.canAssign
-            ? 'Assign the whole project to one developer, or split phases and topics across the team. Press Save in the header when you are done. Developer starts the timer, then sends the point to the tester. The clock keeps running until Complete.'
+            ? 'Assign the whole project to one developer, or split phases and topics across the team. Press Save in the header when you are done. You can still edit or add phases after a developer has started. Developer starts the timer, then sends the point to the tester. The clock keeps running until Complete.'
             : 'Developer starts the timer, then sends the point to the tester. The clock keeps running until Complete.'}
         </p>
         {onEdit ? <Button onClick={onEdit}>Edit plan</Button> : null}
@@ -845,11 +871,32 @@ function formatClock(total: number): string {
 }
 
 function hasStartedWork(plan: ProjectWorkPlan | undefined): boolean {
-  return (
-    plan?.phases.some((phase) =>
-      phase.titles.some((title) => title.points.some((point) => point.startedAt)),
-    ) ?? false
-  );
+  return startedPointIds(plan).size > 0;
+}
+
+function startedPointIds(plan: ProjectWorkPlan | undefined): Set<string> {
+  const ids = new Set<string>();
+  for (const phase of plan?.phases ?? []) {
+    for (const title of phase.titles) {
+      for (const point of title.points) {
+        if (point.startedAt) {
+          ids.add(point.id);
+        }
+      }
+    }
+  }
+  return ids;
+}
+
+function titleHasStarted(
+  title: WorkPlanPhaseInput['titles'][number],
+  startedIds: Set<string>,
+): boolean {
+  return title.points.some((point) => Boolean(point.id && startedIds.has(point.id)));
+}
+
+function draftHasStarted(phase: WorkPlanPhaseInput, startedIds: Set<string>): boolean {
+  return phase.titles.some((title) => titleHasStarted(title, startedIds));
 }
 
 function emptyDraft(): WorkPlanPhaseInput[] {

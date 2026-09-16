@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import type { ProjectWorkPlanSource } from '../../generated/prisma/client';
 
 import { PrismaService } from '../../database/prisma.service';
@@ -41,7 +41,11 @@ export class WorkPlanRepository {
     });
   }
 
-  async replace(
+  /**
+   * Writes the phase tree without wiping timers, notes, assignees or linked tasks.
+   * Existing rows keep their ids; new rows are created; omitted unfinished rows are deleted.
+   */
+  async savePhases(
     organizationId: string,
     projectId: string,
     createdById: string,
@@ -49,43 +53,185 @@ export class WorkPlanRepository {
     sourceFileId: string | null,
     phases: WorkPlanPhaseDto[],
   ): Promise<WorkPlanRow> {
-    return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.projectWorkPlan.findFirst({
-        where: { organizationId, projectId },
-        select: { id: true },
-      });
-      if (existing) {
-        await tx.projectWorkPlan.delete({ where: { id: existing.id } });
-      }
-      return tx.projectWorkPlan.create({
-        data: {
-          organizationId,
-          projectId,
-          createdById,
-          source,
-          sourceFileId,
-          phases: {
-            create: phases.map((phase, phaseIndex) => ({
-              heading: phase.heading.trim(),
-              sortOrder: phaseIndex,
-              titles: {
-                create: phase.titles.map((title, titleIndex) => ({
-                  title: title.title.trim(),
-                  sortOrder: titleIndex,
-                  points: {
-                    create: title.points.map((point, pointIndex) => ({
-                      body: point.body.trim(),
-                      estimateMinutes: point.estimateMinutes,
-                      sortOrder: pointIndex,
+    return this.prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.projectWorkPlan.findFirst({
+          where: { organizationId, projectId },
+          include: {
+            phases: {
+              include: {
+                titles: {
+                  include: {
+                    points: { select: { id: true, startedAt: true } },
+                  },
+                },
+              },
+            },
+          },
+        });
+        if (!existing) {
+          return tx.projectWorkPlan.create({
+            data: {
+              organizationId,
+              projectId,
+              createdById,
+              source,
+              sourceFileId,
+              phases: {
+                create: phases.map((phase, phaseIndex) => ({
+                  heading: phase.heading.trim(),
+                  sortOrder: phaseIndex,
+                  titles: {
+                    create: phase.titles.map((title, titleIndex) => ({
+                      title: title.title.trim(),
+                      sortOrder: titleIndex,
+                      points: {
+                        create: title.points.map((point, pointIndex) => ({
+                          body: point.body.trim(),
+                          estimateMinutes: point.estimateMinutes,
+                          sortOrder: pointIndex,
+                        })),
+                      },
                     })),
                   },
                 })),
               },
-            })),
-          },
-        },
-        include: workPlanInclude,
-      });
-    });
+            },
+            include: workPlanInclude,
+          });
+        }
+
+        await tx.projectWorkPlan.update({
+          where: { id: existing.id },
+          data: { source, sourceFileId },
+        });
+
+        const phaseById = new Map(existing.phases.map((phase) => [phase.id, phase]));
+        const titleById = new Map(
+          existing.phases.flatMap((phase) =>
+            phase.titles.map((title) => [title.id, title] as const),
+          ),
+        );
+        const pointById = new Map(
+          existing.phases.flatMap((phase) =>
+            phase.titles.flatMap((title) =>
+              title.points.map((point) => [point.id, point] as const),
+            ),
+          ),
+        );
+        const keptPhaseIds = new Set<string>();
+        const keptTitleIds = new Set<string>();
+        const keptPointIds = new Set<string>();
+
+        for (const [phaseIndex, phase] of phases.entries()) {
+          const knownPhase = phase.id ? phaseById.get(phase.id) : undefined;
+          const phaseId = knownPhase
+            ? knownPhase.id
+            : (
+                await tx.projectWorkPlanPhase.create({
+                  data: {
+                    planId: existing.id,
+                    heading: phase.heading.trim(),
+                    sortOrder: phaseIndex,
+                  },
+                })
+              ).id;
+          if (knownPhase) {
+            keptPhaseIds.add(phaseId);
+            await tx.projectWorkPlanPhase.update({
+              where: { id: phaseId },
+              data: { heading: phase.heading.trim(), sortOrder: phaseIndex },
+            });
+          }
+
+          for (const [titleIndex, title] of phase.titles.entries()) {
+            const knownTitle = title.id ? titleById.get(title.id) : undefined;
+            const titleId = knownTitle
+              ? knownTitle.id
+              : (
+                  await tx.projectWorkPlanTitle.create({
+                    data: {
+                      phaseId,
+                      title: title.title.trim(),
+                      sortOrder: titleIndex,
+                    },
+                  })
+                ).id;
+            if (knownTitle) {
+              keptTitleIds.add(titleId);
+              await tx.projectWorkPlanTitle.update({
+                where: { id: titleId },
+                data: { title: title.title.trim(), sortOrder: titleIndex, phaseId },
+              });
+            }
+
+            for (const [pointIndex, point] of title.points.entries()) {
+              const knownPoint = point.id ? pointById.get(point.id) : undefined;
+              if (knownPoint) {
+                keptPointIds.add(knownPoint.id);
+                await tx.projectWorkPlanPoint.update({
+                  where: { id: knownPoint.id },
+                  data: {
+                    body: point.body.trim(),
+                    estimateMinutes: point.estimateMinutes,
+                    sortOrder: pointIndex,
+                    titleId,
+                  },
+                });
+                continue;
+              }
+              await tx.projectWorkPlanPoint.create({
+                data: {
+                  titleId,
+                  body: point.body.trim(),
+                  estimateMinutes: point.estimateMinutes,
+                  sortOrder: pointIndex,
+                },
+              });
+            }
+          }
+        }
+
+        for (const point of pointById.values()) {
+          if (keptPointIds.has(point.id)) {
+            continue;
+          }
+          if (point.startedAt) {
+            throw new ConflictException(
+              'Started points cannot be removed. Keep them in the plan, or finish them first.',
+            );
+          }
+          await tx.projectWorkPlanPoint.delete({ where: { id: point.id } });
+        }
+        for (const title of titleById.values()) {
+          if (keptTitleIds.has(title.id)) {
+            continue;
+          }
+          if (title.points.some((point) => point.startedAt && !keptPointIds.has(point.id))) {
+            throw new ConflictException('A topic with started work cannot be removed.');
+          }
+          await tx.projectWorkPlanTitle.delete({ where: { id: title.id } });
+        }
+        for (const phase of phaseById.values()) {
+          if (keptPhaseIds.has(phase.id)) {
+            continue;
+          }
+          if (
+            phase.titles.some((title) =>
+              title.points.some((point) => point.startedAt && !keptPointIds.has(point.id)),
+            )
+          ) {
+            throw new ConflictException('A phase with started work cannot be removed.');
+          }
+          await tx.projectWorkPlanPhase.delete({ where: { id: phase.id } });
+        }
+
+        return tx.projectWorkPlan.findFirstOrThrow({
+          where: { id: existing.id },
+          include: workPlanInclude,
+        });
+      },
+      { timeout: 20_000 },
+    );
   }
 }
