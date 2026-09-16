@@ -171,3 +171,23 @@ export class SaveWorkPlanAssignmentsDto {
   @Type(() => WorkPlanAssignmentTargetDto)
   titles!: WorkPlanAssignmentTargetDto[];
 }
+
+export class AddWorkPlanWorkDto {
+  @ApiProperty({ maxLength: 2000 })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(2000)
+  prompt!: string;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  assignedToId?: string | null;
+
+  @ApiPropertyOptional({ enum: PRIORITIES, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsIn(PRIORITIES)
+  priority?: Priority | null;
+}

@@ -1,4 +1,5 @@
 import type {
+  AddWorkPlanWorkInput,
   AssignWorkPlanInput,
   ParseWorkPlanInput,
   ProjectWorkPlan,
@@ -117,6 +118,14 @@ export function useWorkPlanMutations(projectId: string) {
       mutationFn: (body: SaveWorkPlanAssignmentsInput) =>
         apiRequest<ProjectWorkPlan>(`/projects/${projectId}/work-plan/assignments`, {
           method: 'PUT',
+          body,
+        }),
+      onSuccess: invalidate,
+    }),
+    addWork: useMutation({
+      mutationFn: (body: AddWorkPlanWorkInput) =>
+        apiRequest<ProjectWorkPlan>(`/projects/${projectId}/work-plan/add-work`, {
+          method: 'POST',
           body,
         }),
       onSuccess: invalidate,

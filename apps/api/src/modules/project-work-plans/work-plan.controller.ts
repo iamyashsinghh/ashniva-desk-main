@@ -9,6 +9,7 @@ import {
   SaveWorkPlanDto,
   AssignWorkPlanDto,
   SaveWorkPlanAssignmentsDto,
+  AddWorkPlanWorkDto,
   WorkPlanNoteDto,
 } from './dto/work-plan.dto';
 import { WorkPlanService } from './work-plan.service';
@@ -67,6 +68,20 @@ export class WorkPlanController {
     @Body() dto: ParseWorkPlanDto,
   ): Promise<ProjectWorkPlan> {
     return this.plans.parse(actor, projectId, dto);
+  }
+
+  @Post('add-work')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({
+    summary:
+      'Add work from a short request. AI reads the summary, picks the phase, and fills related steps and times. Super admin, project manager and team lead.',
+  })
+  addWork(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: AddWorkPlanWorkDto,
+  ): Promise<ProjectWorkPlan> {
+    return this.plans.addWork(actor, projectId, dto);
   }
 
   @Post('assign')

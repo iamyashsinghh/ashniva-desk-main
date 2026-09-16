@@ -100,6 +100,13 @@ export interface WorkPlanDraftPhase {
   titles: WorkPlanDraftTitle[];
 }
 
+/** Extra work AI places onto an existing summary. Null phaseId means open a new phase. */
+export interface WorkPlanDraftAddition {
+  phaseId: string | null;
+  heading: string;
+  titles: WorkPlanDraftTitle[];
+}
+
 export function dueAtFromStart(startedAt: Date, estimateMinutes: number): Date {
   return new Date(startedAt.getTime() + Math.max(1, estimateMinutes) * 60_000);
 }
@@ -291,6 +298,37 @@ export function parseWorkPlanFromText(text: string): WorkPlanDraftPhase[] {
   return phases.filter((row) => row.titles.some((item) => item.points.length > 0));
 }
 
+/**
+ * Turns a manager's short request ("OTP login and forgot password") into a draft phase when
+ * Gemini is off or the model returns nothing usable.
+ */
+export function workPlanFromFreeText(prompt: string): WorkPlanDraftPhase[] {
+  const parsed = parseWorkPlanFromText(prompt);
+  if (parsed.length > 0) {
+    return parsed;
+  }
+  const body = prompt.replace(/\s+/g, ' ').trim();
+  if (body.length < 8) {
+    return [];
+  }
+  const heading =
+    body
+      .slice(0, 80)
+      .replace(/[,.].*$/, '')
+      .trim() || 'New phase';
+  return [
+    {
+      heading,
+      titles: [
+        {
+          title: heading,
+          points: [{ body, estimateMinutes: WORK_PLAN_DEFAULT_ESTIMATE_MINUTES }],
+        },
+      ],
+    },
+  ];
+}
+
 function isPhaseHeading(line: string): boolean {
   if (/^(phase|module|sprint|week|chapter|part|stage)\b/i.test(line)) {
     return true;
@@ -366,33 +404,96 @@ export function workPlanFromModelJson(raw: unknown): WorkPlanDraftPhase[] {
       continue;
     }
     const heading = clip(stringOf(row.heading) ?? stringOf(row.name), MAX_HEADING);
-    const titles: WorkPlanDraftTitle[] = [];
-    const titleRows = arrayOf(row.titles ?? row.sections);
-    for (const titleRow of titleRows) {
-      if (titles.length >= MAX_TITLES || !isRecord(titleRow)) {
-        continue;
-      }
-      const title = clip(stringOf(titleRow.title) ?? stringOf(titleRow.name), MAX_HEADING);
-      const points: WorkPlanDraftPoint[] = [];
-      const pointRows = arrayOf(titleRow.points ?? titleRow.steps ?? titleRow.items);
-      for (const pointRow of pointRows) {
-        if (points.length >= MAX_POINTS) {
-          continue;
-        }
-        const point = pointOf(pointRow);
-        if (point) {
-          points.push(point);
-        }
-      }
-      if (title && points.length > 0) {
-        titles.push({ title, points });
-      }
-    }
+    const titles = titlesFromRow(row);
     if (heading && titles.length > 0) {
       phases.push({ heading, titles });
     }
   }
   return phases;
+}
+
+/**
+ * AI add-on payload: attach new titles to an existing phase id, or open a new phase.
+ * Also accepts the older `{ phases: [...] }` shape and treats every row as a new phase.
+ */
+export function workPlanAdditionsFromModelJson(raw: unknown): WorkPlanDraftAddition[] {
+  const parsed = typeof raw === 'string' ? parseJsonObject(raw) : raw;
+  if (isRecord(parsed) && parsed.additions !== undefined) {
+    const additions: WorkPlanDraftAddition[] = [];
+    for (const row of arrayOf(parsed.additions)) {
+      if (additions.length >= MAX_PHASES || !isRecord(row)) {
+        continue;
+      }
+      const titles = titlesFromRow(row);
+      const heading = clip(stringOf(row.heading) ?? stringOf(row.name), MAX_HEADING);
+      if (titles.length === 0 || !heading) {
+        continue;
+      }
+      additions.push({
+        phaseId: uuidOf(row.phaseId),
+        heading,
+        titles,
+      });
+    }
+    return additions;
+  }
+  return workPlanFromModelJson(parsed).map((phase) => ({
+    phaseId: null,
+    heading: phase.heading,
+    titles: phase.titles,
+  }));
+}
+
+/** Existing phase by id, then heading; undefined means open a new phase. */
+export function matchWorkPlanAdditionPhase<T extends { id?: string; heading: string }>(
+  addition: WorkPlanDraftAddition,
+  phases: T[],
+): T | undefined {
+  if (addition.phaseId) {
+    const byId = phases.find((phase) => phase.id === addition.phaseId);
+    if (byId) {
+      return byId;
+    }
+  }
+  const wanted = addition.heading.trim().toLowerCase();
+  if (!wanted) {
+    return undefined;
+  }
+  return phases.find((phase) => phase.heading.trim().toLowerCase() === wanted);
+}
+
+function titlesFromRow(row: Record<string, unknown>): WorkPlanDraftTitle[] {
+  const titles: WorkPlanDraftTitle[] = [];
+  for (const titleRow of arrayOf(row.titles ?? row.sections)) {
+    if (titles.length >= MAX_TITLES || !isRecord(titleRow)) {
+      continue;
+    }
+    const title = clip(stringOf(titleRow.title) ?? stringOf(titleRow.name), MAX_HEADING);
+    const points: WorkPlanDraftPoint[] = [];
+    for (const pointRow of arrayOf(titleRow.points ?? titleRow.steps ?? titleRow.items)) {
+      if (points.length >= MAX_POINTS) {
+        continue;
+      }
+      const point = pointOf(pointRow);
+      if (point) {
+        points.push(point);
+      }
+    }
+    if (title && points.length > 0) {
+      titles.push({ title, points });
+    }
+  }
+  return titles;
+}
+
+function uuidOf(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)
+    ? trimmed
+    : null;
 }
 
 function phasesOf(value: unknown): unknown[] {

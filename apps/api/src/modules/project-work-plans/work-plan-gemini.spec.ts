@@ -39,7 +39,9 @@ describe('readGeminiText', () => {
 describe('geminiErrorSummary', () => {
   it('reads the Google error message without the request body', () => {
     expect(
-      geminiErrorSummary(400, { error: { status: 'INVALID_ARGUMENT', message: 'Unknown name thinkingBudget' } }),
+      geminiErrorSummary(400, {
+        error: { status: 'INVALID_ARGUMENT', message: 'Unknown name thinkingBudget' },
+      }),
     ).toBe('400 INVALID_ARGUMENT: Unknown name thinkingBudget');
   });
 });
@@ -88,7 +90,10 @@ describe('WorkPlanGeminiService', () => {
     const phases = await gemini.analysePdf(pdf);
     expect(phases[0]?.heading).toBe('Discovery');
     expect(fetch).toHaveBeenCalledTimes(1);
-    const [, init] = fetch.mock.calls[0] as [string, { headers: Record<string, string>; body: string }];
+    const [, init] = fetch.mock.calls[0] as [
+      string,
+      { headers: Record<string, string>; body: string },
+    ];
     expect(init.headers['x-goog-api-key']).toBe('test-key');
     const payload = JSON.parse(init.body) as ReturnType<typeof geminiGenerateBody>;
     expect(payload.contents).toEqual(geminiGenerateBody(pdf).contents);
@@ -104,10 +109,15 @@ describe('WorkPlanGeminiService', () => {
 
   it('turns a Gemini HTTP error into a 400 without exposing the PDF', async () => {
     const fetch = jest.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'Unknown name thinkingBudget' } }), {
-        status: 400,
-        headers: { 'content-type': 'application/json' },
-      }),
+      new Response(
+        JSON.stringify({
+          error: { status: 'INVALID_ARGUMENT', message: 'Unknown name thinkingBudget' },
+        }),
+        {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
     );
     const gemini = new WorkPlanGeminiService(
       {
@@ -125,5 +135,54 @@ describe('WorkPlanGeminiService', () => {
       { fetch: jest.fn() } as never,
     );
     expect(gemini.isEnabled()).toBe(false);
+  });
+
+  it('posts a text request and returns related phases', async () => {
+    const fetch = jest.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      additions: [
+                        {
+                          phaseId: null,
+                          heading: 'Auth',
+                          titles: [
+                            {
+                              title: 'OTP login',
+                              points: [{ body: 'Build the OTP screen', estimateMinutes: 45 }],
+                            },
+                          ],
+                        },
+                      ],
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const gemini = new WorkPlanGeminiService(
+      {
+        gemini: { apiKey: 'test-key', model: 'gemini-2.5-flash', timeoutMs: 60_000 },
+      } as never,
+      { fetch } as never,
+    );
+
+    const phases = await gemini.expandWork({
+      prompt: 'OTP login',
+      outline: '(empty plan)',
+    });
+    expect(phases[0]?.heading).toBe('Auth');
+    expect(phases[0]?.titles[0]?.points[0]?.estimateMinutes).toBe(45);
+    expect(phases[0]?.phaseId).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

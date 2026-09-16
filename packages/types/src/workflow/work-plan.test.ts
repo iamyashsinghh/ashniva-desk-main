@@ -8,9 +8,12 @@ import {
   effectiveWorkPlanPriority,
   parseWorkPlanFromText,
   remainingSeconds,
+  workPlanFromFreeText,
+  workPlanAdditionsFromModelJson,
+  workPlanFromModelJson,
+  matchWorkPlanAdditionPhase,
   scoreAfterPenalty,
   shouldRestrictWorkPlanToAssignee,
-  workPlanFromModelJson,
   workPlanPhasesVisibleToDeveloper,
   workPlanPointActions,
 } from './work-plan';
@@ -41,6 +44,20 @@ Title 1 API
 
   it('uses the default estimate when a bullet has no time', () => {
     const [phase] = parseWorkPlanFromText('- Write the login screen');
+    expect(phase?.titles[0]?.points[0]?.estimateMinutes).toBe(WORK_PLAN_DEFAULT_ESTIMATE_MINUTES);
+  });
+});
+
+describe('workPlanFromFreeText', () => {
+  it('keeps a structured outline when the prompt already has phases', () => {
+    const [phase] = workPlanFromFreeText('PHASE 1 AUTH\nTitle 1 Login\n- OTP screen 45m');
+    expect(phase?.heading).toMatch(/auth/i);
+    expect(phase?.titles[0]?.points[0]?.estimateMinutes).toBe(45);
+  });
+
+  it('wraps a sentence as one topic with the default time', () => {
+    const [phase] = workPlanFromFreeText('Add OTP login and a forgot-password email');
+    expect(phase?.titles[0]?.points[0]?.body).toMatch(/OTP login/i);
     expect(phase?.titles[0]?.points[0]?.estimateMinutes).toBe(WORK_PLAN_DEFAULT_ESTIMATE_MINUTES);
   });
 });
@@ -104,6 +121,59 @@ describe('workPlanFromModelJson', () => {
       { body: 'Auth', estimateMinutes: WORK_PLAN_DEFAULT_ESTIMATE_MINUTES },
       { body: 'Users', estimateMinutes: 24 * 60 },
     ]);
+  });
+});
+
+describe('workPlanAdditionsFromModelJson', () => {
+  it('attaches new titles to an existing phase id', () => {
+    const [addition] = workPlanAdditionsFromModelJson({
+      additions: [
+        {
+          phaseId: '01a0a982-8e70-77f8-8871-f8bb69f78a91',
+          heading: 'Auth',
+          titles: [{ title: 'OTP', points: [{ body: 'OTP screen', estimateMinutes: 45 }] }],
+        },
+      ],
+    });
+    expect(addition?.phaseId).toBe('01a0a982-8e70-77f8-8871-f8bb69f78a91');
+    expect(addition?.titles[0]?.title).toBe('OTP');
+  });
+
+  it('treats a phases payload as new phases', () => {
+    const [addition] = workPlanAdditionsFromModelJson({
+      phases: [
+        { heading: 'Payments', titles: [{ title: 'UPI', points: [{ body: 'Collect UPI' }] }] },
+      ],
+    });
+    expect(addition?.phaseId).toBeNull();
+    expect(addition?.heading).toBe('Payments');
+  });
+});
+
+describe('matchWorkPlanAdditionPhase', () => {
+  const phases = [
+    { id: '01a0a982-8e70-77f8-8871-f8bb69f78a91', heading: 'Auth' },
+    { id: '01a0a982-8e70-77f8-8871-f8bb69f78a92', heading: 'Billing' },
+  ];
+
+  it('prefers the phase id, then the heading', () => {
+    expect(
+      matchWorkPlanAdditionPhase({ phaseId: phases[0]!.id, heading: 'Billing', titles: [] }, phases)
+        ?.heading,
+    ).toBe('Auth');
+    expect(
+      matchWorkPlanAdditionPhase({ phaseId: null, heading: 'billing', titles: [] }, phases)
+        ?.heading,
+    ).toBe('Billing');
+    expect(
+      matchWorkPlanAdditionPhase(
+        { phaseId: '00000000-0000-4000-8000-000000000000', heading: 'Auth', titles: [] },
+        phases,
+      )?.heading,
+    ).toBe('Auth');
+    expect(
+      matchWorkPlanAdditionPhase({ phaseId: null, heading: 'Payments', titles: [] }, phases),
+    ).toBeUndefined();
   });
 });
 

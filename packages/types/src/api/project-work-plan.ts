@@ -141,6 +141,13 @@ export interface ParseWorkPlanInput {
   fileId: string;
 }
 
+/** Admin / PM / TL adding work from Summary. AI reads the plan and places related steps. */
+export interface AddWorkPlanWorkInput {
+  prompt: string;
+  assignedToId?: string | null;
+  priority?: Priority | null;
+}
+
 export interface WorkPlanNoteInput {
   body: string;
   kind?: WorkPlanNoteKind;

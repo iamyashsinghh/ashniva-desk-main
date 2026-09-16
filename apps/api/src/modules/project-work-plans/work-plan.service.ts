@@ -21,10 +21,13 @@ import {
   parseWorkPlanFromText,
   scoreAfterPenalty,
   seesAllOrganizationProjects,
+  matchWorkPlanAdditionPhase,
+  workPlanFromFreeText,
   workPlanPointActions,
   type AuthenticatedUser,
   type ProjectWorkPlan,
   type UserRef,
+  type WorkPlanDraftAddition,
   type WorkPlanDraftPhase,
 } from '@ashniva/types';
 
@@ -35,6 +38,7 @@ import { AuditLogService } from '../audit-logs/audit-log.service';
 import { FilesRepository } from '../files/files.repository';
 import { ProjectsRepository } from '../projects/projects.repository';
 import type {
+  AddWorkPlanWorkDto,
   AssignWorkPlanDto,
   ParseWorkPlanDto,
   SaveWorkPlanAssignmentsDto,
@@ -45,7 +49,7 @@ import type {
 import { bufferFromStream, extractPdfText, looksLikePdf } from './work-plan-pdf';
 import { WorkPlanEventsService } from './work-plan-events.service';
 import { WorkPlanGeminiService } from './work-plan-gemini';
-import { WorkPlanMapper, type WorkPlanActorFlags } from './work-plan.mapper';
+import { WorkPlanMapper, type WorkPlanActorFlags, type WorkPlanRow } from './work-plan.mapper';
 import { WorkPlanRepository } from './work-plan.repository';
 import { WorkPlanTasksService } from './work-plan-tasks.service';
 import type { ProjectRow } from '../projects/projects.repository';
@@ -155,6 +159,60 @@ export class WorkPlanService {
       after: { fileId: file.id, phases: phases.length },
     });
     return this.detail(actor, flags, project, row);
+  }
+
+  async addWork(
+    actor: AuthenticatedUser,
+    projectId: string,
+    dto: AddWorkPlanWorkDto,
+  ): Promise<ProjectWorkPlan> {
+    const { flags, project } = await this.access(actor, projectId);
+    if (!flags.canAssign) {
+      throw new ForbiddenException(
+        'Only an admin, project manager or team lead can add work to this plan',
+      );
+    }
+    const assignedToId = dto.assignedToId ?? null;
+    this.assertOptionalDeveloper(project, assignedToId);
+    const existing = await this.plans.findByProject(actor.organizationId, projectId);
+    const added = await this.draftForAdd(dto, existing);
+    const merged = this.mergeAddedWork(existing, added);
+    this.assertPhases(merged);
+    const row = await this.plans.savePhases(
+      actor.organizationId,
+      projectId,
+      actor.userId,
+      existing?.sourceFileId ? 'MIXED' : (existing?.source ?? 'MANUAL'),
+      existing?.sourceFileId ?? null,
+      merged,
+    );
+    const previous = {
+      phases: new Set(existing?.phases.map((phase) => phase.id) ?? []),
+      titles: new Set(
+        existing?.phases.flatMap((phase) => phase.titles.map((title) => title.id)) ?? [],
+      ),
+    };
+    await this.applyNewWorkAssignment(row, previous, assignedToId, dto.priority ?? null);
+    const fresh = await this.plans.findByProject(actor.organizationId, projectId);
+    if (assignedToId) {
+      await this.events.assigned(actor, project, assignedToId, 'work on this plan');
+    }
+    if (fresh) {
+      await this.planTasks.sync(actor, project, fresh);
+    }
+    await this.auditLog.record({
+      action: AUDIT_ACTION.WORK_PLAN_UPDATED,
+      entityType: AUDIT_ENTITY_TYPE.PROJECT,
+      entityId: projectId,
+      organizationId: actor.organizationId,
+      actorUserId: actor.userId,
+      after: {
+        assignedToId,
+        priority: dto.priority,
+        additions: added.map((item) => ({ phaseId: item.phaseId, heading: item.heading })),
+      },
+    });
+    return this.detail(actor, flags, project, fresh ?? row);
   }
 
   private async phasesFromPdf(pdf: Buffer): Promise<WorkPlanDraftPhase[]> {
@@ -636,6 +694,113 @@ export class WorkPlanService {
         points: title.points,
       })),
     }));
+  }
+
+  private existingToDto(row: WorkPlanRow): WorkPlanPhaseDto[] {
+    return row.phases.map((phase) => ({
+      id: phase.id,
+      heading: phase.heading,
+      titles: phase.titles.map((title) => ({
+        id: title.id,
+        title: title.title,
+        points: title.points.map((point) => ({
+          id: point.id,
+          body: point.body,
+          estimateMinutes: point.estimateMinutes,
+        })),
+      })),
+    }));
+  }
+
+  private async draftForAdd(
+    dto: AddWorkPlanWorkDto,
+    existing: WorkPlanRow | null,
+  ): Promise<WorkPlanDraftAddition[]> {
+    if (this.gemini.isEnabled()) {
+      try {
+        const analysed = await this.gemini.expandWork({
+          prompt: dto.prompt.trim(),
+          outline: this.outline(existing),
+        });
+        if (analysed.length > 0) {
+          return analysed;
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'unknown';
+        this.logger.warn(`AI expand failed, using the typed request: ${reason}`);
+      }
+    }
+    const fallback = workPlanFromFreeText(dto.prompt).map((phase) => ({
+      phaseId: null,
+      heading: phase.heading,
+      titles: phase.titles,
+    }));
+    if (fallback.length === 0) {
+      throw new BadRequestException('Describe the work in a bit more detail');
+    }
+    return fallback;
+  }
+
+  private mergeAddedWork(
+    existing: WorkPlanRow | null,
+    added: WorkPlanDraftAddition[],
+  ): WorkPlanPhaseDto[] {
+    const phases = existing ? this.existingToDto(existing) : [];
+    for (const addition of added) {
+      const titles =
+        this.draftToDto([{ heading: addition.heading, titles: addition.titles }])[0]?.titles ?? [];
+      if (titles.length === 0) {
+        continue;
+      }
+      const target = matchWorkPlanAdditionPhase(addition, phases);
+      if (target) {
+        target.titles = [...target.titles, ...titles];
+      } else {
+        phases.push({ heading: addition.heading, titles });
+      }
+    }
+    return phases;
+  }
+
+  private outline(row: WorkPlanRow | null): string {
+    if (!row || row.phases.length === 0) {
+      return '(empty plan)';
+    }
+    return row.phases
+      .map((phase) => {
+        const titles = phase.titles
+          .map((title) => `  ${title.title}: ${title.points.map((point) => point.body).join('; ')}`)
+          .join('\n');
+        return `[${phase.id}] ${phase.heading}\n${titles}`;
+      })
+      .join('\n')
+      .slice(0, 8_000);
+  }
+
+  private async applyNewWorkAssignment(
+    row: WorkPlanRow,
+    previous: { phases: Set<string>; titles: Set<string> },
+    assignedToId: string | null,
+    priority: (typeof PRIORITY)[keyof typeof PRIORITY] | null,
+  ): Promise<void> {
+    if (!assignedToId && !priority) {
+      return;
+    }
+    const data = {
+      ...(assignedToId ? { assignedToId } : {}),
+      ...(priority ? { priority } : {}),
+    };
+    for (const phase of row.phases) {
+      if (!previous.phases.has(phase.id)) {
+        await this.prisma.projectWorkPlanPhase.update({ where: { id: phase.id }, data });
+        continue;
+      }
+      for (const title of phase.titles) {
+        if (!previous.titles.has(title.id)) {
+          await this.prisma.projectWorkPlanTitle.update({ where: { id: title.id }, data });
+        }
+      }
+    }
   }
 
   private async syncTasks(
