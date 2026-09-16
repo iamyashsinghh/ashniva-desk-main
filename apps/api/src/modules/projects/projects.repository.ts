@@ -6,11 +6,32 @@ import type { Prisma, ProjectStatus } from '../../generated/prisma/client';
 
 const userRef = { select: { id: true, name: true, email: true } } as const;
 
+/** Manager, lead, creator, project member, or a member/lead of the team assigned to the project. */
+export function projectAccessWhere(userId: string): Prisma.ProjectWhereInput {
+  return {
+    OR: [
+      { createdById: userId },
+      { managerUserId: userId },
+      { leadUserId: userId },
+      { members: { some: { userId } } },
+      { team: { is: { leadUserId: userId } } },
+      { team: { is: { members: { some: { userId } } } } },
+    ],
+  };
+}
+
 const projectInclude = {
   clientOrganization: { select: { id: true, name: true, slug: true } },
   manager: userRef,
   lead: userRef,
-  team: { select: { id: true, name: true } },
+  team: {
+    select: {
+      id: true,
+      name: true,
+      leadUserId: true,
+      members: { select: { userId: true, user: userRef } },
+    },
+  },
   members: { include: { user: userRef }, orderBy: { createdAt: 'asc' } },
 } satisfies Prisma.ProjectInclude;
 
@@ -28,7 +49,7 @@ export interface ProjectFilter {
   clientOrganizationId?: string;
   status?: ProjectStatus;
   search?: string;
-  /** Only projects the user is a member, manager or lead of. */
+  /** Only projects the user is a member, manager, lead of, or sits on the assigned team. */
   memberUserId?: string;
 }
 
@@ -57,27 +78,21 @@ export class ProjectsRepository {
       where: {
         organizationId: filter.organizationId,
         deletedAt: null,
-        ...(filter.clientOrganizationId
-          ? { clientOrganizationId: filter.clientOrganizationId }
-          : {}),
-        ...(filter.status ? { status: filter.status } : {}),
-        ...(filter.memberUserId
-          ? {
-              OR: [
-                { managerUserId: filter.memberUserId },
-                { leadUserId: filter.memberUserId },
-                { members: { some: { userId: filter.memberUserId } } },
-              ],
-            }
-          : {}),
-        ...(search
-          ? {
-              OR: [
-                { name: { contains: search, mode: 'insensitive' } },
-                { code: { contains: search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
+        AND: [
+          filter.clientOrganizationId
+            ? { clientOrganizationId: filter.clientOrganizationId }
+            : {},
+          filter.status ? { status: filter.status } : {},
+          filter.memberUserId ? projectAccessWhere(filter.memberUserId) : {},
+          search
+            ? {
+                OR: [
+                  { name: { contains: search, mode: 'insensitive' } },
+                  { code: { contains: search, mode: 'insensitive' } },
+                ],
+              }
+            : {},
+        ],
       },
       include: projectInclude,
       orderBy: [{ status: 'asc' }, { name: 'asc' }],
@@ -151,6 +166,48 @@ export class ProjectsRepository {
     });
   }
 
+  /**
+   * Team roster as project members. Explicit `extra` roles win when the same person is listed twice.
+   */
+  async membersFromTeam(
+    organizationId: string,
+    teamId: string | null | undefined,
+    extra: Array<{ userId: string; role: Prisma.ProjectMemberCreateManyInput['role'] }>,
+  ): Promise<Array<{ userId: string; role: Prisma.ProjectMemberCreateManyInput['role'] }>> {
+    const byUser = new Map<string, Prisma.ProjectMemberCreateManyInput['role']>();
+    if (teamId) {
+      const team = await this.prisma.team.findFirst({
+        where: { id: teamId, organizationId, deletedAt: null },
+        select: {
+          leadUserId: true,
+          members: { select: { userId: true } },
+        },
+      });
+      if (team) {
+        const userIds = [
+          ...new Set(
+            [team.leadUserId, ...team.members.map((member) => member.userId)].filter(
+              (value): value is string => Boolean(value),
+            ),
+          ),
+        ];
+        if (userIds.length > 0) {
+          const memberships = await this.prisma.organizationMembership.findMany({
+            where: { organizationId, userId: { in: userIds }, deletedAt: null },
+            select: { userId: true, role: { select: { key: true } } },
+          });
+          for (const row of memberships) {
+            byUser.set(row.userId, projectMemberRoleFromOrgRole(row.role.key));
+          }
+        }
+      }
+    }
+    for (const member of extra) {
+      byUser.set(member.userId, member.role);
+    }
+    return [...byUser.entries()].map(([userId, role]) => ({ userId, role }));
+  }
+
   /** Task and ticket counts for many projects in three grouped queries. */
   async countsByProject(
     organizationId: string,
@@ -210,4 +267,20 @@ export class ProjectsRepository {
     }
     return counts;
   }
+}
+
+function projectMemberRoleFromOrgRole(key: string): Prisma.ProjectMemberCreateManyInput['role'] {
+  if (key === 'SUPER_ADMIN' || key === 'PROJECT_MANAGER') {
+    return 'MANAGER';
+  }
+  if (key === 'TEAM_LEAD') {
+    return 'LEAD';
+  }
+  if (key === 'TESTER') {
+    return 'TESTER';
+  }
+  if (key === 'SUPPORT_EXECUTIVE') {
+    return 'SUPPORT';
+  }
+  return 'DEVELOPER';
 }

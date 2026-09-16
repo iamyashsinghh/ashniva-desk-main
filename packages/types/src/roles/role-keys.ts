@@ -52,6 +52,16 @@ export function isManagerRole(roleKey: RoleKey): boolean {
 }
 
 /**
+ * Who may see every project in the organization, not only the ones they are on.
+ *
+ * Everyone else — including a project manager who is not on the team — sees only projects they
+ * manage, lead, or sit on as a member of the assigned team.
+ */
+export function seesAllOrganizationProjects(roleKey: RoleKey): boolean {
+  return roleKey === ROLE_KEYS.SUPER_ADMIN;
+}
+
+/**
  * Who may start a one-to-one chat.
  *
  * Super admin, project manager and team lead message people on their teams (or, for admin, the

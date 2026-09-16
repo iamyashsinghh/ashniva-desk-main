@@ -23,10 +23,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, readonly PermissionKey[]>
     P.CHANGE_REQUEST_RAISE,
     P.CHANGE_REQUEST_MANAGE,
     P.TASK_READ,
-    // The organization-wide task reader, alongside `report:read-all`, which this role already
-    // holds for the same reason: a project manager answers for work they are not a member of.
-    // A team lead is deliberately not given it — their width is the teams they lead and the
-    // projects they are on, which the scope resolves for them without a permission.
+    // Kept on the role for historical callers. Super Admin is the only org-wide reader;
+    // a project manager now sees only projects they manage, lead, created, or sit on with the team.
     P.TASK_READ_ALL,
     P.TASK_CREATE,
     P.TASK_ASSIGN,

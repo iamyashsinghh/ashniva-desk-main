@@ -3,6 +3,7 @@ import {
   PROJECT_STATUS_LABELS,
   PROJECT_TYPE,
   PROJECT_TYPE_LABELS,
+  ROLE_KEYS,
   type ProjectDetail,
   type ProjectStatus,
   type ProjectType,
@@ -11,8 +12,9 @@ import { Button, FormField, Input, Modal, Select, Switch, Textarea } from '@ashn
 import { useState } from 'react';
 
 import { useSubmitHandler } from '../../../shared/hooks/use-submit-handler';
+import { useCurrentUser } from '../../auth/session-context';
 import { PeoplePicker } from '../../tasks/components/PeoplePicker';
-import { REVIEWER_ROLES } from '../../tasks/components/people-roles';
+import { PROJECT_MANAGER_ROLES, TEAM_LEAD_ROLES } from '../../tasks/components/people-roles';
 import { useOrganizationsQuery, useTeamsQuery } from '../../users/api';
 import { useProjectMutations, type ProjectInput } from '../api';
 
@@ -33,6 +35,7 @@ interface ProjectFormModalProps {
 
 /** Create / edit project: code, name, client, type, status, manager, lead, team, dates, UAT. */
 export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFormModalProps) {
+  const me = useCurrentUser();
   const organizations = useOrganizationsQuery();
   const teams = useTeamsQuery();
   const { create, update } = useProjectMutations(project?.id);
@@ -44,8 +47,9 @@ export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFor
     type: project?.type ?? PROJECT_TYPE.FIXED_PRICE,
     status: project?.status ?? PROJECT_STATUS.ACTIVE,
     clientOrganizationId: project?.clientOrganization?.id ?? '',
-    managerUserId: project?.manager?.id ?? '',
-    leadUserId: project?.lead?.id ?? '',
+    managerUserId:
+      project?.manager?.id ?? (me.roleKey === ROLE_KEYS.PROJECT_MANAGER ? me.id : ''),
+    leadUserId: project?.lead?.id ?? (me.roleKey === ROLE_KEYS.TEAM_LEAD ? me.id : ''),
     teamId: project?.team?.id ?? '',
     startDate: project?.startDate ?? '',
     targetDate: project?.targetDate ?? '',
@@ -56,7 +60,9 @@ export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFor
   const code = sanitizeProjectCode(form.code);
   const codeValid = PROJECT_CODE_PATTERN.test(code);
   const nameValid = form.name.trim().length >= 2;
-  const valid = codeValid && nameValid;
+  const teamValid = Boolean(form.teamId);
+  const leadValid = Boolean(form.leadUserId);
+  const valid = codeValid && nameValid && teamValid && leadValid;
   const pending = create.isPending || update.isPending;
   const codeError =
     code.length > 0 && !codeValid
@@ -99,7 +105,11 @@ export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFor
             disabledReason={
               !codeValid
                 ? 'Code must be 2–8 letters or digits (no hyphen), starting with a letter'
-                : 'Name must be at least 2 characters'
+                : !nameValid
+                  ? 'Name must be at least 2 characters'
+                  : !leadValid
+                    ? 'Choose who will lead this team'
+                    : 'Choose which team this project belongs to'
             }
             onClick={() => void wrap(save)()}
           >
@@ -158,29 +168,40 @@ export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFor
             }))}
           />
         </FormField>
-        <FormField label="Team">
+        <FormField
+          label="Who will lead this team"
+          required
+          hint="Only people whose role is Team Lead / Senior Developer."
+        >
+          <PeoplePicker
+            value={form.leadUserId ?? ''}
+            onChange={(userId) => set('leadUserId', userId)}
+            roles={TEAM_LEAD_ROLES}
+            placeholder="Select a team lead"
+          />
+        </FormField>
+        <FormField
+          label="Team"
+          required
+          hint="Developers and testers on this team see the project. Nobody else does, except Super Admin."
+        >
           <Select
             value={form.teamId ?? ''}
             onChange={(event) => set('teamId', event.target.value)}
             options={[
-              { value: '', label: 'No team' },
+              { value: '', label: 'Select a team' },
               ...(teams.data ?? []).map((team) => ({ value: team.id, label: team.name })),
             ]}
           />
         </FormField>
-        <FormField label="Project manager">
+        <FormField
+          label="Project manager"
+          hint="Only people whose role is Project Manager."
+        >
           <PeoplePicker
             value={form.managerUserId ?? ''}
             onChange={(userId) => set('managerUserId', userId)}
-            roles={REVIEWER_ROLES}
-            placeholder="Not set"
-          />
-        </FormField>
-        <FormField label="Senior / lead">
-          <PeoplePicker
-            value={form.leadUserId ?? ''}
-            onChange={(userId) => set('leadUserId', userId)}
-            roles={REVIEWER_ROLES}
+            roles={PROJECT_MANAGER_ROLES}
             placeholder="Not set"
           />
         </FormField>

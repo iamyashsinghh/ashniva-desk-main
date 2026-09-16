@@ -1,11 +1,18 @@
 import {
   WORK_PLAN_DEFAULT_ESTIMATE_MINUTES,
   WORK_PLAN_PENALTY_PERCENT,
+  WORK_PLAN_POINT_STATUS,
   isWorkPlanOverdue,
+  nestWorkPlanNotes,
+  effectiveWorkPlanAssigneeId,
+  effectiveWorkPlanPriority,
   parseWorkPlanFromText,
   remainingSeconds,
   scoreAfterPenalty,
+  shouldRestrictWorkPlanToAssignee,
   workPlanFromModelJson,
+  workPlanPhasesVisibleToDeveloper,
+  workPlanPointActions,
 } from './work-plan';
 
 describe('parseWorkPlanFromText', () => {
@@ -97,5 +104,189 @@ describe('workPlanFromModelJson', () => {
       { body: 'Auth', estimateMinutes: WORK_PLAN_DEFAULT_ESTIMATE_MINUTES },
       { body: 'Users', estimateMinutes: 24 * 60 },
     ]);
+  });
+});
+
+describe('workPlanPointActions', () => {
+  const base = {
+    startedById: 'dev-1',
+    actorId: 'dev-1',
+    canWork: true,
+    canTest: false,
+    canLead: false,
+  };
+
+  it('lets a developer start only work assigned to them', () => {
+    expect(workPlanPointActions({ ...base, status: WORK_PLAN_POINT_STATUS.PENDING }).canStart).toBe(
+      false,
+    );
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-1',
+        status: WORK_PLAN_POINT_STATUS.PENDING,
+      }).canStart,
+    ).toBe(true);
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-1',
+        status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
+      }).canSubmitTest,
+    ).toBe(true);
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-1',
+        status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
+      }).canPass,
+    ).toBe(false);
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-1',
+        status: WORK_PLAN_POINT_STATUS.RETURNED,
+      }).canStart,
+    ).toBe(true);
+  });
+
+  it('hides developer Start from a tester, and waits for Send to tester', () => {
+    const tester = { ...base, actorId: 'qa-1', canWork: true, canTest: true };
+    expect(
+      workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.PENDING }).canStart,
+    ).toBe(false);
+    expect(
+      workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.AWAITING_TEST })
+        .canStartTest,
+    ).toBe(true);
+    expect(
+      workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.AWAITING_TEST }).canPass,
+    ).toBe(false);
+    expect(
+      workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.TESTING }).canPass,
+    ).toBe(true);
+    expect(
+      workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.TESTING }).canFail,
+    ).toBe(true);
+  });
+
+  it('lets a tester pass or return only after they start testing', () => {
+    const tester = { ...base, actorId: 'qa-1', canWork: false, canTest: true };
+    expect(
+      workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.AWAITING_TEST }).canPass,
+    ).toBe(false);
+    expect(
+      workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.TESTING }).canPass,
+    ).toBe(true);
+    expect(
+      workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.TESTING }).canFail,
+    ).toBe(true);
+    expect(
+      workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.IN_PROGRESS }).canPass,
+    ).toBe(false);
+  });
+
+  it('lets developer and tester reply on a note even after the point is done', () => {
+    expect(
+      workPlanPointActions({ ...base, status: WORK_PLAN_POINT_STATUS.COMPLETED }).canReply,
+    ).toBe(true);
+    expect(
+      workPlanPointActions({
+        ...base,
+        actorId: 'qa-1',
+        canWork: false,
+        canTest: true,
+        status: WORK_PLAN_POINT_STATUS.AWAITING_TEST,
+      }).canReply,
+    ).toBe(true);
+  });
+
+  it('hides Start from a developer when the point is assigned to somebody else', () => {
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-2',
+        status: WORK_PLAN_POINT_STATUS.PENDING,
+      }).canStart,
+    ).toBe(false);
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-1',
+        status: WORK_PLAN_POINT_STATUS.PENDING,
+      }).canStart,
+    ).toBe(true);
+    expect(
+      workPlanPointActions({
+        ...base,
+        actorId: 'lead-1',
+        canLead: true,
+        assignedToId: 'dev-2',
+        status: WORK_PLAN_POINT_STATUS.PENDING,
+      }).canStart,
+    ).toBe(true);
+  });
+});
+
+describe('effectiveWorkPlanAssigneeId', () => {
+  it('lets a title override a phase, and a phase override the plan', () => {
+    expect(effectiveWorkPlanAssigneeId('title', 'phase', 'plan')).toBe('title');
+    expect(effectiveWorkPlanAssigneeId(null, 'phase', 'plan')).toBe('phase');
+    expect(effectiveWorkPlanAssigneeId(null, null, 'plan')).toBe('plan');
+    expect(effectiveWorkPlanAssigneeId(null, null, null)).toBeNull();
+  });
+});
+
+describe('effectiveWorkPlanPriority', () => {
+  it('lets a title override a phase, and a phase override the plan', () => {
+    expect(effectiveWorkPlanPriority('CRITICAL', 'HIGH', 'LOW')).toBe('CRITICAL');
+    expect(effectiveWorkPlanPriority(null, 'HIGH', 'LOW')).toBe('HIGH');
+    expect(effectiveWorkPlanPriority(null, null, 'LOW')).toBe('LOW');
+    expect(effectiveWorkPlanPriority(null, null, null)).toBe('MEDIUM');
+  });
+});
+
+describe('shouldRestrictWorkPlanToAssignee', () => {
+  it('restricts developers, not managers, leads or testers', () => {
+    expect(shouldRestrictWorkPlanToAssignee({ canAssign: false, canTest: false })).toBe(true);
+    expect(shouldRestrictWorkPlanToAssignee({ canAssign: true, canTest: false })).toBe(false);
+    expect(shouldRestrictWorkPlanToAssignee({ canAssign: false, canTest: true })).toBe(false);
+  });
+});
+
+describe('workPlanPhasesVisibleToDeveloper', () => {
+  it('keeps only titles whose effective assignee is that developer', () => {
+    const phases = [
+      {
+        heading: 'A',
+        titles: [
+          { title: 'Mine', effectiveAssignedTo: { id: 'dev-1' } },
+          { title: 'Theirs', effectiveAssignedTo: { id: 'dev-2' } },
+        ],
+      },
+      {
+        heading: 'B',
+        titles: [{ title: 'Nobody', effectiveAssignedTo: null }],
+      },
+    ];
+    expect(workPlanPhasesVisibleToDeveloper(phases, 'dev-1')).toEqual([
+      {
+        heading: 'A',
+        titles: [{ title: 'Mine', effectiveAssignedTo: { id: 'dev-1' } }],
+      },
+    ]);
+    expect(workPlanPhasesVisibleToDeveloper(phases, 'dev-3')).toEqual([]);
+  });
+});
+
+describe('nestWorkPlanNotes', () => {
+  it('puts replies under the root note, including replies to a reply', () => {
+    const nested = nestWorkPlanNotes([
+      { id: 'root', parentId: null, body: 'Login fails' },
+      { id: 'r1', parentId: 'root', body: 'Which browser?' },
+      { id: 'r2', parentId: 'r1', body: 'Chrome 128' },
+    ]);
+    expect(nested).toHaveLength(1);
+    expect(nested[0]?.replies.map((note) => note.body)).toEqual(['Which browser?', 'Chrome 128']);
   });
 });

@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { PERMISSIONS, type AuthenticatedUser } from '@ashniva/types';
+import { PERMISSIONS, ROLE_KEYS, type AuthenticatedUser } from '@ashniva/types';
 
 import type { PrismaService } from '../../database/prisma.service';
 import { TaskVisibilityService, taskScopeWhere } from './task-visibility.service';
@@ -9,11 +9,14 @@ interface Doubles {
   projects: { id: string }[];
 }
 
-const actorWith = (permissions: string[]): AuthenticatedUser =>
+const actorWith = (
+  permissions: string[],
+  roleKey: string = ROLE_KEYS.DEVELOPER,
+): AuthenticatedUser =>
   ({
     userId: 'user-dev',
     organizationId: 'org-ashniva',
-    roleKey: 'DEVELOPER',
+    roleKey,
     permissions,
   }) as unknown as AuthenticatedUser;
 
@@ -29,9 +32,19 @@ function service(doubles: Partial<Doubles> = {}): TaskVisibilityService {
 }
 
 describe('TaskVisibilityService.resolve', () => {
-  it('reads the whole organization only with task:read-all', async () => {
-    const scope = await service().resolve(actorWith([PERMISSIONS.TASK_READ_ALL]));
+  it('reads the whole organization only for Super Admin with task:read-all', async () => {
+    const scope = await service().resolve(
+      actorWith([PERMISSIONS.TASK_READ_ALL], ROLE_KEYS.SUPER_ADMIN),
+    );
     expect(scope.organizationWide).toBe(true);
+  });
+
+  it('does not let a project manager with task:read-all see other teams’ projects', async () => {
+    const scope = await service().resolve(
+      actorWith([PERMISSIONS.TASK_READ_ALL], ROLE_KEYS.PROJECT_MANAGER),
+    );
+    expect(scope.organizationWide).toBe(false);
+    expect(scope.userIds).toEqual(['user-dev']);
   });
 
   // The defect: `task:read` said a person works with tasks, and the API read it as "everybody's".
@@ -115,9 +128,12 @@ describe('TaskVisibilityService.assertMayFilterBy', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('allows an organization-wide reader to name anybody', async () => {
+  it('allows Super Admin to name anybody', async () => {
     await expect(
-      service().assertMayFilterBy(actorWith([PERMISSIONS.TASK_READ_ALL]), 'user-stranger'),
+      service().assertMayFilterBy(
+        actorWith([PERMISSIONS.TASK_READ_ALL], ROLE_KEYS.SUPER_ADMIN),
+        'user-stranger',
+      ),
     ).resolves.toBeUndefined();
   });
 

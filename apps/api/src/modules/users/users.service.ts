@@ -61,7 +61,7 @@ export class UsersService {
         id: row.user.id,
         name: row.user.name,
         email: row.user.email,
-        roleKey: row.role.key as RoleKey,
+        roleKey: (row.role.templateKey ?? row.role.key) as RoleKey,
         title: row.title,
         teams: row.user.teamMemberships.map((membership) => membership.team),
       })),

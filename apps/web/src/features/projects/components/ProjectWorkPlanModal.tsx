@@ -1,21 +1,27 @@
 import {
+  PRIORITY,
   WORK_PLAN_DEFAULT_ESTIMATE_MINUTES,
+  WORK_PLAN_NOTE_KIND_LABELS,
+  WORK_PLAN_POINT_STATUS_LABELS,
+  type Priority,
   type ProjectWorkPlan,
+  type WorkPlanNote,
   type WorkPlanPhaseInput,
   type WorkPlanPoint,
 } from '@ashniva/types';
-import { Alert, Button, FormField, Input, Modal, Textarea } from '@ashniva/ui';
+import { Alert, Button, FormField, Input, Modal, PriorityDot, Textarea } from '@ashniva/ui';
 import { useEffect, useRef, useState } from 'react';
 
 import { errorMessage } from '../../../shared/lib/api-client';
 import { uploadFile } from '../../files/api';
 import { useWorkPlanMutations, useWorkPlanQuery } from '../work-plan-api';
+import { WorkPlanAssigneeSelect, WorkPlanPrioritySelect } from './WorkPlanAssigneeSelect';
 
 import '../work-plan.css';
 
 /**
- * Phase plan for one project: upload a PDF, edit phases by hand, start a point to reveal it and
- * run its timer. Overruns lower that person's on-time % on this plan only.
+ * Phase plan for one project: upload a PDF, edit phases by hand, start a point to run its
+ * timer. Overruns lower that person's on-time % on this plan only.
  */
 export function ProjectWorkPlanModal({
   projectId,
@@ -27,16 +33,31 @@ export function ProjectWorkPlanModal({
   onClose: () => void;
 }) {
   const plan = useWorkPlanQuery(projectId);
-  const { parse, save, start, complete } = useWorkPlanMutations(projectId);
+  const { parse, save, start, submitTest, startTest, complete, fail, reply, saveAssignments } =
+    useWorkPlanMutations(projectId);
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | undefined>();
   const [draft, setDraft] = useState<WorkPlanPhaseInput[] | null>(null);
+  const [assignDraft, setAssignDraft] = useState<AssignmentDraft | null>(null);
   const [editing, setEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const data = plan.data;
   const locked = hasStartedWork(data);
   const showEditor = Boolean(data?.canManage && editing && draft && !locked);
+  const assignmentKey = data?.canAssign ? assignmentFingerprint(data) : '';
+  const liveAssign = assignDraft ?? (data?.canAssign ? assignmentDraftFrom(data) : null);
+  const assignDirty = Boolean(
+    liveAssign && data && JSON.stringify(liveAssign) !== assignmentFingerprint(data),
+  );
+
+  useEffect(() => {
+    if (!assignmentKey) {
+      setAssignDraft(null);
+      return;
+    }
+    setAssignDraft(JSON.parse(assignmentKey) as AssignmentDraft);
+  }, [assignmentKey]);
 
   useEffect(() => {
     if (!data?.canManage || locked || draft !== null) {
@@ -77,13 +98,54 @@ export function ProjectWorkPlanModal({
     }
   }
 
+  async function onSaveAssignments() {
+    if (!data || !liveAssign) {
+      return;
+    }
+    setError(undefined);
+    try {
+      await saveAssignments.mutateAsync({
+        assignedToId: liveAssign.assignedToId,
+        priority: liveAssign.priority,
+        phases: data.phases.map((phase) => ({
+          id: phase.id,
+          assignedToId: liveAssign.phases[phase.id]?.assignedToId ?? null,
+          priority: liveAssign.phases[phase.id]?.priority ?? null,
+        })),
+        titles: data.phases.flatMap((phase) =>
+          phase.titles.map((title) => ({
+            id: title.id,
+            assignedToId: liveAssign.titles[title.id]?.assignedToId ?? null,
+            priority: liveAssign.titles[title.id]?.priority ?? null,
+          })),
+        ),
+      });
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }
+
   return (
     <Modal
       open
       size="lg"
       title={`Summary · ${projectName}`}
-      description="Split the brief into phases, titles and timed points. Start reveals a point and starts its timer."
+      description="Phases stay on this project's team. The developer presses Start, then Send to tester. The tester then presses Start testing. The timer keeps running until Complete."
       onClose={onClose}
+      headerActions={
+        data?.canAssign && !showEditor && data.phases.length > 0 ? (
+          <Button
+            variant="primary"
+            size="sm"
+            loading={saveAssignments.isPending}
+            disabled={!assignDirty}
+            disabledReason={!assignDirty ? 'Change an assignment to save it.' : undefined}
+            onClick={() => void onSaveAssignments()}
+          >
+            Save
+          </Button>
+        ) : null
+      }
       footer={
         showEditor ? (
           <>
@@ -162,7 +224,17 @@ export function ProjectWorkPlanModal({
       ) : (
         <Reader
           plan={data}
-          busy={start.isPending || complete.isPending}
+          busy={
+            start.isPending ||
+            submitTest.isPending ||
+            startTest.isPending ||
+            complete.isPending ||
+            fail.isPending ||
+            reply.isPending ||
+            saveAssignments.isPending
+          }
+          assignment={liveAssign}
+          onAssignmentChange={setAssignDraft}
           onEdit={
             data.canManage && !locked
               ? () => {
@@ -175,9 +247,29 @@ export function ProjectWorkPlanModal({
             setError(undefined);
             void start.mutateAsync(id).catch((cause) => setError(errorMessage(cause)));
           }}
-          onComplete={(id) => {
+          onSubmitTest={(id) => {
+            setError(undefined);
+            void submitTest.mutateAsync(id).catch((cause) => setError(errorMessage(cause)));
+          }}
+          onStartTest={(id) => {
+            setError(undefined);
+            void startTest.mutateAsync(id).catch((cause) => setError(errorMessage(cause)));
+          }}
+          onPass={(id) => {
             setError(undefined);
             void complete.mutateAsync(id).catch((cause) => setError(errorMessage(cause)));
+          }}
+          onFail={(id, body) => {
+            setError(undefined);
+            void fail
+              .mutateAsync({ pointId: id, body })
+              .catch((cause) => setError(errorMessage(cause)));
+          }}
+          onReply={(pointId, noteId, body) => {
+            setError(undefined);
+            void reply
+              .mutateAsync({ pointId, noteId, body })
+              .catch((cause) => setError(errorMessage(cause)));
           }}
         />
       )}
@@ -372,15 +464,27 @@ function Editor({
 function Reader({
   plan,
   busy,
+  assignment,
+  onAssignmentChange,
   onEdit,
   onStart,
-  onComplete,
+  onSubmitTest,
+  onStartTest,
+  onPass,
+  onFail,
+  onReply,
 }: {
   plan: ProjectWorkPlan;
   busy: boolean;
+  assignment: AssignmentDraft | null;
+  onAssignmentChange: (next: AssignmentDraft) => void;
   onEdit?: () => void;
   onStart: (pointId: string) => void;
-  onComplete: (pointId: string) => void;
+  onSubmitTest: (pointId: string) => void;
+  onStartTest: (pointId: string) => void;
+  onPass: (pointId: string) => void;
+  onFail: (pointId: string, body: string) => void;
+  onReply: (pointId: string, noteId: string, body: string) => void;
 }) {
   if (plan.phases.length === 0) {
     return (
@@ -388,7 +492,9 @@ function Reader({
         <p className="work-plan__hint">
           {plan.canManage
             ? 'Upload a PDF or add a phase by hand.'
-            : 'No phase plan yet. A manager will add it from Summary.'}
+            : plan.source
+              ? 'Nothing is assigned to you yet.'
+              : 'No phase plan yet. A manager will add it from Summary.'}
         </p>
         {onEdit ? (
           <Button className="work-plan__add" variant="primary" onClick={onEdit}>
@@ -399,21 +505,141 @@ function Reader({
     );
   }
 
+  function patchAssignment(next: AssignmentDraft) {
+    onAssignmentChange(next);
+  }
+
   return (
     <div className="work-plan">
       <div className="work-plan__toolbar">
         <p className="work-plan__hint">
-          Points stay hidden until Start. Start also starts the timer. Missing the timer lowers
-          that person&apos;s on-time % on this plan.
+          {plan.canAssign
+            ? 'Assign the whole project to one developer, or split phases and topics across the team. Press Save in the header when you are done. Developer starts the timer, then sends the point to the tester. The clock keeps running until Complete.'
+            : 'Developer starts the timer, then sends the point to the tester. The clock keeps running until Complete.'}
         </p>
         {onEdit ? <Button onClick={onEdit}>Edit plan</Button> : null}
       </div>
+      {plan.canAssign && assignment ? (
+        <div className="work-plan__assign-row">
+          <WorkPlanAssigneeSelect
+            label="Whole project"
+            hint="Gives every phase and topic to this person. Phase and topic picks still override it."
+            developers={plan.developers}
+            value={assignment.assignedToId}
+            canAssign
+            busy={busy}
+            onAssign={(assignedToId) => patchAssignment({ ...assignment, assignedToId })}
+          />
+          <WorkPlanPrioritySelect
+            value={assignment.priority}
+            canAssign
+            busy={busy}
+            onChange={(priority) =>
+              patchAssignment({ ...assignment, priority: priority ?? PRIORITY.MEDIUM })
+            }
+          />
+        </div>
+      ) : null}
       {plan.phases.map((phase) => (
         <section key={phase.id} className="work-plan__phase">
-          <h3 className="work-plan__phase-name">{phase.heading}</h3>
+          <div className="work-plan__read-head">
+            <h3 className="work-plan__phase-name">{phase.heading}</h3>
+            {plan.canAssign && assignment ? (
+              <div className="work-plan__assign-row">
+                <WorkPlanAssigneeSelect
+                  label="Phase developer"
+                  developers={plan.developers}
+                  value={phaseDraft(assignment, phase.id).assignedToId}
+                  inherited={developerById(plan.developers, assignment.assignedToId)}
+                  canAssign
+                  busy={busy}
+                  onAssign={(assignedToId) =>
+                    patchAssignment({
+                      ...assignment,
+                      phases: {
+                        ...assignment.phases,
+                        [phase.id]: { ...phaseDraft(assignment, phase.id), assignedToId },
+                      },
+                    })
+                  }
+                />
+                <WorkPlanPrioritySelect
+                  value={phaseDraft(assignment, phase.id).priority}
+                  inherited={assignment.priority}
+                  allowEmpty
+                  canAssign
+                  busy={busy}
+                  onChange={(priority) =>
+                    patchAssignment({
+                      ...assignment,
+                      phases: {
+                        ...assignment.phases,
+                        [phase.id]: { ...phaseDraft(assignment, phase.id), priority },
+                      },
+                    })
+                  }
+                />
+              </div>
+            ) : (
+              <PriorityDot priority={phase.effectivePriority} showLabel />
+            )}
+          </div>
           {phase.titles.map((title) => (
             <div key={title.id} className="work-plan__title">
-              <h4 className="work-plan__title-name">{title.title}</h4>
+              <div className="work-plan__read-head">
+                <h4 className="work-plan__title-name">{title.title}</h4>
+                <div className="work-plan__assign-row">
+                  <WorkPlanAssigneeSelect
+                    label={plan.canAssign ? 'Topic developer' : 'Assigned to'}
+                    developers={plan.developers}
+                    value={
+                      plan.canAssign && assignment
+                        ? titleDraft(assignment, title.id).assignedToId
+                        : (title.effectiveAssignedTo?.id ?? null)
+                    }
+                    inherited={
+                      plan.canAssign && assignment
+                        ? developerById(
+                            plan.developers,
+                            assignment.phases[phase.id]?.assignedToId ?? assignment.assignedToId,
+                          )
+                        : null
+                    }
+                    canAssign={plan.canAssign}
+                    busy={busy}
+                    onAssign={(assignedToId) =>
+                      assignment &&
+                      patchAssignment({
+                        ...assignment,
+                        titles: {
+                          ...assignment.titles,
+                          [title.id]: { ...titleDraft(assignment, title.id), assignedToId },
+                        },
+                      })
+                    }
+                  />
+                  {plan.canAssign && assignment ? (
+                    <WorkPlanPrioritySelect
+                      value={titleDraft(assignment, title.id).priority}
+                      inherited={phaseDraft(assignment, phase.id).priority ?? assignment.priority}
+                      allowEmpty
+                      canAssign
+                      busy={busy}
+                      onChange={(priority) =>
+                        patchAssignment({
+                          ...assignment,
+                          titles: {
+                            ...assignment.titles,
+                            [title.id]: { ...titleDraft(assignment, title.id), priority },
+                          },
+                        })
+                      }
+                    />
+                  ) : (
+                    <PriorityDot priority={title.effectivePriority} showLabel />
+                  )}
+                </div>
+              </div>
               <div className="work-plan__points">
                 {title.points.map((point) => (
                   <PointRow
@@ -421,7 +647,11 @@ function Reader({
                     point={point}
                     busy={busy}
                     onStart={() => onStart(point.id)}
-                    onComplete={() => onComplete(point.id)}
+                    onSubmitTest={() => onSubmitTest(point.id)}
+                    onStartTest={() => onStartTest(point.id)}
+                    onPass={() => onPass(point.id)}
+                    onFail={(body) => onFail(point.id, body)}
+                    onReply={(noteId, body) => onReply(point.id, noteId, body)}
                   />
                 ))}
               </div>
@@ -437,19 +667,47 @@ function PointRow({
   point,
   busy,
   onStart,
-  onComplete,
+  onSubmitTest,
+  onStartTest,
+  onPass,
+  onFail,
+  onReply,
 }: {
   point: WorkPlanPoint;
   busy: boolean;
   onStart: () => void;
-  onComplete: () => void;
+  onSubmitTest: () => void;
+  onStartTest: () => void;
+  onPass: () => void;
+  onFail: (body: string) => void;
+  onReply: (noteId: string, body: string) => void;
 }) {
   const remaining = useRemaining(point.dueAt, point.completedAt, point.remainingSeconds);
+  const [draft, setDraft] = useState('');
+  const [mode, setMode] = useState<'fail' | { replyTo: string } | null>(null);
+
+  function send() {
+    const body = draft.trim();
+    if (!body) {
+      return;
+    }
+    if (mode === 'fail') {
+      onFail(body);
+    } else if (mode && typeof mode === 'object') {
+      onReply(mode.replyTo, body);
+    }
+    setDraft('');
+    setMode(null);
+  }
+
+  const replyTo = mode && typeof mode === 'object' ? mode.replyTo : null;
+
   return (
     <div className="work-plan__read-point">
-      {point.body ? <p>{point.body}</p> : <p className="work-plan__hidden">Hidden until Start</p>}
+      {point.body ? <p>{point.body}</p> : null}
       <div className="work-plan__read-meta">
         <span>{point.estimateMinutes} min</span>
+        <span>{WORK_PLAN_POINT_STATUS_LABELS[point.status]}</span>
         {point.startedBy && point.startedAt ? <span>{point.startedBy.name}</span> : null}
         {point.startedAt && !point.completedAt ? (
           remaining === 0 || point.overdue ? (
@@ -464,21 +722,106 @@ function PointRow({
             Start
           </Button>
         ) : null}
-        {point.canComplete ? (
-          <Button size="sm" variant="primary" loading={busy} onClick={onComplete}>
+        {point.canSubmitTest ? (
+          <Button size="sm" variant="primary" loading={busy} onClick={onSubmitTest}>
+            Send to tester
+          </Button>
+        ) : null}
+        {point.canStartTest ? (
+          <Button size="sm" variant="primary" loading={busy} onClick={onStartTest}>
+            Start testing
+          </Button>
+        ) : null}
+        {point.canPass ? (
+          <Button size="sm" variant="primary" loading={busy} onClick={onPass}>
             Complete
           </Button>
         ) : null}
+        {point.canFail ? (
+          <Button size="sm" loading={busy} onClick={() => setMode('fail')}>
+            Not complete
+          </Button>
+        ) : null}
       </div>
+      {point.notes.length > 0 ? (
+        <ul className="work-plan__notes">
+          {point.notes.map((note) => (
+            <li key={note.id}>
+              <NoteLine note={note} />
+              {note.replies.length > 0 ? (
+                <ul className="work-plan__replies">
+                  {note.replies.map((reply) => (
+                    <li key={reply.id}>
+                      <NoteLine note={reply} />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {point.canReply ? (
+                <Button size="sm" loading={busy} onClick={() => setMode({ replyTo: note.id })}>
+                  Reply
+                </Button>
+              ) : null}
+              {replyTo === note.id ? (
+                <div className="work-plan__note-form">
+                  <FormField
+                    label="Reply"
+                    hint="Developer and tester both see this thread. You can add as many replies as you need."
+                  >
+                    <Textarea
+                      rows={3}
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                    />
+                  </FormField>
+                  <div className="work-plan__note-actions">
+                    <Button size="sm" onClick={() => setMode(null)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" variant="primary" disabled={!draft.trim()} onClick={send}>
+                      Send
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {mode === 'fail' ? (
+        <div className="work-plan__note-form">
+          <FormField
+            label="What is wrong?"
+            hint="The developer sees this and the timer keeps running until you or the team lead mark it done."
+          >
+            <Textarea rows={3} value={draft} onChange={(event) => setDraft(event.target.value)} />
+          </FormField>
+          <div className="work-plan__note-actions">
+            <Button size="sm" onClick={() => setMode(null)}>
+              Cancel
+            </Button>
+            <Button size="sm" variant="primary" disabled={!draft.trim()} onClick={send}>
+              Send
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function useRemaining(
-  dueAt: string | null,
-  completedAt: string | null,
-  initial: number,
-): number {
+function NoteLine({ note }: { note: WorkPlanNote }) {
+  return (
+    <div className="work-plan__note-line">
+      <b>
+        {note.author.name} · {WORK_PLAN_NOTE_KIND_LABELS[note.kind]}
+      </b>
+      <span>{note.body}</span>
+    </div>
+  );
+}
+
+function useRemaining(dueAt: string | null, completedAt: string | null, initial: number): number {
   const [seconds, setSeconds] = useState(initial);
   useEffect(() => {
     setSeconds(initial);
@@ -559,4 +902,56 @@ function toDraft(phases: ProjectWorkPlan['phases']): WorkPlanPhaseInput[] {
       })),
     })),
   }));
+}
+
+type LevelAssignmentDraft = {
+  assignedToId: string | null;
+  priority: Priority | null;
+};
+
+type AssignmentDraft = {
+  assignedToId: string | null;
+  priority: Priority;
+  phases: Record<string, LevelAssignmentDraft>;
+  titles: Record<string, LevelAssignmentDraft>;
+};
+
+function assignmentDraftFrom(plan: ProjectWorkPlan): AssignmentDraft {
+  return {
+    assignedToId: plan.assignedTo?.id ?? null,
+    priority: plan.priority,
+    phases: Object.fromEntries(
+      plan.phases.map((phase) => [
+        phase.id,
+        { assignedToId: phase.assignedTo?.id ?? null, priority: phase.priority },
+      ]),
+    ),
+    titles: Object.fromEntries(
+      plan.phases.flatMap((phase) =>
+        phase.titles.map((title) => [
+          title.id,
+          { assignedToId: title.assignedTo?.id ?? null, priority: title.priority },
+        ]),
+      ),
+    ),
+  };
+}
+
+function phaseDraft(assignment: AssignmentDraft, phaseId: string): LevelAssignmentDraft {
+  return assignment.phases[phaseId] ?? { assignedToId: null, priority: null };
+}
+
+function titleDraft(assignment: AssignmentDraft, titleId: string): LevelAssignmentDraft {
+  return assignment.titles[titleId] ?? { assignedToId: null, priority: null };
+}
+
+function assignmentFingerprint(plan: ProjectWorkPlan): string {
+  return JSON.stringify(assignmentDraftFrom(plan));
+}
+
+function developerById(
+  developers: ProjectWorkPlan['developers'],
+  id: string | null | undefined,
+): ProjectWorkPlan['developers'][number] | undefined {
+  return id ? developers.find((user) => user.id === id) : undefined;
 }

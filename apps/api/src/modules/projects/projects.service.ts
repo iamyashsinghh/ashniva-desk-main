@@ -7,6 +7,7 @@ import {
 import {
   AUDIT_ACTION,
   AUDIT_ENTITY_TYPE,
+  seesAllOrganizationProjects,
   type AuthenticatedUser,
   type ProjectDetail,
   type ProjectSummary,
@@ -52,7 +53,8 @@ export class ProjectsService {
       status: query.status,
       clientOrganizationId: query.clientOrganizationId,
       search: query.search,
-      memberUserId: query.mine ? actor.userId : undefined,
+      memberUserId:
+        query.mine || !seesAllOrganizationProjects(actor.roleKey) ? actor.userId : undefined,
     });
     const counts = await this.projects.countsByProject(
       actor.organizationId,
@@ -82,15 +84,17 @@ export class ProjectsService {
       startDate: toDate(startDate),
       targetDate: toDate(targetDate),
     });
-    const initialMembers = members ?? [];
-    for (const [userId, role] of [
-      [dto.managerUserId, 'MANAGER'],
-      [dto.leadUserId, 'LEAD'],
-    ] as const) {
-      if (userId && !initialMembers.some((member) => member.userId === userId)) {
-        initialMembers.push({ userId, role });
-      }
-    }
+    const initialMembers = await this.projects.membersFromTeam(
+      actor.organizationId,
+      dto.teamId,
+      [
+        ...(members ?? []),
+        ...([
+          dto.managerUserId ? { userId: dto.managerUserId, role: 'MANAGER' as const } : null,
+          dto.leadUserId ? { userId: dto.leadUserId, role: 'LEAD' as const } : null,
+        ].filter((row): row is { userId: string; role: 'MANAGER' | 'LEAD' } => row !== null)),
+      ],
+    );
     await this.projects.setMembers(actor.organizationId, row.id, initialMembers);
     await this.projectGroups.sync(row.id);
     await this.auditLog.record({
@@ -121,6 +125,22 @@ export class ProjectsService {
       startDate: toDate(startDate),
       targetDate: toDate(targetDate),
     });
+    if (dto.teamId !== undefined && dto.teamId !== before.team?.id) {
+      const existing = before.members.map((member) => ({
+        userId: member.userId,
+        role: member.role,
+      }));
+      const merged = await this.projects.membersFromTeam(
+        actor.organizationId,
+        dto.teamId ?? row.teamId,
+        [
+          ...existing,
+          ...(row.managerUserId ? [{ userId: row.managerUserId, role: 'MANAGER' as const }] : []),
+          ...(row.leadUserId ? [{ userId: row.leadUserId, role: 'LEAD' as const }] : []),
+        ],
+      );
+      await this.projects.setMembers(actor.organizationId, id, merged);
+    }
     await this.projectGroups.sync(id);
     await this.auditLog.record({
       action: AUDIT_ACTION.PROJECT_UPDATED,
@@ -152,10 +172,24 @@ export class ProjectsService {
 
   private async require(actor: AuthenticatedUser, id: string): Promise<ProjectRow> {
     const row = await this.projects.findById(actor.organizationId, id);
-    if (!row) {
+    if (!row || !this.canSee(actor, row)) {
       throw new NotFoundException('Project not found');
     }
     return row;
+  }
+
+  private canSee(actor: AuthenticatedUser, row: ProjectRow): boolean {
+    if (seesAllOrganizationProjects(actor.roleKey)) {
+      return true;
+    }
+    return (
+      row.createdById === actor.userId ||
+      row.managerUserId === actor.userId ||
+      row.leadUserId === actor.userId ||
+      row.members.some((member) => member.userId === actor.userId) ||
+      row.team?.leadUserId === actor.userId ||
+      (row.team?.members.some((member) => member.userId === actor.userId) ?? false)
+    );
   }
 
   private assertInternal(actor: AuthenticatedUser): void {

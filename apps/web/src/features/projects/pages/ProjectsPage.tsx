@@ -3,6 +3,7 @@ import {
   PROJECT_HEALTH_LABELS,
   PROJECT_STATUS_LABELS,
   PROJECT_TYPE_LABELS,
+  seesAllOrganizationProjects,
   type ProjectSummary,
 } from '@ashniva/types';
 import {
@@ -20,7 +21,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 
 import { QueryState } from '../../../shared/components/QueryState';
 import { formatDate } from '../../../shared/lib/format';
-import { usePermission } from '../../auth/session-context';
+import { useCurrentUser, usePermission } from '../../auth/session-context';
 import { useProjectsQuery } from '../api';
 import { ProjectFormModal } from '../components/ProjectFormModal';
 import { ProjectWorkPlanModal } from '../components/ProjectWorkPlanModal';
@@ -32,6 +33,7 @@ export function ProjectsPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const canManage = usePermission(PERMISSIONS.PROJECT_MANAGE);
+  const seesAll = seesAllOrganizationProjects(useCurrentUser().roleKey);
   const [creating, setCreating] = useState(false);
   const [summaryId, setSummaryId] = useState<{ id: string; name: string } | null>(null);
   const scope = params.get('scope') === 'mine' ? 'mine' : 'all';
@@ -111,25 +113,23 @@ export function ProjectsPage() {
     },
   ];
 
-  if (canManage) {
-    columns.push({
-      key: 'summary',
-      header: 'Summary',
-      width: '110px',
-      align: 'right',
-      render: (project) => (
-        <Button
-          size="sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            setSummaryId({ id: project.id, name: project.name });
-          }}
-        >
-          Summary
-        </Button>
-      ),
-    });
-  }
+  columns.push({
+    key: 'summary',
+    header: 'Summary',
+    width: '110px',
+    align: 'right',
+    render: (project) => (
+      <Button
+        size="sm"
+        onClick={(event) => {
+          event.stopPropagation();
+          setSummaryId({ id: project.id, name: project.name });
+        }}
+      >
+        Summary
+      </Button>
+    ),
+  });
 
   return (
     <div className="tasks-page">
@@ -144,18 +144,20 @@ export function ProjectsPage() {
           ) : undefined
         }
       >
-        <SegmentedControl
-          aria-label="Scope"
-          size="sm"
-          value={scope}
-          onChange={(value) =>
-            setParams(value === 'mine' ? { scope: 'mine' } : {}, { replace: true })
-          }
-          options={[
-            { key: 'all', label: 'All projects' },
-            { key: 'mine', label: 'My projects' },
-          ]}
-        />
+        {seesAll ? (
+          <SegmentedControl
+            aria-label="Scope"
+            size="sm"
+            value={scope}
+            onChange={(value) =>
+              setParams(value === 'mine' ? { scope: 'mine' } : {}, { replace: true })
+            }
+            options={[
+              { key: 'all', label: 'All projects' },
+              { key: 'mine', label: 'My projects' },
+            ]}
+          />
+        ) : null}
         <Input
           type="search"
           aria-label="Search projects"

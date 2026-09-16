@@ -7,6 +7,8 @@
  * the number on screen is the live one.
  */
 
+import { PRIORITY, type Priority } from '../domain/priority';
+
 /** How many percentage points one missed timer takes off this plan's on-time figure. */
 export const WORK_PLAN_PENALTY_PERCENT = 5;
 
@@ -20,6 +22,68 @@ export const WORK_PLAN_SOURCE = {
 } as const;
 
 export type WorkPlanSource = (typeof WORK_PLAN_SOURCE)[keyof typeof WORK_PLAN_SOURCE];
+
+/**
+ * A point's place in the developer → tester loop.
+ *
+ * The timer starts on the first Start and keeps running until a tester or team lead marks the
+ * point done — including the time it sits with the tester. Sending it back does not reset the clock.
+ */
+export const WORK_PLAN_POINT_STATUS = {
+  PENDING: 'PENDING',
+  IN_PROGRESS: 'IN_PROGRESS',
+  AWAITING_TEST: 'AWAITING_TEST',
+  TESTING: 'TESTING',
+  RETURNED: 'RETURNED',
+  COMPLETED: 'COMPLETED',
+} as const;
+
+export type WorkPlanPointStatus =
+  (typeof WORK_PLAN_POINT_STATUS)[keyof typeof WORK_PLAN_POINT_STATUS];
+
+export const WORK_PLAN_POINT_STATUS_LABELS: Record<WorkPlanPointStatus, string> = {
+  PENDING: 'Not started',
+  IN_PROGRESS: 'In progress',
+  AWAITING_TEST: 'Waiting for tester',
+  TESTING: 'Testing',
+  RETURNED: 'Returned',
+  COMPLETED: 'Done',
+};
+
+export const WORK_PLAN_NOTE_KIND = {
+  DOUBT: 'DOUBT',
+  ISSUE: 'ISSUE',
+  REPLY: 'REPLY',
+} as const;
+
+export type WorkPlanNoteKind = (typeof WORK_PLAN_NOTE_KIND)[keyof typeof WORK_PLAN_NOTE_KIND];
+
+export const WORK_PLAN_NOTE_KIND_LABELS: Record<WorkPlanNoteKind, string> = {
+  DOUBT: 'Doubt',
+  ISSUE: 'Issue',
+  REPLY: 'Reply',
+};
+
+/** Groups reply rows under the root note they belong to. Nested replies still sit on the root. */
+export function nestWorkPlanNotes<T extends { id: string; parentId: string | null }>(
+  notes: readonly T[],
+): Array<T & { replies: T[] }> {
+  const byId = new Map(notes.map((note) => [note.id, note]));
+  const replies = new Map<string, T[]>();
+  for (const note of notes) {
+    if (!note.parentId) {
+      continue;
+    }
+    const parent = byId.get(note.parentId);
+    const rootId = parent?.parentId ?? note.parentId;
+    const list = replies.get(rootId) ?? [];
+    list.push(note);
+    replies.set(rootId, list);
+  }
+  return notes
+    .filter((note) => !note.parentId)
+    .map((note) => ({ ...note, replies: replies.get(note.id) ?? [] }));
+}
 
 export interface WorkPlanDraftPoint {
   body: string;
@@ -65,6 +129,94 @@ export function isWorkPlanOverdue(
 
 export function scoreAfterPenalty(percent: number, missedPoints = 1): number {
   return Math.max(0, percent - WORK_PLAN_PENALTY_PERCENT * missedPoints);
+}
+
+export const WORK_PLAN_ASSIGN_SCOPE = {
+  PROJECT: 'PROJECT',
+  PHASE: 'PHASE',
+  TITLE: 'TITLE',
+} as const;
+
+export type WorkPlanAssignScope =
+  (typeof WORK_PLAN_ASSIGN_SCOPE)[keyof typeof WORK_PLAN_ASSIGN_SCOPE];
+
+/** Title beats phase beats the whole plan. Unassigned levels fall through. */
+export function effectiveWorkPlanAssigneeId(
+  titleAssignedToId: string | null | undefined,
+  phaseAssignedToId: string | null | undefined,
+  planAssignedToId: string | null | undefined,
+): string | null {
+  return titleAssignedToId ?? phaseAssignedToId ?? planAssignedToId ?? null;
+}
+
+/** Title beats phase beats the whole plan. Unset levels fall through to Medium. */
+export function effectiveWorkPlanPriority(
+  titlePriority: Priority | null | undefined,
+  phasePriority: Priority | null | undefined,
+  planPriority: Priority | null | undefined,
+): Priority {
+  return titlePriority ?? phasePriority ?? planPriority ?? PRIORITY.MEDIUM;
+}
+
+/** Managers, leads and testers see every title. A developer only sees work assigned to them. */
+export function shouldRestrictWorkPlanToAssignee(flags: {
+  canAssign: boolean;
+  canTest: boolean;
+}): boolean {
+  return !flags.canAssign && !flags.canTest;
+}
+
+/** Drops phases and titles whose effective assignee is not this developer. */
+export function workPlanPhasesVisibleToDeveloper<
+  T extends { titles: Array<{ effectiveAssignedTo: { id: string } | null }> },
+>(phases: T[], userId: string): T[] {
+  return phases
+    .map((phase) => ({
+      ...phase,
+      titles: phase.titles.filter((title) => title.effectiveAssignedTo?.id === userId),
+    }))
+    .filter((phase) => phase.titles.length > 0);
+}
+
+/** Buttons on one point, derived from status and who is looking. */
+export function workPlanPointActions(input: {
+  status: WorkPlanPointStatus;
+  startedById: string | null;
+  actorId: string;
+  canWork: boolean;
+  canTest: boolean;
+  canLead: boolean;
+  assignedToId?: string | null;
+}): {
+  canStart: boolean;
+  canSubmitTest: boolean;
+  canStartTest: boolean;
+  canPass: boolean;
+  canFail: boolean;
+  canDoubt: boolean;
+  canReply: boolean;
+} {
+  const { status, startedById, actorId, canWork, canTest, canLead, assignedToId } = input;
+  const done = status === WORK_PLAN_POINT_STATUS.COMPLETED;
+  const starter = startedById === actorId;
+  const reviewer = canTest || canLead;
+  const onTeam = canWork || canTest || canLead;
+  /** Testers skip development Start; they wait for Send to tester, then Start testing. */
+  const developer = canWork && !canTest;
+  const builder = developer || canLead;
+  const owns = canLead || assignedToId === actorId;
+  return {
+    canStart:
+      builder &&
+      owns &&
+      (status === WORK_PLAN_POINT_STATUS.PENDING || status === WORK_PLAN_POINT_STATUS.RETURNED),
+    canSubmitTest: builder && status === WORK_PLAN_POINT_STATUS.IN_PROGRESS && (starter || canLead),
+    canStartTest: reviewer && status === WORK_PLAN_POINT_STATUS.AWAITING_TEST,
+    canPass: reviewer && status === WORK_PLAN_POINT_STATUS.TESTING,
+    canFail: reviewer && status === WORK_PLAN_POINT_STATUS.TESTING,
+    canDoubt: onTeam && !done,
+    canReply: onTeam,
+  };
 }
 
 /**
@@ -155,11 +307,17 @@ function isBullet(line: string): boolean {
 }
 
 function stripBullet(line: string): string {
-  return line.replace(/^[-*•–]\s+/, '').replace(/^\d+[.)]\s+/, '').trim();
+  return line
+    .replace(/^[-*•–]\s+/, '')
+    .replace(/^\d+[.)]\s+/, '')
+    .trim();
 }
 
 function cleanHeading(line: string): string {
-  return line.replace(/^(phase|module|sprint|week|chapter|part|stage)\s*\d*\s*[:.\-]?\s*/i, '').trim() || line;
+  return (
+    line.replace(/^(phase|module|sprint|week|chapter|part|stage)\s*\d*\s*[:.\-]?\s*/i, '').trim() ||
+    line
+  );
 }
 
 function cleanTitle(line: string): string {
@@ -255,7 +413,10 @@ function pointOf(value: unknown): WorkPlanDraftPoint | null {
   if (!isRecord(value)) {
     return null;
   }
-  const body = clip(stringOf(value.body) ?? stringOf(value.description) ?? stringOf(value.text), MAX_BODY);
+  const body = clip(
+    stringOf(value.body) ?? stringOf(value.description) ?? stringOf(value.text),
+    MAX_BODY,
+  );
   if (!body) {
     return null;
   }
@@ -271,7 +432,10 @@ function minutesOf(value: unknown): number {
 }
 
 function parseJsonObject(text: string): unknown {
-  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const trimmed = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
   try {
     return JSON.parse(trimmed) as unknown;
   } catch {

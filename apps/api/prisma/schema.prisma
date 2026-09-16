@@ -312,8 +312,13 @@ model User {
   ticketRelationsLinked     TicketRelation[]          @relation("TicketRelationAuthor")
   taskRelationsLinked       TaskRelation[]            @relation("TaskRelationAuthor")
   workPlansCreated          ProjectWorkPlan[]         @relation("WorkPlanCreator")
+  workPlansAssigned         ProjectWorkPlan[]         @relation("WorkPlanAssignee")
+  workPlanPhasesAssigned    ProjectWorkPlanPhase[]    @relation("WorkPlanPhaseAssignee")
+  workPlanTitlesAssigned    ProjectWorkPlanTitle[]    @relation("WorkPlanTitleAssignee")
   workPlanScores            ProjectWorkPlanScore[]
   workPlanPointsStarted     ProjectWorkPlanPoint[]    @relation("WorkPlanPointStarter")
+  workPlanPointsCompleted   ProjectWorkPlanPoint[]    @relation("WorkPlanPointCompleter")
+  workPlanNotes             ProjectWorkPlanNote[]     @relation("WorkPlanNoteAuthor")
 
   @@map("users")
 }
@@ -510,6 +515,21 @@ enum ProjectWorkPlanSource {
   PDF
   MANUAL
   MIXED
+}
+
+enum WorkPlanPointStatus {
+  PENDING
+  IN_PROGRESS
+  AWAITING_TEST
+  TESTING
+  RETURNED
+  COMPLETED
+}
+
+enum WorkPlanNoteKind {
+  DOUBT
+  ISSUE
+  REPLY
 }
 
 enum ProjectMemberRole {
@@ -747,6 +767,8 @@ model ProjectWorkPlan {
   sourceFileId   String?              @map("source_file_id") @db.Uuid
   source         ProjectWorkPlanSource
   createdById    String               @map("created_by_id") @db.Uuid
+  assignedToId   String?              @map("assigned_to_id") @db.Uuid
+  priority       Priority             @default(MEDIUM)
   createdAt      DateTime             @default(now()) @map("created_at")
   updatedAt      DateTime             @updatedAt @map("updated_at")
 
@@ -754,63 +776,101 @@ model ProjectWorkPlan {
   project      Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sourceFile   File?                 @relation(fields: [sourceFileId], references: [id])
   createdBy    User                  @relation("WorkPlanCreator", fields: [createdById], references: [id])
+  assignedTo   User?                 @relation("WorkPlanAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   phases       ProjectWorkPlanPhase[]
   scores       ProjectWorkPlanScore[]
 
   @@index([organizationId])
+  @@index([assignedToId])
   @@map("project_work_plans")
 }
 
 model ProjectWorkPlanPhase {
-  id        String @id @default(uuid(7)) @db.Uuid
-  planId    String @map("plan_id") @db.Uuid
-  heading   String
-  sortOrder Int    @map("sort_order")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid(7)) @db.Uuid
+  planId       String   @map("plan_id") @db.Uuid
+  heading      String
+  sortOrder    Int      @map("sort_order")
+  assignedToId String?   @map("assigned_to_id") @db.Uuid
+  priority     Priority?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  plan   ProjectWorkPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
-  titles ProjectWorkPlanTitle[]
+  plan       ProjectWorkPlan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  assignedTo User?                  @relation("WorkPlanPhaseAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  titles     ProjectWorkPlanTitle[]
 
   @@index([planId, sortOrder])
+  @@index([assignedToId])
   @@map("project_work_plan_phases")
 }
 
 model ProjectWorkPlanTitle {
-  id        String @id @default(uuid(7)) @db.Uuid
-  phaseId   String @map("phase_id") @db.Uuid
-  title     String
-  sortOrder Int    @map("sort_order")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String @id @default(uuid(7)) @db.Uuid
+  phaseId      String @map("phase_id") @db.Uuid
+  title        String
+  sortOrder    Int    @map("sort_order")
+  assignedToId String?   @map("assigned_to_id") @db.Uuid
+  priority     Priority?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  phase  ProjectWorkPlanPhase  @relation(fields: [phaseId], references: [id], onDelete: Cascade)
-  points ProjectWorkPlanPoint[]
+  phase      ProjectWorkPlanPhase   @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  assignedTo User?                  @relation("WorkPlanTitleAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  points     ProjectWorkPlanPoint[]
+  tasks      Task[]
 
   @@index([phaseId, sortOrder])
+  @@index([assignedToId])
   @@map("project_work_plan_titles")
 }
 
 model ProjectWorkPlanPoint {
-  id              String    @id @default(uuid(7)) @db.Uuid
-  titleId         String    @map("title_id") @db.Uuid
+  id              String              @id @default(uuid(7)) @db.Uuid
+  titleId         String              @map("title_id") @db.Uuid
   body            String
-  estimateMinutes Int       @map("estimate_minutes")
-  sortOrder       Int       @map("sort_order")
-  startedAt       DateTime? @map("started_at")
-  dueAt           DateTime? @map("due_at")
-  completedAt     DateTime? @map("completed_at")
-  startedById     String?   @map("started_by_id") @db.Uuid
-  penaltyApplied  Boolean   @default(false) @map("penalty_applied")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  estimateMinutes Int                 @map("estimate_minutes")
+  sortOrder       Int                 @map("sort_order")
+  status          WorkPlanPointStatus @default(PENDING)
+  startedAt       DateTime?           @map("started_at")
+  dueAt           DateTime?           @map("due_at")
+  completedAt     DateTime?           @map("completed_at")
+  startedById     String?             @map("started_by_id") @db.Uuid
+  completedById   String?             @map("completed_by_id") @db.Uuid
+  submittedAt     DateTime?           @map("submitted_at")
+  penaltyApplied  Boolean             @default(false) @map("penalty_applied")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
 
-  title     ProjectWorkPlanTitle @relation(fields: [titleId], references: [id], onDelete: Cascade)
-  startedBy User?                @relation("WorkPlanPointStarter", fields: [startedById], references: [id])
+  title       ProjectWorkPlanTitle @relation(fields: [titleId], references: [id], onDelete: Cascade)
+  startedBy   User?                @relation("WorkPlanPointStarter", fields: [startedById], references: [id])
+  completedBy User?                @relation("WorkPlanPointCompleter", fields: [completedById], references: [id])
+  notes       ProjectWorkPlanNote[]
 
   @@index([titleId, sortOrder])
   @@index([startedById])
+  @@index([status])
   @@map("project_work_plan_points")
+}
+
+model ProjectWorkPlanNote {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  pointId        String           @map("point_id") @db.Uuid
+  parentId       String?          @map("parent_id") @db.Uuid
+  authorId       String           @map("author_id") @db.Uuid
+  kind           WorkPlanNoteKind
+  body           String
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  point   ProjectWorkPlanPoint  @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  parent  ProjectWorkPlanNote?  @relation("WorkPlanNoteThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies ProjectWorkPlanNote[] @relation("WorkPlanNoteThread")
+  author  User                  @relation("WorkPlanNoteAuthor", fields: [authorId], references: [id])
+
+  @@index([pointId, createdAt])
+  @@index([parentId])
+  @@index([organizationId])
+  @@map("project_work_plan_notes")
 }
 
 model ProjectWorkPlanScore {
@@ -887,6 +947,8 @@ model Task {
   milestoneId        String?    @map("milestone_id") @db.Uuid
   /// Change request the task was generated from (traceability).
   changeRequestId    String?    @map("change_request_id") @db.Uuid
+  /// Work-plan topic this task was created from. One live task per title.
+  workPlanTitleId    String?    @unique @map("work_plan_title_id") @db.Uuid
   dueDate            DateTime?  @map("due_date") @db.Date
   /// When the work is meant to begin. A task whose start is still ahead sits in the assignee's
   /// "upcoming" view and cannot be started; it needs no job to activate it, because the queue is
@@ -921,6 +983,7 @@ model Task {
   ticket         Ticket?             @relation(fields: [ticketId], references: [id])
   milestone      Milestone?          @relation(fields: [milestoneId], references: [id])
   changeRequest  ChangeRequest?      @relation(fields: [changeRequestId], references: [id])
+  workPlanTitle  ProjectWorkPlanTitle? @relation(fields: [workPlanTitleId], references: [id], onDelete: SetNull)
   statusHistory  TaskStatusHistory[]
   comments       Comment[]
   workLogs       WorkLog[]
@@ -1451,6 +1514,10 @@ enum NotificationType {
   PROBLEM_THRESHOLD_REACHED
   UAT_DECIDED
   TICKET_DUPLICATE
+  WORK_PLAN_SUBMITTED_FOR_TEST
+  WORK_PLAN_RETURNED
+  WORK_PLAN_DOUBT
+  WORK_PLAN_ASSIGNED
 }
 
 enum NotificationChannel {

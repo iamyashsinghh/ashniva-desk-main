@@ -24,7 +24,19 @@ export class WorkPlanRepository {
       },
       include: {
         startedBy: { select: { id: true, name: true, email: true } },
-        title: { select: { phase: { select: { planId: true } } } },
+        title: {
+          select: {
+            assignedToId: true,
+            phase: {
+              select: {
+                planId: true,
+                assignedToId: true,
+                plan: { select: { assignedToId: true } },
+              },
+            },
+          },
+        },
+        notes: { include: { author: { select: { id: true, name: true, email: true } } } },
       },
     });
   }

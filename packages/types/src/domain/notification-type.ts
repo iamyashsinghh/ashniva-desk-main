@@ -63,6 +63,10 @@ export const NOTIFICATION_TYPE = {
    * only names the other ticket when the reader could open it — see `duplicateCloseNote`.
    */
   TICKET_DUPLICATE: 'TICKET_DUPLICATE',
+  WORK_PLAN_SUBMITTED_FOR_TEST: 'WORK_PLAN_SUBMITTED_FOR_TEST',
+  WORK_PLAN_RETURNED: 'WORK_PLAN_RETURNED',
+  WORK_PLAN_DOUBT: 'WORK_PLAN_DOUBT',
+  WORK_PLAN_ASSIGNED: 'WORK_PLAN_ASSIGNED',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICATION_TYPE];
@@ -98,6 +102,10 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   PROBLEM_THRESHOLD_REACHED: 'Several clients reported the same fault',
   UAT_DECIDED: 'A client answered a sign-off request',
   TICKET_DUPLICATE: 'My ticket was marked a duplicate',
+  WORK_PLAN_SUBMITTED_FOR_TEST: 'A phase point is ready to test',
+  WORK_PLAN_RETURNED: 'A phase point was sent back',
+  WORK_PLAN_DOUBT: 'A doubt on a phase point',
+  WORK_PLAN_ASSIGNED: 'Work on a phase plan was assigned to me',
 };
 
 /** Types grouped for the preferences screen. */
@@ -114,6 +122,10 @@ export const NOTIFICATION_TYPE_GROUPS: ReadonlyArray<{
       'TASK_REVIEW_REQUESTED',
       'TASK_REVIEW_REJECTED',
       'QA_PASSED',
+      'WORK_PLAN_SUBMITTED_FOR_TEST',
+      'WORK_PLAN_RETURNED',
+      'WORK_PLAN_DOUBT',
+      'WORK_PLAN_ASSIGNED',
     ],
   },
   {

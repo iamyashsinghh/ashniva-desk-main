@@ -38,6 +38,12 @@ import { TasksService } from './tasks.service';
     TaskTransitionsService,
     TaskReviewService,
   ],
-  exports: [TasksRepository, CommentsRepository, TasksService, TaskVisibilityModule],
+  exports: [
+    TasksRepository,
+    CommentsRepository,
+    TasksService,
+    TaskEventsService,
+    TaskVisibilityModule,
+  ],
 })
 export class TasksModule {}

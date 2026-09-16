@@ -23,6 +23,21 @@ describe('Modal', () => {
     expect(dialog).toHaveAccessibleDescription('Your reviewer sees this');
   });
 
+  it('renders extra header actions next to Close', () => {
+    render(
+      <Modal
+        open
+        title="Summary"
+        onClose={vi.fn()}
+        headerActions={<button type="button">Save</button>}
+      >
+        Body
+      </Modal>,
+    );
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+  });
+
   it('asks the caller to close on Escape rather than closing itself', () => {
     const onClose = vi.fn();
     render(

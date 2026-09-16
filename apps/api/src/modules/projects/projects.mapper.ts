@@ -92,7 +92,7 @@ export function toProjectSummary(
     clientOrganization: row.clientOrganization,
     manager: row.manager,
     lead: row.lead,
-    team: row.team,
+    team: row.team ? { id: row.team.id, name: row.team.name } : null,
     startDate: dateOnly(row.startDate),
     targetDate: dateOnly(row.targetDate),
     requiresClientUat: row.requiresClientUat,

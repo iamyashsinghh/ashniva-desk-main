@@ -260,6 +260,16 @@ export class TasksRepository {
     });
   }
 
+  findByWorkPlanTitle(
+    organizationId: string,
+    workPlanTitleId: string,
+  ): Promise<TaskSummaryRow | null> {
+    return this.prisma.task.findFirst({
+      where: { organizationId, workPlanTitleId },
+      include: taskSummaryInclude,
+    });
+  }
+
   /** Creates the task and its first history row under a fresh per-organization number. */
   create(
     organizationId: string,

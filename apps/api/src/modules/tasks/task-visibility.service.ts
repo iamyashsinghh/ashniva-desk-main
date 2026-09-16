@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { PERMISSIONS, type AuthenticatedUser } from '@ashniva/types';
+import { PERMISSIONS, seesAllOrganizationProjects, type AuthenticatedUser } from '@ashniva/types';
 
 import { PrismaService } from '../../database/prisma.service';
 import type { Prisma } from '../../generated/prisma/client';
@@ -83,7 +83,10 @@ export class TaskVisibilityService {
   constructor(private readonly prisma: PrismaService) {}
 
   async resolve(actor: AuthenticatedUser): Promise<TaskScope> {
-    if (actor.permissions.includes(PERMISSIONS.TASK_READ_ALL)) {
+    if (
+      actor.permissions.includes(PERMISSIONS.TASK_READ_ALL) &&
+      seesAllOrganizationProjects(actor.roleKey)
+    ) {
       return { organizationWide: true, userIds: [], projectIds: [] };
     }
     const [teams, projects] = await Promise.all([
@@ -96,9 +99,12 @@ export class TaskVisibilityService {
           organizationId: actor.organizationId,
           deletedAt: null,
           OR: [
+            { createdById: actor.userId },
             { managerUserId: actor.userId },
             { leadUserId: actor.userId },
             { members: { some: { userId: actor.userId } } },
+            { team: { is: { leadUserId: actor.userId } } },
+            { team: { is: { members: { some: { userId: actor.userId } } } } },
           ],
         },
         select: { id: true },

@@ -10,6 +10,8 @@ export interface ModalProps {
   description?: ReactNode;
   /** Footer content, usually the Cancel / primary buttons. */
   footer?: ReactNode;
+  /** Extra controls in the header, next to Close — for example Save. */
+  headerActions?: ReactNode;
   children: ReactNode;
   size?: 'sm' | 'md' | 'lg';
   /**
@@ -33,6 +35,7 @@ export function Modal({
   onClose,
   description,
   footer,
+  headerActions,
   children,
   size = 'md',
   dismissOnBackdrop = false,
@@ -106,9 +109,12 @@ export function Modal({
               </p>
             ) : null}
           </div>
-          <button type="button" className="ui-modal__close" aria-label="Close" onClick={onClose}>
-            <span aria-hidden="true">×</span>
-          </button>
+          <div className="ui-modal__header-end">
+            {headerActions}
+            <button type="button" className="ui-modal__close" aria-label="Close" onClick={onClose}>
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
         </header>
         <div className="ui-modal__body">{children}</div>
         {footer ? <footer className="ui-modal__footer">{footer}</footer> : null}

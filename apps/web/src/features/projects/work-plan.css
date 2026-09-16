@@ -143,6 +143,31 @@
   line-height: var(--line-height-snug);
 }
 
+.work-plan__read-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 24rem);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.work-plan__assign-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 9.5rem);
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.work-plan__assign-row .ui-field,
+.work-plan__read-head .ui-field {
+  margin: 0;
+}
+
+.work-plan__assignee-read {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
 .work-plan__title-name {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
@@ -179,11 +204,6 @@
   white-space: nowrap;
 }
 
-.work-plan__hidden {
-  color: var(--color-text-muted);
-  font-style: italic;
-}
-
 .work-plan__timer {
   font-variant-numeric: tabular-nums;
   font-weight: var(--font-weight-semibold);
@@ -203,12 +223,73 @@
   color: var(--color-success);
 }
 
+.work-plan__notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+  grid-column: 1 / -1;
+}
+
+.work-plan__notes > li {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-size: var(--font-size-xs);
+}
+
+.work-plan__note-line {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.work-plan__note-line b {
+  font-weight: var(--font-weight-medium);
+}
+
+.work-plan__replies {
+  margin: 0;
+  padding: 0 0 0 var(--space-3);
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  border-left: 2px solid var(--color-border);
+}
+
+.work-plan__replies li {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.work-plan__note-form {
+  display: grid;
+  gap: var(--space-2);
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.work-plan__note-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 @media (max-width: 599px) {
   .work-plan__phase-head,
   .work-plan__title-head,
   .work-plan__points-head,
   .work-plan__point-row,
-  .work-plan__read-point {
+  .work-plan__read-point,
+  .work-plan__read-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-plan__assign-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
