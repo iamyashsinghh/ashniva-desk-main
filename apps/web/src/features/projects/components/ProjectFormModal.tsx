@@ -6,6 +6,7 @@ import {
   ROLE_KEYS,
   type ProjectDetail,
   type ProjectStatus,
+  type ProjectSummary,
   type ProjectType,
 } from '@ashniva/types';
 import { Button, FormField, Input, Modal, Select, Switch, Textarea } from '@ashniva/ui';
@@ -22,7 +23,10 @@ import { useProjectMutations, type ProjectInput } from '../api';
 const PROJECT_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9]{1,7}$/;
 
 function sanitizeProjectCode(value: string): string {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8);
 }
 
 interface ProjectFormModalProps {
@@ -30,7 +34,7 @@ interface ProjectFormModalProps {
   onClose: () => void;
   onSaved: (project: ProjectDetail) => void;
   /** Editing an existing project; omit to create. */
-  project?: ProjectDetail;
+  project?: ProjectSummary;
 }
 
 /** Create / edit project: code, name, client, type, status, manager, lead, team, dates, UAT. */
@@ -47,8 +51,7 @@ export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFor
     type: project?.type ?? PROJECT_TYPE.FIXED_PRICE,
     status: project?.status ?? PROJECT_STATUS.ACTIVE,
     clientOrganizationId: project?.clientOrganization?.id ?? '',
-    managerUserId:
-      project?.manager?.id ?? (me.roleKey === ROLE_KEYS.PROJECT_MANAGER ? me.id : ''),
+    managerUserId: project?.manager?.id ?? (me.roleKey === ROLE_KEYS.PROJECT_MANAGER ? me.id : ''),
     leadUserId: project?.lead?.id ?? (me.roleKey === ROLE_KEYS.TEAM_LEAD ? me.id : ''),
     teamId: project?.team?.id ?? '',
     startDate: project?.startDate ?? '',
@@ -92,7 +95,7 @@ export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFor
   return (
     <Modal
       open={open}
-      title={project ? 'Edit project' : 'New project'}
+      title={project ? `Edit project · ${project.name}` : 'New project'}
       onClose={onClose}
       size="lg"
       footer={
@@ -194,10 +197,7 @@ export function ProjectFormModal({ open, onClose, onSaved, project }: ProjectFor
             ]}
           />
         </FormField>
-        <FormField
-          label="Project manager"
-          hint="Only people whose role is Project Manager."
-        >
+        <FormField label="Project manager" hint="Only people whose role is Project Manager.">
           <PeoplePicker
             value={form.managerUserId ?? ''}
             onChange={(userId) => set('managerUserId', userId)}

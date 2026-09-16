@@ -35,6 +35,7 @@ export function ProjectsPage() {
   const canManage = usePermission(PERMISSIONS.PROJECT_MANAGE);
   const seesAll = seesAllOrganizationProjects(useCurrentUser().roleKey);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<ProjectSummary | null>(null);
   const [summaryId, setSummaryId] = useState<{ id: string; name: string } | null>(null);
   const scope = params.get('scope') === 'mine' ? 'mine' : 'all';
   const search = params.get('search') ?? '';
@@ -114,20 +115,36 @@ export function ProjectsPage() {
   ];
 
   columns.push({
-    key: 'summary',
-    header: 'Summary',
-    width: '110px',
+    key: 'actions',
+    header: '',
+    width: canManage ? '180px' : '110px',
     align: 'right',
     render: (project) => (
-      <Button
-        size="sm"
-        onClick={(event) => {
-          event.stopPropagation();
-          setSummaryId({ id: project.id, name: project.name });
-        }}
+      <span
+        style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}
       >
-        Summary
-      </Button>
+        {canManage ? (
+          <Button
+            size="sm"
+            onClick={(event) => {
+              event.stopPropagation();
+              setCreating(false);
+              setEditing(project);
+            }}
+          >
+            Edit
+          </Button>
+        ) : null}
+        <Button
+          size="sm"
+          onClick={(event) => {
+            event.stopPropagation();
+            setSummaryId({ id: project.id, name: project.name });
+          }}
+        >
+          Summary
+        </Button>
+      </span>
     ),
   });
 
@@ -138,7 +155,13 @@ export function ProjectsPage() {
         subtitle={projects.data ? `${projects.data.length} projects` : undefined}
         actions={
           canManage ? (
-            <Button variant="primary" onClick={() => setCreating(true)}>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setEditing(null);
+                setCreating(true);
+              }}
+            >
               + New project
             </Button>
           ) : undefined
@@ -189,11 +212,23 @@ export function ProjectsPage() {
           />
         ) : null}
       </QueryState>
-      <ProjectFormModal
-        open={creating}
-        onClose={() => setCreating(false)}
-        onSaved={(project) => void navigate(`/projects/${project.id}`)}
-      />
+      {creating ? (
+        <ProjectFormModal
+          key="create"
+          open
+          onClose={() => setCreating(false)}
+          onSaved={(project) => void navigate(`/projects/${project.id}`)}
+        />
+      ) : null}
+      {editing ? (
+        <ProjectFormModal
+          key={editing.id}
+          open
+          project={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => setEditing(null)}
+        />
+      ) : null}
       {summaryId ? (
         <ProjectWorkPlanModal
           projectId={summaryId.id}
