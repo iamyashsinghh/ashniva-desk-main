@@ -17,6 +17,8 @@ import {
   WORK_PLAN_POINT_STATUS,
   WORK_PLAN_ASSIGN_SCOPE,
   dueAtFromStart,
+  dueAtFromRemaining,
+  remainingSeconds,
   effectiveWorkPlanAssigneeId,
   parseWorkPlanFromText,
   scoreAfterPenalty,
@@ -24,6 +26,7 @@ import {
   matchWorkPlanAdditionPhase,
   workPlanFromFreeText,
   workPlanPointActions,
+  VISIBILITY,
   type AuthenticatedUser,
   type ProjectWorkPlan,
   type UserRef,
@@ -33,6 +36,7 @@ import {
 
 import { isInternalUser } from '../../common/auth/access-scope';
 import { PrismaService } from '../../database/prisma.service';
+import type { Prisma } from '../../generated/prisma/client';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { AuditLogService } from '../audit-logs/audit-log.service';
 import { FilesRepository } from '../files/files.repository';
@@ -417,13 +421,20 @@ export class WorkPlanService {
       }
       throw new ConflictException('This point cannot be started');
     }
-    const startedAt = point.startedAt ?? new Date();
+    const now = new Date();
+    const startedAt = point.startedAt ?? now;
+    // Resume from leftover seconds after Send to tester; first Start still uses the estimate.
+    const dueAt =
+      point.pausedRemainingSeconds != null
+        ? dueAtFromRemaining(now, point.pausedRemainingSeconds)
+        : (point.dueAt ?? dueAtFromStart(startedAt, point.estimateMinutes));
     await this.prisma.projectWorkPlanPoint.update({
       where: { id: point.id },
       data: {
         status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
         startedAt,
-        dueAt: point.dueAt ?? dueAtFromStart(startedAt, point.estimateMinutes),
+        dueAt,
+        pausedRemainingSeconds: null,
         startedById: point.startedById ?? actor.userId,
       },
     });
@@ -450,11 +461,19 @@ export class WorkPlanService {
     if (!actions.canSubmitTest) {
       throw new ForbiddenException('Send this point to the tester after you have started it');
     }
+    await this.applyOverduePenalties(point.title.phase.planId);
+    const now = new Date();
     await this.prisma.projectWorkPlanPoint.update({
       where: { id: point.id },
       data: {
         status: WORK_PLAN_POINT_STATUS.AWAITING_TEST,
-        submittedAt: new Date(),
+        submittedAt: now,
+        pausedRemainingSeconds: remainingSeconds(
+          point.dueAt,
+          now,
+          point.completedAt,
+          point.pausedRemainingSeconds,
+        ),
       },
     });
     await this.auditLog.record({
@@ -480,9 +499,15 @@ export class WorkPlanService {
     if (!actions.canStartTest) {
       throw new ForbiddenException('Start testing after the developer sends this point');
     }
+    const now = new Date();
     await this.prisma.projectWorkPlanPoint.update({
       where: { id: point.id },
-      data: { status: WORK_PLAN_POINT_STATUS.TESTING },
+      data: {
+        status: WORK_PLAN_POINT_STATUS.TESTING,
+        pausedRemainingSeconds:
+          point.pausedRemainingSeconds ??
+          remainingSeconds(point.dueAt, now, point.completedAt, point.pausedRemainingSeconds),
+      },
     });
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_POINT_SUBMITTED,
@@ -507,9 +532,6 @@ export class WorkPlanService {
       return this.submit(actor, projectId, pointId);
     }
     if (!actions.canPass) {
-      if (actions.canStartTest) {
-        throw new ForbiddenException('Start testing first');
-      }
       throw new ForbiddenException('Only a tester or team lead can mark this done');
     }
     await this.applyOverduePenalties(point.title.phase.planId);
@@ -542,26 +564,20 @@ export class WorkPlanService {
     const point = await this.requirePoint(actor, projectId, pointId);
     const actions = this.actionsFor(actor, flags, point);
     if (!actions.canFail) {
-      if (actions.canStartTest) {
-        throw new ForbiddenException('Start testing first');
-      }
       throw new ForbiddenException('Only a tester or team lead can send this back');
     }
     const body = dto.body.trim();
+    const now = new Date();
+    const pausedRemainingSeconds =
+      point.pausedRemainingSeconds ??
+      remainingSeconds(point.dueAt, now, point.completedAt, point.pausedRemainingSeconds);
+    const file = dto.fileId ? await this.requireErrorFile(actor, projectId, dto.fileId) : null;
     await this.prisma.$transaction(async (tx) => {
       await tx.projectWorkPlanPoint.update({
         where: { id: point.id },
-        data: { status: WORK_PLAN_POINT_STATUS.RETURNED },
+        data: { status: WORK_PLAN_POINT_STATUS.RETURNED, pausedRemainingSeconds },
       });
-      await tx.projectWorkPlanNote.create({
-        data: {
-          organizationId: actor.organizationId,
-          pointId: point.id,
-          authorId: actor.userId,
-          kind: WORK_PLAN_NOTE_KIND.ISSUE,
-          body,
-        },
-      });
+      await this.postTaskErrorComment(tx, actor, point, body, file?.id ?? null);
     });
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_POINT_RETURNED,
@@ -836,6 +852,7 @@ export class WorkPlanService {
         completedAt: null,
         penaltyApplied: false,
         startedById: { not: null },
+        pausedRemainingSeconds: null,
         dueAt: { not: null, lte: now },
       },
       select: { id: true, startedById: true },
@@ -1005,6 +1022,63 @@ export class WorkPlanService {
         data: { assignedToId: null },
       }),
     ]);
+  }
+
+  private async requireErrorFile(
+    actor: AuthenticatedUser,
+    projectId: string,
+    fileId: string,
+  ): Promise<{ id: string }> {
+    const file = await this.files.findById(actor.organizationId, fileId);
+    if (!file || file.uploadedById !== actor.userId) {
+      throw new NotFoundException('File not found');
+    }
+    if (file.projectId && file.projectId !== projectId) {
+      throw new ForbiddenException('This file is not on this project');
+    }
+    if (file.commentId) {
+      throw new BadRequestException('This file is already attached');
+    }
+    return { id: file.id };
+  }
+
+  /** Tester error text (and screenshot) land on the topic's task so the developer sees them in comments. */
+  private async postTaskErrorComment(
+    tx: Prisma.TransactionClient,
+    actor: AuthenticatedUser,
+    point: { titleId: string; body: string },
+    body: string,
+    fileId: string | null,
+  ): Promise<void> {
+    const task = await tx.task.findFirst({
+      where: {
+        organizationId: actor.organizationId,
+        workPlanTitleId: point.titleId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!task) {
+      return;
+    }
+    const comment = await tx.comment.create({
+      data: {
+        organizationId: actor.organizationId,
+        authorId: actor.userId,
+        visibility: VISIBILITY.INTERNAL,
+        taskId: task.id,
+        body: `Error on "${point.body}"\n${body}`,
+      },
+    });
+    if (!fileId) {
+      return;
+    }
+    // A file may only hang off one parent column. The screenshot was uploaded on the project;
+    // move it onto the task and the comment so it shows under Comments.
+    await tx.file.update({
+      where: { id: fileId },
+      data: { commentId: comment.id, taskId: task.id, projectId: null },
+    });
   }
 
   private async requirePoint(actor: AuthenticatedUser, projectId: string, pointId: string) {

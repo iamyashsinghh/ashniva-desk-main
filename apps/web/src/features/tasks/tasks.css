@@ -264,6 +264,21 @@
   white-space: pre-wrap;
 }
 
+.comment__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.comment__file-image {
+  max-width: min(100%, 280px);
+  max-height: 200px;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  background: var(--color-surface);
+}
+
 .composer {
   display: flex;
   flex-direction: column;

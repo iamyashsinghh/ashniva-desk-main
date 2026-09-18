@@ -37,16 +37,19 @@ export interface WorkPlanPoint {
   completedAt: string | null;
   remainingSeconds: number;
   overdue: boolean;
+  /** Leftover seconds frozen on Send to tester. Null while the developer's clock is running. */
+  pausedRemainingSeconds: number | null;
+  timerPaused: boolean;
   startedBy: UserRef | null;
   notes: WorkPlanNote[];
   canStart: boolean;
-  /** Developer sending the point to the tester. Timer keeps running. */
+  /** Developer sending the point to the tester. Pauses the leftover time. */
   canSubmitTest: boolean;
-  /** Tester starting their pass after the developer sent the point. */
+  /** Tester starting their pass after the developer sent the point. Optional — Good/Error work without it. */
   canStartTest: boolean;
-  /** Tester or team lead marking the point done. This is what stops the timer. */
+  /** Tester or team lead marking the point good. This is what stops the timer. */
   canPass: boolean;
-  /** Tester or team lead sending it back with an issue. */
+  /** Tester or team lead sending it back with an error. */
   canFail: boolean;
   canDoubt: boolean;
   canReply: boolean;
@@ -151,4 +154,6 @@ export interface AddWorkPlanWorkInput {
 export interface WorkPlanNoteInput {
   body: string;
   kind?: WorkPlanNoteKind;
+  /** Screenshot of the error, uploaded first. Shown on the linked task comment. */
+  fileId?: string;
 }

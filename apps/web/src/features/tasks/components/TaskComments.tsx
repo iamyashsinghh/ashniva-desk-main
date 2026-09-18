@@ -1,4 +1,10 @@
-import { VISIBILITY, type CommentSummary, type TaskDetail, type Visibility } from '@ashniva/types';
+import {
+  VISIBILITY,
+  type CommentSummary,
+  type FileSummary,
+  type TaskDetail,
+  type Visibility,
+} from '@ashniva/types';
 import {
   Button,
   Card,
@@ -12,6 +18,7 @@ import { useState } from 'react';
 
 import { errorMessage } from '../../../shared/lib/api-client';
 import { formatDateTime } from '../../../shared/lib/format';
+import { downloadFile, useFileObjectUrl } from '../../files/api';
 import { useTaskMutations } from '../api';
 
 type Filter = 'all' | 'internal' | 'client';
@@ -110,6 +117,7 @@ export function TaskComments({ task, canInternal }: TaskCommentsProps) {
 }
 
 export function CommentRow({ comment }: { comment: CommentSummary }) {
+  const files = comment.files ?? [];
   return (
     <div
       className={['comment', comment.visibility === VISIBILITY.CLIENT ? 'comment--client' : '']
@@ -122,7 +130,26 @@ export function CommentRow({ comment }: { comment: CommentSummary }) {
         <VisibilityBadge visibility={comment.visibility} />
       </div>
       <div className="comment__body">{comment.body}</div>
+      {files.length > 0 ? (
+        <div className="comment__files">
+          {files.map((file) => (
+            <CommentFile key={file.id} file={file} />
+          ))}
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function CommentFile({ file }: { file: FileSummary }) {
+  const url = useFileObjectUrl(file.contentType.startsWith('image/') ? file.id : null);
+  if (url) {
+    return <img className="comment__file-image" src={url} alt={file.name} />;
+  }
+  return (
+    <Button size="sm" onClick={() => void downloadFile(file)}>
+      {file.name}
+    </Button>
   );
 }
 

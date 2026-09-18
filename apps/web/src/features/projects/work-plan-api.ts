@@ -9,6 +9,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiRequest } from '../../shared/lib/api-client';
+import { taskKeys } from '../tasks/api';
 import { projectKeys } from './api';
 
 export const workPlanKeys = {
@@ -83,12 +84,15 @@ export function useWorkPlanMutations(projectId: string) {
       onSuccess: invalidate,
     }),
     fail: useMutation({
-      mutationFn: (input: { pointId: string; body: string }) =>
+      mutationFn: (input: { pointId: string; body: string; fileId?: string }) =>
         apiRequest<ProjectWorkPlan>(
           `/projects/${projectId}/work-plan/points/${input.pointId}/return`,
-          { method: 'POST', body: { body: input.body } },
+          { method: 'POST', body: { body: input.body, fileId: input.fileId } },
         ),
-      onSuccess: invalidate,
+      onSuccess: async () => {
+        await invalidate();
+        await queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      },
     }),
     addNote: useMutation({
       mutationFn: (input: { pointId: string; body: string }) =>

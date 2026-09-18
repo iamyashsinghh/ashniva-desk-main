@@ -831,13 +831,15 @@ model ProjectWorkPlanPoint {
   estimateMinutes Int                 @map("estimate_minutes")
   sortOrder       Int                 @map("sort_order")
   status          WorkPlanPointStatus @default(PENDING)
-  startedAt       DateTime?           @map("started_at")
-  dueAt           DateTime?           @map("due_at")
-  completedAt     DateTime?           @map("completed_at")
-  startedById     String?             @map("started_by_id") @db.Uuid
-  completedById   String?             @map("completed_by_id") @db.Uuid
-  submittedAt     DateTime?           @map("submitted_at")
-  penaltyApplied  Boolean             @default(false) @map("penalty_applied")
+  startedAt              DateTime? @map("started_at")
+  dueAt                  DateTime? @map("due_at")
+  completedAt            DateTime? @map("completed_at")
+  /// Frozen leftover seconds while the point sits with the tester. Cleared when the developer resumes.
+  pausedRemainingSeconds Int?      @map("paused_remaining_seconds")
+  startedById            String?   @map("started_by_id") @db.Uuid
+  completedById          String?   @map("completed_by_id") @db.Uuid
+  submittedAt            DateTime? @map("submitted_at")
+  penaltyApplied         Boolean   @default(false) @map("penalty_applied")
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
 

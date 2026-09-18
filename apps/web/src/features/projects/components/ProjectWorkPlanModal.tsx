@@ -41,18 +41,8 @@ export function ProjectWorkPlanModal({
   onClose: () => void;
 }) {
   const plan = useWorkPlanQuery(projectId);
-  const {
-    parse,
-    save,
-    start,
-    submitTest,
-    startTest,
-    complete,
-    fail,
-    reply,
-    saveAssignments,
-    addWork,
-  } = useWorkPlanMutations(projectId);
+  const { parse, save, start, submitTest, complete, fail, saveAssignments, addWork } =
+    useWorkPlanMutations(projectId);
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | undefined>();
   const [draft, setDraft] = useState<WorkPlanPhaseInput[] | null>(null);
@@ -178,7 +168,7 @@ export function ProjectWorkPlanModal({
       open
       size="lg"
       title={`Summary · ${projectName}`}
-      description="Phases stay on this project's team. The developer presses Start, then Send to tester. The tester then presses Start testing. The timer keeps running until Complete."
+      description="The developer presses Start, then Send to tester — that pauses their leftover time. The tester marks Good or Error. An error lets the developer Resume the same remaining time."
       onClose={onClose}
       headerActions={
         data?.canAssign && !showEditor && data.phases.length > 0 ? (
@@ -293,10 +283,8 @@ export function ProjectWorkPlanModal({
           busy={
             start.isPending ||
             submitTest.isPending ||
-            startTest.isPending ||
             complete.isPending ||
             fail.isPending ||
-            reply.isPending ||
             saveAssignments.isPending ||
             addWork.isPending ||
             save.isPending
@@ -322,25 +310,12 @@ export function ProjectWorkPlanModal({
             setError(undefined);
             void submitTest.mutateAsync(id).catch((cause) => setError(errorMessage(cause)));
           }}
-          onStartTest={(id) => {
-            setError(undefined);
-            void startTest.mutateAsync(id).catch((cause) => setError(errorMessage(cause)));
-          }}
           onPass={(id) => {
             setError(undefined);
             void complete.mutateAsync(id).catch((cause) => setError(errorMessage(cause)));
           }}
-          onFail={(id, body) => {
-            setError(undefined);
-            void fail
-              .mutateAsync({ pointId: id, body })
-              .catch((cause) => setError(errorMessage(cause)));
-          }}
-          onReply={(pointId, noteId, body) => {
-            setError(undefined);
-            void reply
-              .mutateAsync({ pointId, noteId, body })
-              .catch((cause) => setError(errorMessage(cause)));
+          onFail={async (id, body, fileId) => {
+            await fail.mutateAsync({ pointId: id, body, fileId });
           }}
         />
       )}

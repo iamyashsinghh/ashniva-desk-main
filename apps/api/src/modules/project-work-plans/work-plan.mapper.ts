@@ -167,8 +167,15 @@ export class WorkPlanMapper {
       startedAt: point.startedAt?.toISOString() ?? null,
       dueAt: point.dueAt?.toISOString() ?? null,
       completedAt: point.completedAt?.toISOString() ?? null,
-      remainingSeconds: remainingSeconds(point.dueAt, now, point.completedAt),
-      overdue: isWorkPlanOverdue(point.dueAt, now, point.completedAt),
+      remainingSeconds: remainingSeconds(
+        point.dueAt,
+        now,
+        point.completedAt,
+        point.pausedRemainingSeconds,
+      ),
+      overdue: isWorkPlanOverdue(point.dueAt, now, point.completedAt, point.pausedRemainingSeconds),
+      pausedRemainingSeconds: point.pausedRemainingSeconds,
+      timerPaused: point.pausedRemainingSeconds != null && point.completedAt == null,
       startedBy: point.startedBy,
       notes: nestWorkPlanNotes(
         point.notes.map((note) => ({ ...this.note(note), parentId: note.parentId })),

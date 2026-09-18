@@ -100,13 +100,14 @@ export function toTaskSummary(row: TaskSummaryRow, today = todayUtc()): TaskSumm
   };
 }
 
-export function toComment(row: CommentRow): CommentSummary {
+export function toComment(row: CommentRow & { files?: TaskDetailRow['files'] }): CommentSummary {
   return {
     id: row.id,
     body: row.body,
     visibility: row.visibility as Visibility,
     author: row.author,
     createdAt: row.createdAt.toISOString(),
+    files: row.files?.map(toFile) ?? [],
   };
 }
 

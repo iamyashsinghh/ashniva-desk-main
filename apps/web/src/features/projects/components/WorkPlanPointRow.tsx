@@ -1,62 +1,49 @@
 import {
-  WORK_PLAN_NOTE_KIND_LABELS,
+  WORK_PLAN_POINT_STATUS,
   WORK_PLAN_POINT_STATUS_LABELS,
-  type WorkPlanNote,
   type WorkPlanPoint,
 } from '@ashniva/types';
-import { Button, FormField, Textarea } from '@ashniva/ui';
+import { Button } from '@ashniva/ui';
 import { useEffect, useState, type DragEvent, type ReactNode } from 'react';
+
+import { WorkPlanErrorModal } from './WorkPlanErrorModal';
 
 export function WorkPlanPointRow({
   point,
+  projectId,
   busy,
   highlighted,
   dragHandle,
   dropClass,
   onStart,
   onSubmitTest,
-  onStartTest,
   onPass,
   onFail,
-  onReply,
   onDragOver,
   onDragLeave,
   onDrop,
 }: {
   point: WorkPlanPoint;
+  projectId: string;
   busy: boolean;
   highlighted?: boolean;
   dragHandle?: ReactNode;
   dropClass?: string;
   onStart: () => void;
   onSubmitTest: () => void;
-  onStartTest: () => void;
   onPass: () => void;
-  onFail: (body: string) => void;
-  onReply: (noteId: string, body: string) => void;
+  onFail: (body: string, fileId?: string) => Promise<void> | void;
   onDragOver?: (event: DragEvent<HTMLDivElement>) => void;
   onDragLeave?: () => void;
   onDrop?: (event: DragEvent<HTMLDivElement>) => void;
 }) {
-  const remaining = useRemaining(point.dueAt, point.completedAt, point.remainingSeconds);
-  const [draft, setDraft] = useState('');
-  const [mode, setMode] = useState<'fail' | { replyTo: string } | null>(null);
-
-  function send() {
-    const body = draft.trim();
-    if (!body) {
-      return;
-    }
-    if (mode === 'fail') {
-      onFail(body);
-    } else if (mode && typeof mode === 'object') {
-      onReply(mode.replyTo, body);
-    }
-    setDraft('');
-    setMode(null);
-  }
-
-  const replyTo = mode && typeof mode === 'object' ? mode.replyTo : null;
+  const remaining = useRemaining(
+    point.dueAt,
+    point.completedAt,
+    point.remainingSeconds,
+    point.timerPaused,
+  );
+  const [reportingError, setReportingError] = useState(false);
   const classes = [
     'work-plan__read-point',
     highlighted ? 'work-plan__just-added' : '',
@@ -80,16 +67,12 @@ export function WorkPlanPointRow({
         <span>{WORK_PLAN_POINT_STATUS_LABELS[point.status]}</span>
         {point.startedBy && point.startedAt ? <span>{point.startedBy.name}</span> : null}
         {point.startedAt && !point.completedAt ? (
-          remaining === 0 || point.overdue ? (
-            <span className="work-plan__timer work-plan__timer--late">Overdue</span>
-          ) : (
-            <span className="work-plan__timer">{formatClock(remaining)}</span>
-          )
+          <TimerLabel point={point} remaining={remaining} />
         ) : null}
         {point.completedAt ? <span className="work-plan__done">Done</span> : null}
         {point.canStart ? (
           <Button size="sm" loading={busy} onClick={onStart}>
-            Start
+            {point.status === WORK_PLAN_POINT_STATUS.RETURNED ? 'Resume' : 'Start'}
           </Button>
         ) : null}
         {point.canSubmitTest ? (
@@ -97,105 +80,58 @@ export function WorkPlanPointRow({
             Send to tester
           </Button>
         ) : null}
-        {point.canStartTest ? (
-          <Button size="sm" variant="primary" loading={busy} onClick={onStartTest}>
-            Start testing
-          </Button>
-        ) : null}
         {point.canPass ? (
           <Button size="sm" variant="primary" loading={busy} onClick={onPass}>
-            Complete
+            Good
           </Button>
         ) : null}
         {point.canFail ? (
-          <Button size="sm" loading={busy} onClick={() => setMode('fail')}>
-            Not complete
+          <Button size="sm" loading={busy} onClick={() => setReportingError(true)}>
+            Error
           </Button>
         ) : null}
       </div>
-      {point.notes.length > 0 ? (
-        <ul className="work-plan__notes">
-          {point.notes.map((note) => (
-            <li key={note.id}>
-              <NoteLine note={note} />
-              {note.replies.length > 0 ? (
-                <ul className="work-plan__replies">
-                  {note.replies.map((reply) => (
-                    <li key={reply.id}>
-                      <NoteLine note={reply} />
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {point.canReply ? (
-                <Button size="sm" loading={busy} onClick={() => setMode({ replyTo: note.id })}>
-                  Reply
-                </Button>
-              ) : null}
-              {replyTo === note.id ? (
-                <div className="work-plan__note-form">
-                  <FormField
-                    label="Reply"
-                    hint="Developer and tester both see this thread. You can add as many replies as you need."
-                  >
-                    <Textarea
-                      rows={3}
-                      value={draft}
-                      onChange={(event) => setDraft(event.target.value)}
-                    />
-                  </FormField>
-                  <div className="work-plan__note-actions">
-                    <Button size="sm" onClick={() => setMode(null)}>
-                      Cancel
-                    </Button>
-                    <Button size="sm" variant="primary" disabled={!draft.trim()} onClick={send}>
-                      Send
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {mode === 'fail' ? (
-        <div className="work-plan__note-form">
-          <FormField
-            label="What is wrong?"
-            hint="The developer sees this and the timer keeps running until you or the team lead mark it done."
-          >
-            <Textarea rows={3} value={draft} onChange={(event) => setDraft(event.target.value)} />
-          </FormField>
-          <div className="work-plan__note-actions">
-            <Button size="sm" onClick={() => setMode(null)}>
-              Cancel
-            </Button>
-            <Button size="sm" variant="primary" disabled={!draft.trim()} onClick={send}>
-              Send
-            </Button>
-          </div>
-        </div>
+      {reportingError ? (
+        <WorkPlanErrorModal
+          projectId={projectId}
+          busy={busy}
+          onClose={() => setReportingError(false)}
+          onSubmit={(body, fileId) => Promise.resolve(onFail(body, fileId))}
+        />
       ) : null}
     </div>
   );
 }
 
-function NoteLine({ note }: { note: WorkPlanNote }) {
+function TimerLabel({ point, remaining }: { point: WorkPlanPoint; remaining: number }) {
+  if (remaining === 0 || point.overdue) {
+    return (
+      <span className="work-plan__timer work-plan__timer--late">
+        {point.timerPaused ? 'Paused · Overdue' : 'Overdue'}
+      </span>
+    );
+  }
   return (
-    <div className="work-plan__note-line">
-      <b>
-        {note.author.name} · {WORK_PLAN_NOTE_KIND_LABELS[note.kind]}
-      </b>
-      <span>{note.body}</span>
-    </div>
+    <span
+      className={['work-plan__timer', point.timerPaused ? 'work-plan__timer--paused' : ''].join(
+        ' ',
+      )}
+    >
+      {point.timerPaused ? `Paused · ${formatClock(remaining)}` : formatClock(remaining)}
+    </span>
   );
 }
 
-function useRemaining(dueAt: string | null, completedAt: string | null, initial: number): number {
+function useRemaining(
+  dueAt: string | null,
+  completedAt: string | null,
+  initial: number,
+  paused: boolean,
+): number {
   const [seconds, setSeconds] = useState(initial);
   useEffect(() => {
     setSeconds(initial);
-    if (!dueAt || completedAt) {
+    if (!dueAt || completedAt || paused) {
       return undefined;
     }
     const tick = () => {
@@ -204,7 +140,7 @@ function useRemaining(dueAt: string | null, completedAt: string | null, initial:
     tick();
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, [dueAt, completedAt, initial]);
+  }, [dueAt, completedAt, initial, paused]);
   return seconds;
 }
 

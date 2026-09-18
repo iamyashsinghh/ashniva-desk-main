@@ -41,10 +41,8 @@ export function WorkPlanReader({
   onMoveError,
   onStart,
   onSubmitTest,
-  onStartTest,
   onPass,
   onFail,
-  onReply,
 }: {
   plan: ProjectWorkPlan;
   busy: boolean;
@@ -56,10 +54,8 @@ export function WorkPlanReader({
   onMoveError?: (reason: string) => void;
   onStart: (pointId: string) => void;
   onSubmitTest: (pointId: string) => void;
-  onStartTest: (pointId: string) => void;
   onPass: (pointId: string) => void;
-  onFail: (pointId: string, body: string) => void;
-  onReply: (pointId: string, noteId: string, body: string) => void;
+  onFail: (pointId: string, body: string, fileId?: string) => Promise<void> | void;
 }) {
   const canReorder = Boolean(plan.canAssign && onReorder);
   const [over, setOver] = useState<WorkPlanDropTarget | null>(null);
@@ -379,6 +375,7 @@ export function WorkPlanReader({
                       <WorkPlanPointRow
                         key={point.id}
                         point={point}
+                        projectId={plan.projectId}
                         busy={busy}
                         highlighted={Boolean(placement?.pointIds.includes(point.id))}
                         dropClass={dropClass(over, {
@@ -434,10 +431,8 @@ export function WorkPlanReader({
                         }
                         onStart={() => onStart(point.id)}
                         onSubmitTest={() => onSubmitTest(point.id)}
-                        onStartTest={() => onStartTest(point.id)}
                         onPass={() => onPass(point.id)}
-                        onFail={(body) => onFail(point.id, body)}
-                        onReply={(noteId, body) => onReply(point.id, noteId, body)}
+                        onFail={(body, fileId) => onFail(point.id, body, fileId)}
                       />
                     ))}
                   </div>

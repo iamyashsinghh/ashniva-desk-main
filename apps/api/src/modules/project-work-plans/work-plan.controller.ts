@@ -111,7 +111,10 @@ export class WorkPlanController {
 
   @Post('points/:pointId/submit-test')
   @RequirePermissions(PERMISSIONS.PROJECT_READ)
-  @ApiOperation({ summary: 'Send a started point to the tester. The timer keeps running.' })
+  @ApiOperation({
+    summary:
+      "Send a started point to the tester. The developer's leftover time pauses until they resume.",
+  })
   submit(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('projectId', ParseUUIDPipe) projectId: string,
@@ -134,7 +137,7 @@ export class WorkPlanController {
   @Post('points/:pointId/complete')
   @RequirePermissions(PERMISSIONS.PROJECT_READ)
   @ApiOperation({
-    summary: 'Tester or team lead marks the point done. A developer call sends it to the tester.',
+    summary: 'Tester or team lead marks the point good. A developer call sends it to the tester.',
   })
   complete(
     @CurrentUser() actor: AuthenticatedUser,
@@ -146,7 +149,10 @@ export class WorkPlanController {
 
   @Post('points/:pointId/return')
   @RequirePermissions(PERMISSIONS.PROJECT_READ)
-  @ApiOperation({ summary: 'Tester or team lead sends the point back with the issue' })
+  @ApiOperation({
+    summary:
+      'Tester or team lead sends the point back with an error. Optional screenshot lands on the linked task comment.',
+  })
   fail(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('projectId', ParseUUIDPipe) projectId: string,

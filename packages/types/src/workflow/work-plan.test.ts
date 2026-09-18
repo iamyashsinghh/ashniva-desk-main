@@ -4,6 +4,7 @@ import {
   WORK_PLAN_POINT_STATUS,
   isWorkPlanOverdue,
   nestWorkPlanNotes,
+  dueAtFromRemaining,
   effectiveWorkPlanAssigneeId,
   effectiveWorkPlanPriority,
   parseWorkPlanFromText,
@@ -71,6 +72,15 @@ describe('work-plan timing', () => {
     expect(isWorkPlanOverdue(due, now, null)).toBe(false);
     expect(isWorkPlanOverdue(due, new Date('2026-09-14T12:00:10.000Z'), null)).toBe(true);
     expect(isWorkPlanOverdue(due, new Date('2026-09-14T12:01:00.000Z'), now)).toBe(false);
+  });
+
+  it('holds leftover seconds while the timer is paused with the tester', () => {
+    const due = new Date('2026-09-14T12:00:10.000Z');
+    expect(remainingSeconds(due, now, null, 42)).toBe(42);
+    expect(isWorkPlanOverdue(due, now, null, 42)).toBe(false);
+    expect(isWorkPlanOverdue(due, now, null, 0)).toBe(true);
+    expect(remainingSeconds(due, now, now, 42)).toBe(0);
+    expect(dueAtFromRemaining(now, 10).toISOString()).toBe('2026-09-14T12:00:10.000Z');
   });
 
   it('steps the on-time percentage down per missed point and never below zero', () => {
@@ -231,7 +241,7 @@ describe('workPlanPointActions', () => {
     ).toBe(true);
     expect(
       workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.AWAITING_TEST }).canPass,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.TESTING }).canPass,
     ).toBe(true);
@@ -240,11 +250,14 @@ describe('workPlanPointActions', () => {
     ).toBe(true);
   });
 
-  it('lets a tester pass or return only after they start testing', () => {
+  it('lets a tester mark Good or Error as soon as the developer sends the point', () => {
     const tester = { ...base, actorId: 'qa-1', canWork: false, canTest: true };
     expect(
       workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.AWAITING_TEST }).canPass,
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.AWAITING_TEST }).canFail,
+    ).toBe(true);
     expect(
       workPlanPointActions({ ...tester, status: WORK_PLAN_POINT_STATUS.TESTING }).canPass,
     ).toBe(true);

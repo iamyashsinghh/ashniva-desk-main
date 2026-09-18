@@ -180,6 +180,7 @@ export interface CommentSummary {
   visibility: Visibility;
   author: UserRef;
   createdAt: string;
+  files?: FileSummary[];
 }
 
 export interface WorkLogSummary {

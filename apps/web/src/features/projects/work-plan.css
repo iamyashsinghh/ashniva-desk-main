@@ -312,6 +312,16 @@
   color: var(--color-danger);
 }
 
+.work-plan__timer--paused {
+  color: var(--color-text-muted);
+}
+
+.work-plan__file {
+  display: block;
+  width: 100%;
+  font: inherit;
+}
+
 .work-plan__done {
   color: var(--color-success);
 }

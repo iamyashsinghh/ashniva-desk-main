@@ -51,6 +51,11 @@ export class WorkPlanNoteDto {
   @MinLength(1)
   @MaxLength(4000)
   body!: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  fileId?: string;
 }
 
 export class WorkPlanTitleDto {

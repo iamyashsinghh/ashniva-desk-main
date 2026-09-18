@@ -38,7 +38,14 @@ export const taskDetailInclude = {
   statusHistory: { include: { changedBy: userRef }, orderBy: { createdAt: 'asc' } },
   comments: {
     where: { deletedAt: null },
-    include: { author: userRef },
+    include: {
+      author: userRef,
+      files: {
+        where: { deletedAt: null },
+        include: { uploadedBy: userRef },
+        orderBy: { createdAt: 'asc' as const },
+      },
+    },
     orderBy: { createdAt: 'asc' },
   },
   workLogs: {

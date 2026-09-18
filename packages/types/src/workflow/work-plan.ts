@@ -26,8 +26,9 @@ export type WorkPlanSource = (typeof WORK_PLAN_SOURCE)[keyof typeof WORK_PLAN_SO
 /**
  * A point's place in the developer → tester loop.
  *
- * The timer starts on the first Start and keeps running until a tester or team lead marks the
- * point done — including the time it sits with the tester. Sending it back does not reset the clock.
+ * The timer starts on the first Start. Send to tester freezes the leftover seconds. The same
+ * remaining time resumes when the developer starts again after an error. Good (complete) is what
+ * stops the clock for good. Sending it back does not reset the leftover time.
  */
 export const WORK_PLAN_POINT_STATUS = {
   PENDING: 'PENDING',
@@ -116,8 +117,15 @@ export function remainingSeconds(
   dueAt: Date | string | null,
   now: Date,
   completedAt: Date | string | null,
+  pausedRemainingSeconds?: number | null,
 ): number {
-  if (!dueAt || completedAt) {
+  if (completedAt) {
+    return 0;
+  }
+  if (pausedRemainingSeconds != null) {
+    return Math.max(0, pausedRemainingSeconds);
+  }
+  if (!dueAt) {
     return 0;
   }
   return Math.max(0, Math.floor((new Date(dueAt).getTime() - now.getTime()) / 1000));
@@ -127,11 +135,23 @@ export function isWorkPlanOverdue(
   dueAt: Date | string | null,
   now: Date,
   completedAt: Date | string | null,
+  pausedRemainingSeconds?: number | null,
 ): boolean {
-  if (!dueAt || completedAt) {
+  if (completedAt) {
+    return false;
+  }
+  if (pausedRemainingSeconds != null) {
+    return pausedRemainingSeconds <= 0;
+  }
+  if (!dueAt) {
     return false;
   }
   return new Date(dueAt).getTime() <= now.getTime();
+}
+
+/** Restores a paused clock: now plus the leftover seconds from Send to tester. */
+export function dueAtFromRemaining(now: Date, remaining: number): Date {
+  return new Date(now.getTime() + Math.max(0, remaining) * 1000);
 }
 
 export function scoreAfterPenalty(percent: number, missedPoints = 1): number {
@@ -208,10 +228,12 @@ export function workPlanPointActions(input: {
   const starter = startedById === actorId;
   const reviewer = canTest || canLead;
   const onTeam = canWork || canTest || canLead;
-  /** Testers skip development Start; they wait for Send to tester, then Start testing. */
+  /** Testers skip development Start; they wait for Send to tester, then Good or Error. */
   const developer = canWork && !canTest;
   const builder = developer || canLead;
   const owns = canLead || assignedToId === actorId;
+  const withTester =
+    status === WORK_PLAN_POINT_STATUS.AWAITING_TEST || status === WORK_PLAN_POINT_STATUS.TESTING;
   return {
     canStart:
       builder &&
@@ -219,8 +241,8 @@ export function workPlanPointActions(input: {
       (status === WORK_PLAN_POINT_STATUS.PENDING || status === WORK_PLAN_POINT_STATUS.RETURNED),
     canSubmitTest: builder && status === WORK_PLAN_POINT_STATUS.IN_PROGRESS && (starter || canLead),
     canStartTest: reviewer && status === WORK_PLAN_POINT_STATUS.AWAITING_TEST,
-    canPass: reviewer && status === WORK_PLAN_POINT_STATUS.TESTING,
-    canFail: reviewer && status === WORK_PLAN_POINT_STATUS.TESTING,
+    canPass: reviewer && withTester,
+    canFail: reviewer && withTester,
     canDoubt: onTeam && !done,
     canReply: onTeam,
   };
