@@ -96,30 +96,39 @@ export function WorkPlanEditor({
                             setPhase(phaseIndex, { titles });
                           }}
                         />
-                        <Input
-                          className="work-plan__minutes"
-                          type="number"
-                          min={1}
-                          aria-label={`Minutes for point ${pointIndex + 1}`}
-                          value={point.estimateMinutes}
-                          onChange={(event) => {
-                            const points = title.points.map((row, i) =>
-                              i === pointIndex
-                                ? {
-                                    ...row,
-                                    estimateMinutes: Math.max(
-                                      1,
-                                      Math.floor(Number(event.target.value)) || 1,
-                                    ),
-                                  }
-                                : row,
-                            );
-                            const titles = phase.titles.map((row, i) =>
-                              i === titleIndex ? { ...row, points } : row,
-                            );
-                            setPhase(phaseIndex, { titles });
-                          }}
-                        />
+                        {point.isError ? (
+                          <Input
+                            className="work-plan__minutes"
+                            value="error"
+                            readOnly
+                            aria-label={`Minutes for point ${pointIndex + 1}`}
+                          />
+                        ) : (
+                          <Input
+                            className="work-plan__minutes"
+                            type="number"
+                            min={1}
+                            aria-label={`Minutes for point ${pointIndex + 1}`}
+                            value={point.estimateMinutes}
+                            onChange={(event) => {
+                              const points = title.points.map((row, i) =>
+                                i === pointIndex
+                                  ? {
+                                      ...row,
+                                      estimateMinutes: Math.max(
+                                        1,
+                                        Math.floor(Number(event.target.value)) || 1,
+                                      ),
+                                    }
+                                  : row,
+                              );
+                              const titles = phase.titles.map((row, i) =>
+                                i === titleIndex ? { ...row, points } : row,
+                              );
+                              setPhase(phaseIndex, { titles });
+                            }}
+                          />
+                        )}
                         <Button
                           size="sm"
                           variant="ghost"

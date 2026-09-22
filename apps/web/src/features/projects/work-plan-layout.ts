@@ -49,7 +49,8 @@ export function isDraftValid(draft: WorkPlanPhaseInput[]): boolean {
             title.title.trim().length > 0 &&
             title.points.length > 0 &&
             title.points.every(
-              (point) => point.body.trim().length > 0 && point.estimateMinutes >= 1,
+              (point) =>
+                point.body.trim().length > 0 && (point.isError || point.estimateMinutes >= 1),
             ),
         ),
     )
@@ -63,7 +64,12 @@ export function toDraft(
     titles: Array<{
       id: string;
       title: string;
-      points: Array<{ id: string; body: string | null; estimateMinutes: number }>;
+      points: Array<{
+        id: string;
+        body: string | null;
+        estimateMinutes: number;
+        isError?: boolean;
+      }>;
     }>;
   }>,
 ): WorkPlanPhaseInput[] {
@@ -80,6 +86,7 @@ export function toDraft(
         id: point.id,
         body: point.body ?? '',
         estimateMinutes: point.estimateMinutes,
+        isError: point.isError,
       })),
     })),
   }));

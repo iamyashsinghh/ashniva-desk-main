@@ -1,5 +1,6 @@
 import type {
   WorkPlanAssignScope,
+  WorkPlanEventKind,
   WorkPlanNoteKind,
   WorkPlanPointStatus,
   WorkPlanSource,
@@ -26,13 +27,31 @@ export interface WorkPlanNote {
   replies: WorkPlanNote[];
 }
 
+export interface WorkPlanPointEvent {
+  id: string;
+  kind: WorkPlanEventKind;
+  body: string | null;
+  /** Seconds from the developer's Start to this event. */
+  elapsedSeconds: number;
+  /** Seconds from the last Send to tester. Null on the send itself. */
+  sinceSubmitSeconds: number | null;
+  extraSeconds: number;
+  createdAt: string;
+  actor: UserRef;
+}
+
 export interface WorkPlanPoint {
   id: string;
   body: string | null;
   estimateMinutes: number;
   sortOrder: number;
   status: WorkPlanPointStatus;
+  /** Tester wrote this as a new step in the same phase. Minutes show "error". */
+  isError: boolean;
+  parentPointId: string | null;
   startedAt: string | null;
+  /** When this work was given to the developer. Admin / PM / TL only. */
+  assignedAt: string | null;
   dueAt: string | null;
   completedAt: string | null;
   remainingSeconds: number;
@@ -40,6 +59,18 @@ export interface WorkPlanPoint {
   /** Leftover seconds frozen on Send to tester. Null while the developer's clock is running. */
   pausedRemainingSeconds: number | null;
   timerPaused: boolean;
+  /**
+   * Seconds beyond the estimate, frozen on Send to tester / Good. Admin / PM / TL only.
+   * Live extra is this plus the current run until the point is done.
+   */
+  overrunSeconds: number;
+  /**
+   * Seconds beyond the estimate. Live for admin / PM / TL until Good; empty for everyone else.
+   * Keeps counting while the developer is over time and the point is not done.
+   */
+  extraSeconds: number;
+  /** Send-to-tester and tester-error trail. Admin / PM / TL only. */
+  events: WorkPlanPointEvent[];
   startedBy: UserRef | null;
   notes: WorkPlanNote[];
   canStart: boolean;
@@ -61,6 +92,7 @@ export interface WorkPlanTitle {
   sortOrder: number;
   assignedTo: UserRef | null;
   effectiveAssignedTo: UserRef | null;
+  assignedAt: string | null;
   priority: Priority | null;
   effectivePriority: Priority;
   points: WorkPlanPoint[];
@@ -71,6 +103,7 @@ export interface WorkPlanPhase {
   heading: string;
   sortOrder: number;
   assignedTo: UserRef | null;
+  assignedAt: string | null;
   /** Own value. Null means this phase uses the whole-project priority. */
   priority: Priority | null;
   effectivePriority: Priority;
@@ -87,6 +120,7 @@ export interface ProjectWorkPlan {
   source: WorkPlanSource | null;
   sourceFile: Pick<FileSummary, 'id' | 'name' | 'contentType' | 'sizeBytes'> | null;
   assignedTo: UserRef | null;
+  assignedAt: string | null;
   /** How urgent the whole plan is. Phase and topic can override it. */
   priority: Priority;
   developers: UserRef[];
@@ -122,6 +156,7 @@ export interface WorkPlanPointInput {
   id?: string;
   body: string;
   estimateMinutes: number;
+  isError?: boolean;
 }
 
 export interface WorkPlanTitleInput {

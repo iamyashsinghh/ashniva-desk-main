@@ -319,6 +319,7 @@ model User {
   workPlanPointsStarted     ProjectWorkPlanPoint[]    @relation("WorkPlanPointStarter")
   workPlanPointsCompleted   ProjectWorkPlanPoint[]    @relation("WorkPlanPointCompleter")
   workPlanNotes             ProjectWorkPlanNote[]     @relation("WorkPlanNoteAuthor")
+  workPlanEvents            ProjectWorkPlanEvent[]    @relation("WorkPlanEventActor")
 
   @@map("users")
 }
@@ -530,6 +531,12 @@ enum WorkPlanNoteKind {
   DOUBT
   ISSUE
   REPLY
+}
+
+enum WorkPlanEventKind {
+  SENT_TO_TESTER
+  ERROR
+  PASSED
 }
 
 enum ProjectMemberRole {
@@ -768,6 +775,7 @@ model ProjectWorkPlan {
   source         ProjectWorkPlanSource
   createdById    String               @map("created_by_id") @db.Uuid
   assignedToId   String?              @map("assigned_to_id") @db.Uuid
+  assignedAt     DateTime?            @map("assigned_at")
   priority       Priority             @default(MEDIUM)
   createdAt      DateTime             @default(now()) @map("created_at")
   updatedAt      DateTime             @updatedAt @map("updated_at")
@@ -791,6 +799,7 @@ model ProjectWorkPlanPhase {
   heading      String
   sortOrder    Int      @map("sort_order")
   assignedToId String?   @map("assigned_to_id") @db.Uuid
+  assignedAt   DateTime? @map("assigned_at")
   priority     Priority?
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -810,6 +819,7 @@ model ProjectWorkPlanTitle {
   title        String
   sortOrder    Int    @map("sort_order")
   assignedToId String?   @map("assigned_to_id") @db.Uuid
+  assignedAt   DateTime? @map("assigned_at")
   priority     Priority?
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -831,26 +841,35 @@ model ProjectWorkPlanPoint {
   estimateMinutes Int                 @map("estimate_minutes")
   sortOrder       Int                 @map("sort_order")
   status          WorkPlanPointStatus @default(PENDING)
+  /// Tester error copied into this phase as its own step. Start resumes the parent timer.
+  isError                Boolean   @default(false) @map("is_error")
+  parentPointId          String?   @map("parent_point_id") @db.Uuid
   startedAt              DateTime? @map("started_at")
   dueAt                  DateTime? @map("due_at")
   completedAt            DateTime? @map("completed_at")
   /// Frozen leftover seconds while the point sits with the tester. Cleared when the developer resumes.
   pausedRemainingSeconds Int?      @map("paused_remaining_seconds")
+  /// Seconds beyond the estimate, frozen on Send to tester / Good. Live extra is stored + this run.
+  overrunSeconds         Int       @default(0) @map("overrun_seconds")
   startedById            String?   @map("started_by_id") @db.Uuid
   completedById          String?   @map("completed_by_id") @db.Uuid
   submittedAt            DateTime? @map("submitted_at")
   penaltyApplied         Boolean   @default(false) @map("penalty_applied")
   createdAt       DateTime            @default(now()) @map("created_at")
-  updatedAt       DateTime            @updatedAt @map("updated_at")
+  updatedAt              DateTime            @updatedAt @map("updated_at")
 
   title       ProjectWorkPlanTitle @relation(fields: [titleId], references: [id], onDelete: Cascade)
+  parent      ProjectWorkPlanPoint?  @relation("WorkPlanErrorPoints", fields: [parentPointId], references: [id], onDelete: Cascade)
+  errorFixes  ProjectWorkPlanPoint[] @relation("WorkPlanErrorPoints")
   startedBy   User?                @relation("WorkPlanPointStarter", fields: [startedById], references: [id])
   completedBy User?                @relation("WorkPlanPointCompleter", fields: [completedById], references: [id])
   notes       ProjectWorkPlanNote[]
+  events      ProjectWorkPlanEvent[]
 
   @@index([titleId, sortOrder])
   @@index([startedById])
   @@index([status])
+  @@index([parentPointId])
   @@map("project_work_plan_points")
 }
 
@@ -873,6 +892,26 @@ model ProjectWorkPlanNote {
   @@index([parentId])
   @@index([organizationId])
   @@map("project_work_plan_notes")
+}
+
+model ProjectWorkPlanEvent {
+  id                 String            @id @default(uuid(7)) @db.Uuid
+  organizationId     String            @map("organization_id") @db.Uuid
+  pointId            String            @map("point_id") @db.Uuid
+  actorId            String            @map("actor_id") @db.Uuid
+  kind               WorkPlanEventKind
+  body               String?
+  elapsedSeconds     Int               @map("elapsed_seconds")
+  sinceSubmitSeconds Int?              @map("since_submit_seconds")
+  extraSeconds       Int               @map("extra_seconds")
+  createdAt          DateTime          @default(now()) @map("created_at")
+
+  point ProjectWorkPlanPoint @relation(fields: [pointId], references: [id], onDelete: Cascade)
+  actor User                 @relation("WorkPlanEventActor", fields: [actorId], references: [id])
+
+  @@index([pointId, createdAt])
+  @@index([organizationId])
+  @@map("project_work_plan_events")
 }
 
 model ProjectWorkPlanScore {

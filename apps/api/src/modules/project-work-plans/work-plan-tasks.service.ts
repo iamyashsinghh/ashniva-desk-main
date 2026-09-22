@@ -59,9 +59,13 @@ export class WorkPlanTasksService {
     const taskTitle = title.title.trim();
     const description = [
       `From project summary · ${phase.heading}.`,
-      ...title.points.map((point) => `• ${point.body} (${point.estimateMinutes} min)`),
+      ...title.points.map((point) =>
+        point.isError ? `• Error: ${point.body}` : `• ${point.body} (${point.estimateMinutes} min)`,
+      ),
     ].join('\n');
-    const estimateMinutes = title.points.reduce((sum, point) => sum + point.estimateMinutes, 0);
+    const estimateMinutes = title.points
+      .filter((point) => !point.isError)
+      .reduce((sum, point) => sum + point.estimateMinutes, 0);
     const existing = await this.tasks.findByWorkPlanTitle(actor.organizationId, title.id);
 
     if (!assignedToId) {

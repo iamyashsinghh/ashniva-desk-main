@@ -9,6 +9,9 @@ import {
   effectiveWorkPlanPriority,
   parseWorkPlanFromText,
   remainingSeconds,
+  extraSeconds,
+  extraThisRunSeconds,
+  elapsedSeconds,
   workPlanFromFreeText,
   workPlanAdditionsFromModelJson,
   workPlanFromModelJson,
@@ -17,6 +20,7 @@ import {
   shouldRestrictWorkPlanToAssignee,
   workPlanPhasesVisibleToDeveloper,
   workPlanPointActions,
+  effectiveWorkPlanAssignedAt,
 } from './work-plan';
 
 describe('parseWorkPlanFromText', () => {
@@ -86,6 +90,20 @@ describe('work-plan timing', () => {
   it('steps the on-time percentage down per missed point and never below zero', () => {
     expect(scoreAfterPenalty(100)).toBe(100 - WORK_PLAN_PENALTY_PERCENT);
     expect(scoreAfterPenalty(3, 2)).toBe(0);
+  });
+
+  it('counts extra time past the estimate until the point is done', () => {
+    const due = new Date('2026-09-14T11:59:50.000Z');
+    expect(extraThisRunSeconds(due, now, 10)).toBe(0);
+    expect(extraThisRunSeconds(due, now, 0)).toBe(10);
+    expect(extraThisRunSeconds(due, now, 0, 0)).toBe(0);
+    expect(extraSeconds(0, due, now, null, null)).toBe(10);
+    expect(extraSeconds(30, due, now, null, 0)).toBe(30);
+    expect(extraSeconds(30, due, now, now, null)).toBe(30);
+    expect(elapsedSeconds(due, now)).toBe(10);
+    const sentAt = new Date('2026-09-14T12:00:20.000Z');
+    expect(extraSeconds(0, due, now, null, 0, sentAt)).toBe(30);
+    expect(extraSeconds(12, due, now, null, 0, sentAt)).toBe(12);
   });
 });
 
@@ -187,6 +205,28 @@ describe('matchWorkPlanAdditionPhase', () => {
   });
 });
 
+describe('effectiveWorkPlanAssignedAt', () => {
+  it('uses the title stamp, then phase, then the whole plan', () => {
+    const titleAt = new Date('2026-09-18T10:00:00.000Z');
+    const phaseAt = new Date('2026-09-18T09:00:00.000Z');
+    const planAt = new Date('2026-09-18T08:00:00.000Z');
+    expect(
+      effectiveWorkPlanAssignedAt(
+        { assignedToId: 'dev-1', assignedAt: titleAt },
+        { assignedToId: 'dev-2', assignedAt: phaseAt },
+        { assignedToId: 'dev-3', assignedAt: planAt },
+      ),
+    ).toBe(titleAt);
+    expect(
+      effectiveWorkPlanAssignedAt(
+        { assignedToId: null, assignedAt: titleAt },
+        { assignedToId: 'dev-2', assignedAt: phaseAt },
+        { assignedToId: 'dev-3', assignedAt: planAt },
+      ),
+    ).toBe(phaseAt);
+  });
+});
+
 describe('workPlanPointActions', () => {
   const base = {
     startedById: 'dev-1',
@@ -228,6 +268,30 @@ describe('workPlanPointActions', () => {
         status: WORK_PLAN_POINT_STATUS.RETURNED,
       }).canStart,
     ).toBe(true);
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-1',
+        status: WORK_PLAN_POINT_STATUS.RETURNED,
+        hasOpenErrorChild: true,
+      }).canStart,
+    ).toBe(false);
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-1',
+        status: WORK_PLAN_POINT_STATUS.PENDING,
+        isError: true,
+      }).canStart,
+    ).toBe(true);
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-1',
+        status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
+        isError: true,
+      }).canSubmitTest,
+    ).toBe(false);
   });
 
   it('hides developer Start from a tester, and waits for Send to tester', () => {

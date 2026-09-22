@@ -62,7 +62,9 @@ export class WorkPlanRepository {
               include: {
                 titles: {
                   include: {
-                    points: { select: { id: true, startedAt: true } },
+                    points: {
+                      select: { id: true, startedAt: true, isError: true, estimateMinutes: true },
+                    },
                   },
                 },
               },
@@ -173,7 +175,9 @@ export class WorkPlanRepository {
                   where: { id: knownPoint.id },
                   data: {
                     body: point.body.trim(),
-                    estimateMinutes: point.estimateMinutes,
+                    estimateMinutes: knownPoint.isError
+                      ? knownPoint.estimateMinutes
+                      : point.estimateMinutes,
                     sortOrder: pointIndex,
                     titleId,
                   },

@@ -3,19 +3,25 @@ import {
   isWorkPlanOverdue,
   nestWorkPlanNotes,
   remainingSeconds,
+  extraSeconds,
+  isWorkPlanTimerFrozen,
   shouldRestrictWorkPlanToAssignee,
   workPlanPhasesVisibleToDeveloper,
   workPlanPointActions,
   PRIORITY,
+  WORK_PLAN_POINT_STATUS,
   effectiveWorkPlanPriority,
+  effectiveWorkPlanAssignedAt,
   type AuthenticatedUser,
   type Priority,
   type ProjectWorkPlan,
   type UserRef,
+  type WorkPlanEventKind,
   type WorkPlanNote,
   type WorkPlanNoteKind,
   type WorkPlanPhase,
   type WorkPlanPoint,
+  type WorkPlanPointEvent,
   type WorkPlanPointStatus,
   type WorkPlanScore,
   type WorkPlanSource,
@@ -42,6 +48,7 @@ export const workPlanInclude = {
             include: {
               startedBy: userRef,
               notes: { include: { author: userRef }, orderBy: { createdAt: 'asc' } },
+              events: { include: { actor: userRef }, orderBy: { createdAt: 'asc' } },
             },
           },
         },
@@ -76,6 +83,7 @@ export class WorkPlanMapper {
         source: null,
         sourceFile: null,
         assignedTo: null,
+        assignedAt: null,
         priority: PRIORITY.MEDIUM,
         developers,
         phases: [],
@@ -87,7 +95,10 @@ export class WorkPlanMapper {
     }
     const planPriority = (row.priority as Priority | null) ?? PRIORITY.MEDIUM;
     const phases = row.phases.map((phase) =>
-      this.phase(phase, actor, flags, now, row.assignedTo, planPriority),
+      this.phase(phase, actor, flags, now, row.assignedTo, planPriority, {
+        assignedToId: row.assignedToId,
+        assignedAt: row.assignedAt,
+      }),
     );
     const restricted = shouldRestrictWorkPlanToAssignee(flags);
     return {
@@ -95,6 +106,7 @@ export class WorkPlanMapper {
       source: row.source as WorkPlanSource,
       sourceFile: row.sourceFile,
       assignedTo: restricted && row.assignedTo?.id !== actor.userId ? null : row.assignedTo,
+      assignedAt: flags.canAssign ? (row.assignedAt?.toISOString() ?? null) : null,
       priority: planPriority,
       developers: restricted ? [] : developers,
       phases: restricted ? workPlanPhasesVisibleToDeveloper(phases, actor.userId) : phases,
@@ -112,6 +124,7 @@ export class WorkPlanMapper {
     now: Date,
     planAssignee: UserRef | null,
     planPriority: Priority,
+    planStamp: { assignedToId: string | null; assignedAt: Date | null },
   ): WorkPlanPhase {
     const phaseAssignee = phase.assignedTo ?? planAssignee;
     const phasePriority = (phase.priority as Priority | null) ?? null;
@@ -121,20 +134,44 @@ export class WorkPlanMapper {
       heading: phase.heading,
       sortOrder: phase.sortOrder,
       assignedTo: phase.assignedTo,
+      assignedAt: flags.canAssign ? (phase.assignedAt?.toISOString() ?? null) : null,
       priority: phasePriority,
       effectivePriority: effectivePhasePriority,
       titles: phase.titles.map((title) => {
         const titlePriority = (title.priority as Priority | null) ?? null;
+        const openErrorParents = new Set(
+          title.points
+            .filter(
+              (point) =>
+                point.isError &&
+                point.parentPointId &&
+                (point.status as WorkPlanPointStatus) === WORK_PLAN_POINT_STATUS.PENDING,
+            )
+            .map((point) => point.parentPointId as string),
+        );
+        const assignedAt = flags.canAssign
+          ? iso(
+              effectiveWorkPlanAssignedAt(
+                { assignedToId: title.assignedToId, assignedAt: title.assignedAt },
+                { assignedToId: phase.assignedToId, assignedAt: phase.assignedAt },
+                planStamp,
+              ),
+            )
+          : null;
         return {
           id: title.id,
           title: title.title,
           sortOrder: title.sortOrder,
           assignedTo: title.assignedTo,
           effectiveAssignedTo: title.assignedTo ?? phaseAssignee,
+          assignedAt: flags.canAssign ? (title.assignedAt?.toISOString() ?? null) : null,
           priority: titlePriority,
           effectivePriority: effectiveWorkPlanPriority(titlePriority, phasePriority, planPriority),
           points: title.points.map((point) =>
-            this.point(point, actor, flags, now, title.assignedTo ?? phaseAssignee),
+            this.point(point, actor, flags, now, title.assignedTo ?? phaseAssignee, {
+              assignedAt,
+              hasOpenErrorChild: openErrorParents.has(point.id),
+            }),
           ),
         };
       }),
@@ -147,6 +184,7 @@ export class WorkPlanMapper {
     flags: WorkPlanActorFlags,
     now: Date,
     assignee: UserRef | null,
+    extras: { assignedAt: string | null; hasOpenErrorChild: boolean },
   ): WorkPlanPoint {
     const status = point.status as WorkPlanPointStatus;
     const actions = workPlanPointActions({
@@ -157,6 +195,8 @@ export class WorkPlanMapper {
       canTest: flags.canTest,
       canLead: flags.canLead,
       assignedToId: assignee?.id ?? null,
+      isError: point.isError,
+      hasOpenErrorChild: extras.hasOpenErrorChild,
     });
     return {
       id: point.id,
@@ -164,7 +204,10 @@ export class WorkPlanMapper {
       estimateMinutes: point.estimateMinutes,
       sortOrder: point.sortOrder,
       status,
+      isError: point.isError,
+      parentPointId: point.parentPointId,
       startedAt: point.startedAt?.toISOString() ?? null,
+      assignedAt: extras.assignedAt,
       dueAt: point.dueAt?.toISOString() ?? null,
       completedAt: point.completedAt?.toISOString() ?? null,
       remainingSeconds: remainingSeconds(
@@ -175,7 +218,21 @@ export class WorkPlanMapper {
       ),
       overdue: isWorkPlanOverdue(point.dueAt, now, point.completedAt, point.pausedRemainingSeconds),
       pausedRemainingSeconds: point.pausedRemainingSeconds,
-      timerPaused: point.pausedRemainingSeconds != null && point.completedAt == null,
+      timerPaused: isWorkPlanTimerFrozen(status, point.pausedRemainingSeconds, point.completedAt),
+      extraSeconds: flags.canAssign
+        ? extraSeconds(
+            point.overrunSeconds,
+            point.dueAt,
+            now,
+            point.completedAt,
+            isWorkPlanTimerFrozen(status, point.pausedRemainingSeconds, point.completedAt)
+              ? (point.pausedRemainingSeconds ?? 0)
+              : null,
+            point.submittedAt,
+          )
+        : 0,
+      overrunSeconds: flags.canAssign ? point.overrunSeconds : 0,
+      events: flags.canAssign ? point.events.map((event) => this.event(event)) : [],
       startedBy: point.startedBy,
       notes: nestWorkPlanNotes(
         point.notes.map((note) => ({ ...this.note(note), parentId: note.parentId })),
@@ -184,6 +241,21 @@ export class WorkPlanMapper {
         replies: replies.map(({ parentId: _replyParent, ...reply }) => ({ ...reply, replies: [] })),
       })),
       ...actions,
+    };
+  }
+
+  private event(
+    event: WorkPlanRow['phases'][number]['titles'][number]['points'][number]['events'][number],
+  ): WorkPlanPointEvent {
+    return {
+      id: event.id,
+      kind: event.kind as WorkPlanEventKind,
+      body: event.body,
+      elapsedSeconds: event.elapsedSeconds,
+      sinceSubmitSeconds: event.sinceSubmitSeconds,
+      extraSeconds: event.extraSeconds,
+      createdAt: event.createdAt.toISOString(),
+      actor: event.actor,
     };
   }
 
@@ -202,4 +274,11 @@ export class WorkPlanMapper {
   private score(score: WorkPlanRow['scores'][number]): WorkPlanScore {
     return { user: score.user, percent: score.percent };
   }
+}
+
+function iso(value: Date | string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }

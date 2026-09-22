@@ -384,6 +384,7 @@ export function WorkPlanReader({
                           titleId: title.id,
                           pointId: point.id,
                         })}
+                        showLeadLog={plan.canAssign}
                         dragHandle={
                           canReorder ? (
                             <DragHandle

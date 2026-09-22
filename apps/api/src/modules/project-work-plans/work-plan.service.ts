@@ -16,9 +16,12 @@ import {
   WORK_PLAN_NOTE_KIND,
   WORK_PLAN_POINT_STATUS,
   WORK_PLAN_ASSIGN_SCOPE,
+  WORK_PLAN_EVENT_KIND,
   dueAtFromStart,
   dueAtFromRemaining,
   remainingSeconds,
+  extraThisRunSeconds,
+  elapsedSeconds,
   effectiveWorkPlanAssigneeId,
   parseWorkPlanFromText,
   scoreAfterPenalty,
@@ -276,7 +279,12 @@ export class WorkPlanService {
       }
       await this.prisma.projectWorkPlanTitle.update({
         where: { id: title.title.id },
-        data: { assignedToId },
+        data: this.assigneeStamp(
+          title.title.assignedToId,
+          assignedToId,
+          title.title.assignedAt,
+          new Date(),
+        ),
       });
     }
     const label =
@@ -337,29 +345,49 @@ export class WorkPlanService {
         ...row.phases.flatMap((phase) => phase.titles.map((title) => title.assignedToId)),
       ].filter((id): id is string => Boolean(id)),
     );
+    const now = new Date();
+    const phaseById = new Map(row.phases.map((phase) => [phase.id, phase]));
+    const titleById = new Map(
+      row.phases.flatMap((phase) => phase.titles.map((title) => [title.id, title] as const)),
+    );
     await this.prisma.$transaction([
       this.prisma.projectWorkPlan.update({
         where: { id: row.id },
-        data: { assignedToId, priority },
+        data: {
+          ...this.assigneeStamp(row.assignedToId, assignedToId, row.assignedAt, now),
+          priority,
+        },
       }),
-      ...dto.phases.map((phase) =>
-        this.prisma.projectWorkPlanPhase.update({
+      ...dto.phases.map((phase) => {
+        const current = phaseById.get(phase.id);
+        return this.prisma.projectWorkPlanPhase.update({
           where: { id: phase.id },
           data: {
-            assignedToId: phase.assignedToId ?? null,
+            ...this.assigneeStamp(
+              current?.assignedToId ?? null,
+              phase.assignedToId ?? null,
+              current?.assignedAt ?? null,
+              now,
+            ),
             priority: phase.priority ?? null,
           },
-        }),
-      ),
-      ...dto.titles.map((title) =>
-        this.prisma.projectWorkPlanTitle.update({
+        });
+      }),
+      ...dto.titles.map((title) => {
+        const current = titleById.get(title.id);
+        return this.prisma.projectWorkPlanTitle.update({
           where: { id: title.id },
           data: {
-            assignedToId: title.assignedToId ?? null,
+            ...this.assigneeStamp(
+              current?.assignedToId ?? null,
+              title.assignedToId ?? null,
+              current?.assignedAt ?? null,
+              now,
+            ),
             priority: title.priority ?? null,
           },
-        }),
-      ),
+        });
+      }),
     ]);
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_ASSIGNED,
@@ -403,6 +431,16 @@ export class WorkPlanService {
       point.title.phase.assignedToId,
       point.title.phase.plan.assignedToId,
     );
+    const openErrorChild = point.isError
+      ? null
+      : await this.prisma.projectWorkPlanPoint.findFirst({
+          where: {
+            parentPointId: point.id,
+            isError: true,
+            status: WORK_PLAN_POINT_STATUS.PENDING,
+          },
+          select: { id: true },
+        });
     const actions = workPlanPointActions({
       status: point.status,
       startedById: point.startedById,
@@ -411,8 +449,13 @@ export class WorkPlanService {
       canTest: flags.canTest,
       canLead: flags.canLead,
       assignedToId,
+      isError: point.isError,
+      hasOpenErrorChild: Boolean(openErrorChild),
     });
     if (!actions.canStart) {
+      if (openErrorChild) {
+        throw new ConflictException('Start the error step to continue this timer');
+      }
       if (flags.canTest && !flags.canLead) {
         throw new ForbiddenException('Testers start testing after the developer sends the point');
       }
@@ -422,6 +465,9 @@ export class WorkPlanService {
       throw new ConflictException('This point cannot be started');
     }
     const now = new Date();
+    if (point.isError && point.parentPointId) {
+      return this.resumeParentFromError(actor, projectId, point, now);
+    }
     const startedAt = point.startedAt ?? now;
     // Resume from leftover seconds after Send to tester; first Start still uses the estimate.
     const dueAt =
@@ -463,18 +509,34 @@ export class WorkPlanService {
     }
     await this.applyOverduePenalties(point.title.phase.planId);
     const now = new Date();
-    await this.prisma.projectWorkPlanPoint.update({
-      where: { id: point.id },
-      data: {
-        status: WORK_PLAN_POINT_STATUS.AWAITING_TEST,
-        submittedAt: now,
-        pausedRemainingSeconds: remainingSeconds(
-          point.dueAt,
-          now,
-          point.completedAt,
-          point.pausedRemainingSeconds,
-        ),
-      },
+    const remaining = remainingSeconds(
+      point.dueAt,
+      now,
+      point.completedAt,
+      point.pausedRemainingSeconds,
+    );
+    const overrunSeconds =
+      point.overrunSeconds + extraThisRunSeconds(point.dueAt, now, remaining, null);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.projectWorkPlanPoint.update({
+        where: { id: point.id },
+        data: {
+          status: WORK_PLAN_POINT_STATUS.AWAITING_TEST,
+          submittedAt: now,
+          pausedRemainingSeconds: remaining,
+          overrunSeconds,
+        },
+      });
+      await tx.projectWorkPlanEvent.create({
+        data: {
+          organizationId: actor.organizationId,
+          pointId: point.id,
+          actorId: actor.userId,
+          kind: WORK_PLAN_EVENT_KIND.SENT_TO_TESTER,
+          elapsedSeconds: elapsedSeconds(point.startedAt, now),
+          extraSeconds: overrunSeconds,
+        },
+      });
     });
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_POINT_SUBMITTED,
@@ -535,13 +597,50 @@ export class WorkPlanService {
       throw new ForbiddenException('Only a tester or team lead can mark this done');
     }
     await this.applyOverduePenalties(point.title.phase.planId);
-    await this.prisma.projectWorkPlanPoint.update({
-      where: { id: point.id },
-      data: {
-        status: WORK_PLAN_POINT_STATUS.COMPLETED,
-        completedAt: new Date(),
-        completedById: actor.userId,
-      },
+    const now = new Date();
+    const remaining = remainingSeconds(
+      point.dueAt,
+      now,
+      point.completedAt,
+      point.pausedRemainingSeconds,
+    );
+    const extraSeconds =
+      point.overrunSeconds +
+      extraThisRunSeconds(point.dueAt, now, remaining, point.pausedRemainingSeconds);
+    const testerSeconds = elapsedSeconds(point.submittedAt, now);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.projectWorkPlanPoint.update({
+        where: { id: point.id },
+        data: {
+          status: WORK_PLAN_POINT_STATUS.COMPLETED,
+          completedAt: now,
+          completedById: actor.userId,
+          overrunSeconds: extraSeconds,
+        },
+      });
+      await tx.projectWorkPlanPoint.updateMany({
+        where: {
+          parentPointId: point.id,
+          isError: true,
+          completedAt: null,
+        },
+        data: {
+          status: WORK_PLAN_POINT_STATUS.COMPLETED,
+          completedAt: now,
+          completedById: actor.userId,
+        },
+      });
+      await tx.projectWorkPlanEvent.create({
+        data: {
+          organizationId: actor.organizationId,
+          pointId: point.id,
+          actorId: actor.userId,
+          kind: WORK_PLAN_EVENT_KIND.PASSED,
+          elapsedSeconds: elapsedSeconds(point.startedAt, now),
+          sinceSubmitSeconds: testerSeconds,
+          extraSeconds,
+        },
+      });
     });
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_POINT_COMPLETED,
@@ -572,10 +671,40 @@ export class WorkPlanService {
       point.pausedRemainingSeconds ??
       remainingSeconds(point.dueAt, now, point.completedAt, point.pausedRemainingSeconds);
     const file = dto.fileId ? await this.requireErrorFile(actor, projectId, dto.fileId) : null;
+    const extraSeconds =
+      point.overrunSeconds +
+      extraThisRunSeconds(point.dueAt, now, pausedRemainingSeconds, pausedRemainingSeconds);
     await this.prisma.$transaction(async (tx) => {
       await tx.projectWorkPlanPoint.update({
         where: { id: point.id },
         data: { status: WORK_PLAN_POINT_STATUS.RETURNED, pausedRemainingSeconds },
+      });
+      const last = await tx.projectWorkPlanPoint.aggregate({
+        where: { titleId: point.titleId },
+        _max: { sortOrder: true },
+      });
+      await tx.projectWorkPlanPoint.create({
+        data: {
+          titleId: point.titleId,
+          body,
+          estimateMinutes: 1,
+          sortOrder: (last._max.sortOrder ?? 0) + 1,
+          isError: true,
+          parentPointId: point.id,
+          status: WORK_PLAN_POINT_STATUS.PENDING,
+        },
+      });
+      await tx.projectWorkPlanEvent.create({
+        data: {
+          organizationId: actor.organizationId,
+          pointId: point.id,
+          actorId: actor.userId,
+          kind: WORK_PLAN_EVENT_KIND.ERROR,
+          body,
+          elapsedSeconds: elapsedSeconds(point.startedAt, now),
+          sinceSubmitSeconds: elapsedSeconds(point.submittedAt, now),
+          extraSeconds,
+        },
       });
       await this.postTaskErrorComment(tx, actor, point, body, file?.id ?? null);
     });
@@ -588,6 +717,7 @@ export class WorkPlanService {
       after: { pointId: point.id },
     });
     await this.events.returned(actor, project, point.startedById, body);
+    await this.syncTasks(actor, project, projectId);
     return this.get(actor, projectId);
   }
 
@@ -803,7 +933,7 @@ export class WorkPlanService {
       return;
     }
     const data = {
-      ...(assignedToId ? { assignedToId } : {}),
+      ...(assignedToId ? { assignedToId, assignedAt: new Date() } : {}),
       ...(priority ? { priority } : {}),
     };
     for (const phase of row.phases) {
@@ -852,6 +982,7 @@ export class WorkPlanService {
         completedAt: null,
         penaltyApplied: false,
         startedById: { not: null },
+        isError: false,
         pausedRemainingSeconds: null,
         dueAt: { not: null, lte: now },
       },
@@ -987,39 +1118,71 @@ export class WorkPlanService {
   }
 
   private async assignProject(planId: string, assignedToId: string | null) {
+    const now = new Date();
+    const current = await this.prisma.projectWorkPlan.findUnique({
+      where: { id: planId },
+      select: { assignedToId: true, assignedAt: true },
+    });
+    const stamp = this.assigneeStamp(
+      current?.assignedToId ?? null,
+      assignedToId,
+      current?.assignedAt ?? null,
+      now,
+    );
     if (!assignedToId) {
-      await this.prisma.projectWorkPlan.update({
-        where: { id: planId },
-        data: { assignedToId: null },
-      });
+      await this.prisma.$transaction([
+        this.prisma.projectWorkPlan.update({
+          where: { id: planId },
+          data: stamp,
+        }),
+        this.prisma.projectWorkPlanPhase.updateMany({
+          where: { planId },
+          data: { assignedToId: null, assignedAt: null },
+        }),
+        this.prisma.projectWorkPlanTitle.updateMany({
+          where: { phase: { planId } },
+          data: { assignedToId: null, assignedAt: null },
+        }),
+      ]);
       return;
     }
     await this.prisma.$transaction([
-      this.prisma.projectWorkPlan.update({ where: { id: planId }, data: { assignedToId } }),
+      this.prisma.projectWorkPlan.update({ where: { id: planId }, data: stamp }),
       this.prisma.projectWorkPlanPhase.updateMany({
         where: { planId },
-        data: { assignedToId: null },
+        data: { assignedToId: null, assignedAt: null },
       }),
       this.prisma.projectWorkPlanTitle.updateMany({
         where: { phase: { planId } },
-        data: { assignedToId: null },
+        data: { assignedToId: null, assignedAt: null },
       }),
     ]);
   }
 
   private async assignPhase(phaseId: string, assignedToId: string | null) {
+    const now = new Date();
+    const current = await this.prisma.projectWorkPlanPhase.findUnique({
+      where: { id: phaseId },
+      select: { assignedToId: true, assignedAt: true },
+    });
+    const stamp = this.assigneeStamp(
+      current?.assignedToId ?? null,
+      assignedToId,
+      current?.assignedAt ?? null,
+      now,
+    );
     if (!assignedToId) {
       await this.prisma.projectWorkPlanPhase.update({
         where: { id: phaseId },
-        data: { assignedToId: null },
+        data: stamp,
       });
       return;
     }
     await this.prisma.$transaction([
-      this.prisma.projectWorkPlanPhase.update({ where: { id: phaseId }, data: { assignedToId } }),
+      this.prisma.projectWorkPlanPhase.update({ where: { id: phaseId }, data: stamp }),
       this.prisma.projectWorkPlanTitle.updateMany({
         where: { phaseId },
-        data: { assignedToId: null },
+        data: { assignedToId: null, assignedAt: null },
       }),
     ]);
   }
@@ -1095,6 +1258,7 @@ export class WorkPlanService {
     point: {
       status: string;
       startedById: string | null;
+      isError?: boolean;
       title: {
         assignedToId: string | null;
         phase: { assignedToId: string | null; plan: { assignedToId: string | null } };
@@ -1113,6 +1277,74 @@ export class WorkPlanService {
         point.title.phase.assignedToId,
         point.title.phase.plan.assignedToId,
       ),
+      isError: Boolean(point.isError),
     });
+  }
+
+  private assigneeStamp(
+    previousId: string | null,
+    nextId: string | null,
+    previousAt: Date | null,
+    now: Date,
+  ): { assignedToId: string | null; assignedAt: Date | null } {
+    if (!nextId) {
+      return { assignedToId: null, assignedAt: null };
+    }
+    if (nextId === previousId) {
+      return { assignedToId: nextId, assignedAt: previousAt };
+    }
+    return { assignedToId: nextId, assignedAt: now };
+  }
+
+  private async resumeParentFromError(
+    actor: AuthenticatedUser,
+    projectId: string,
+    errorPoint: { id: string; parentPointId: string | null; startedById: string | null },
+    now: Date,
+  ): Promise<ProjectWorkPlan> {
+    if (!errorPoint.parentPointId) {
+      throw new ConflictException('This error is not linked to a step');
+    }
+    const parent = await this.requirePoint(actor, projectId, errorPoint.parentPointId);
+    const resumeParent =
+      parent.status === WORK_PLAN_POINT_STATUS.RETURNED || parent.pausedRemainingSeconds != null;
+    const dueAt = resumeParent
+      ? dueAtFromRemaining(
+          now,
+          remainingSeconds(parent.dueAt, now, parent.completedAt, parent.pausedRemainingSeconds),
+        )
+      : parent.dueAt;
+    await this.prisma.$transaction([
+      ...(resumeParent
+        ? [
+            this.prisma.projectWorkPlanPoint.update({
+              where: { id: parent.id },
+              data: {
+                status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
+                dueAt,
+                pausedRemainingSeconds: null,
+              },
+            }),
+          ]
+        : []),
+      this.prisma.projectWorkPlanPoint.update({
+        where: { id: errorPoint.id },
+        data: {
+          status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
+          startedAt: now,
+          startedById: errorPoint.startedById ?? actor.userId,
+        },
+      }),
+    ]);
+    await this.ensureScore(parent.title.phase.planId, actor.userId);
+    await this.auditLog.record({
+      action: AUDIT_ACTION.WORK_PLAN_POINT_STARTED,
+      entityType: AUDIT_ENTITY_TYPE.PROJECT,
+      entityId: projectId,
+      organizationId: actor.organizationId,
+      actorUserId: actor.userId,
+      after: { pointId: errorPoint.id, parentPointId: parent.id },
+    });
+    return this.get(actor, projectId);
   }
 }

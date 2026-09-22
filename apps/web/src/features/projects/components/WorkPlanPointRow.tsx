@@ -1,12 +1,9 @@
-import {
-  WORK_PLAN_POINT_STATUS,
-  WORK_PLAN_POINT_STATUS_LABELS,
-  type WorkPlanPoint,
-} from '@ashniva/types';
+import { WORK_PLAN_POINT_STATUS_LABELS, type WorkPlanPoint } from '@ashniva/types';
 import { Button } from '@ashniva/ui';
 import { useEffect, useState, type DragEvent, type ReactNode } from 'react';
 
 import { WorkPlanErrorModal } from './WorkPlanErrorModal';
+import { WorkPlanPointDetail } from './WorkPlanLeadLog';
 
 export function WorkPlanPointRow({
   point,
@@ -15,6 +12,7 @@ export function WorkPlanPointRow({
   highlighted,
   dragHandle,
   dropClass,
+  showLeadLog,
   onStart,
   onSubmitTest,
   onPass,
@@ -29,6 +27,7 @@ export function WorkPlanPointRow({
   highlighted?: boolean;
   dragHandle?: ReactNode;
   dropClass?: string;
+  showLeadLog?: boolean;
   onStart: () => void;
   onSubmitTest: () => void;
   onPass: () => void;
@@ -44,6 +43,7 @@ export function WorkPlanPointRow({
     point.timerPaused,
   );
   const [reportingError, setReportingError] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const classes = [
     'work-plan__read-point',
     highlighted ? 'work-plan__just-added' : '',
@@ -63,16 +63,28 @@ export function WorkPlanPointRow({
       {dragHandle}
       {point.body ? <p>{point.body}</p> : null}
       <div className="work-plan__read-meta">
-        <span>{point.estimateMinutes} min</span>
-        <span>{WORK_PLAN_POINT_STATUS_LABELS[point.status]}</span>
-        {point.startedBy && point.startedAt ? <span>{point.startedBy.name}</span> : null}
-        {point.startedAt && !point.completedAt ? (
-          <TimerLabel point={point} remaining={remaining} />
-        ) : null}
-        {point.completedAt ? <span className="work-plan__done">Done</span> : null}
+        {point.isError ? (
+          <span className="work-plan__error-min">error</span>
+        ) : (
+          <span>{point.estimateMinutes} min</span>
+        )}
+        {showLeadLog ? (
+          <Button size="sm" variant="ghost" onClick={() => setDetailOpen((open) => !open)}>
+            {detailOpen ? 'Hide detail' : 'View detail'}
+          </Button>
+        ) : (
+          <>
+            <span>{WORK_PLAN_POINT_STATUS_LABELS[point.status]}</span>
+            {point.startedBy && point.startedAt ? <span>{point.startedBy.name}</span> : null}
+            {point.startedAt && !point.completedAt && !point.isError ? (
+              <TimerLabel point={point} remaining={remaining} />
+            ) : null}
+            {point.completedAt ? <span className="work-plan__done">Done</span> : null}
+          </>
+        )}
         {point.canStart ? (
           <Button size="sm" loading={busy} onClick={onStart}>
-            {point.status === WORK_PLAN_POINT_STATUS.RETURNED ? 'Resume' : 'Start'}
+            Start
           </Button>
         ) : null}
         {point.canSubmitTest ? (
@@ -91,6 +103,9 @@ export function WorkPlanPointRow({
           </Button>
         ) : null}
       </div>
+      {showLeadLog && detailOpen ? (
+        <WorkPlanPointDetail point={point} remaining={remaining} />
+      ) : null}
       {reportingError ? (
         <WorkPlanErrorModal
           projectId={projectId}

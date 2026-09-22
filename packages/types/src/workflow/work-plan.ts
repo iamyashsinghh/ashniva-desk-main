@@ -59,6 +59,21 @@ export const WORK_PLAN_NOTE_KIND = {
 
 export type WorkPlanNoteKind = (typeof WORK_PLAN_NOTE_KIND)[keyof typeof WORK_PLAN_NOTE_KIND];
 
+/** Admin / PM / TL trail on a point: every Send to tester and every tester error. */
+export const WORK_PLAN_EVENT_KIND = {
+  SENT_TO_TESTER: 'SENT_TO_TESTER',
+  ERROR: 'ERROR',
+  PASSED: 'PASSED',
+} as const;
+
+export type WorkPlanEventKind = (typeof WORK_PLAN_EVENT_KIND)[keyof typeof WORK_PLAN_EVENT_KIND];
+
+export const WORK_PLAN_EVENT_KIND_LABELS: Record<WorkPlanEventKind, string> = {
+  SENT_TO_TESTER: 'Sent to tester',
+  ERROR: 'Error',
+  PASSED: 'Good',
+};
+
 export const WORK_PLAN_NOTE_KIND_LABELS: Record<WorkPlanNoteKind, string> = {
   DOUBT: 'Doubt',
   ISSUE: 'Issue',
@@ -149,9 +164,75 @@ export function isWorkPlanOverdue(
   return new Date(dueAt).getTime() <= now.getTime();
 }
 
+/** Leftover time is frozen with the tester, or on a returned point waiting for Resume. */
+export function isWorkPlanTimerFrozen(
+  status: WorkPlanPointStatus,
+  pausedRemainingSeconds: number | null | undefined,
+  completedAt: Date | string | null,
+): boolean {
+  if (completedAt) {
+    return false;
+  }
+  if (pausedRemainingSeconds != null) {
+    return true;
+  }
+  return (
+    status === WORK_PLAN_POINT_STATUS.AWAITING_TEST ||
+    status === WORK_PLAN_POINT_STATUS.TESTING ||
+    status === WORK_PLAN_POINT_STATUS.RETURNED
+  );
+}
+
 /** Restores a paused clock: now plus the leftover seconds from Send to tester. */
 export function dueAtFromRemaining(now: Date, remaining: number): Date {
   return new Date(now.getTime() + Math.max(0, remaining) * 1000);
+}
+
+/** Seconds past due on this run. Zero while leftover time remains or the clock is paused. */
+export function extraThisRunSeconds(
+  dueAt: Date | string | null,
+  now: Date,
+  remaining: number,
+  pausedRemainingSeconds?: number | null,
+): number {
+  if (pausedRemainingSeconds != null || remaining > 0 || !dueAt) {
+    return 0;
+  }
+  return Math.max(0, Math.floor((now.getTime() - new Date(dueAt).getTime()) / 1000));
+}
+
+/**
+ * Time beyond the estimate. Frozen leftover is already stored; while the clock runs, extra on
+ * this run is added so the count keeps moving until Good. Tester wait does not add extra.
+ */
+export function extraSeconds(
+  storedOverrunSeconds: number,
+  dueAt: Date | string | null,
+  now: Date,
+  completedAt: Date | string | null,
+  pausedRemainingSeconds?: number | null,
+  freezeAt?: Date | string | null,
+): number {
+  const stored = Math.max(0, storedOverrunSeconds);
+  if (completedAt || pausedRemainingSeconds != null) {
+    if (stored > 0) {
+      return stored;
+    }
+    const at = freezeAt ?? completedAt;
+    if (!at || !dueAt) {
+      return 0;
+    }
+    return extraThisRunSeconds(dueAt, new Date(at), 0);
+  }
+  return stored + extraThisRunSeconds(dueAt, now, remainingSeconds(dueAt, now, completedAt, null));
+}
+
+/** Wall time from Start (or another instant) to now. */
+export function elapsedSeconds(from: Date | string | null, now: Date): number {
+  if (!from) {
+    return 0;
+  }
+  return Math.max(0, Math.floor((now.getTime() - new Date(from).getTime()) / 1000));
 }
 
 export function scoreAfterPenalty(percent: number, missedPoints = 1): number {
@@ -174,6 +255,24 @@ export function effectiveWorkPlanAssigneeId(
   planAssignedToId: string | null | undefined,
 ): string | null {
   return titleAssignedToId ?? phaseAssignedToId ?? planAssignedToId ?? null;
+}
+
+/** When that assignee was given the work. Title beats phase beats the whole plan. */
+export function effectiveWorkPlanAssignedAt(
+  title: { assignedToId: string | null | undefined; assignedAt: Date | string | null | undefined },
+  phase: { assignedToId: string | null | undefined; assignedAt: Date | string | null | undefined },
+  plan: { assignedToId: string | null | undefined; assignedAt: Date | string | null | undefined },
+): Date | string | null {
+  if (title.assignedToId) {
+    return title.assignedAt ?? null;
+  }
+  if (phase.assignedToId) {
+    return phase.assignedAt ?? null;
+  }
+  if (plan.assignedToId) {
+    return plan.assignedAt ?? null;
+  }
+  return null;
 }
 
 /** Title beats phase beats the whole plan. Unset levels fall through to Medium. */
@@ -214,6 +313,10 @@ export function workPlanPointActions(input: {
   canTest: boolean;
   canLead: boolean;
   assignedToId?: string | null;
+  /** Tester-error row. Start resumes the parent point's leftover time. */
+  isError?: boolean;
+  /** Parent still has an error step that has not been started. */
+  hasOpenErrorChild?: boolean;
 }): {
   canStart: boolean;
   canSubmitTest: boolean;
@@ -223,7 +326,17 @@ export function workPlanPointActions(input: {
   canDoubt: boolean;
   canReply: boolean;
 } {
-  const { status, startedById, actorId, canWork, canTest, canLead, assignedToId } = input;
+  const {
+    status,
+    startedById,
+    actorId,
+    canWork,
+    canTest,
+    canLead,
+    assignedToId,
+    isError,
+    hasOpenErrorChild,
+  } = input;
   const done = status === WORK_PLAN_POINT_STATUS.COMPLETED;
   const starter = startedById === actorId;
   const reviewer = canTest || canLead;
@@ -234,15 +347,18 @@ export function workPlanPointActions(input: {
   const owns = canLead || assignedToId === actorId;
   const withTester =
     status === WORK_PLAN_POINT_STATUS.AWAITING_TEST || status === WORK_PLAN_POINT_STATUS.TESTING;
+  const canBuild = builder && owns;
   return {
-    canStart:
-      builder &&
-      owns &&
-      (status === WORK_PLAN_POINT_STATUS.PENDING || status === WORK_PLAN_POINT_STATUS.RETURNED),
-    canSubmitTest: builder && status === WORK_PLAN_POINT_STATUS.IN_PROGRESS && (starter || canLead),
-    canStartTest: reviewer && status === WORK_PLAN_POINT_STATUS.AWAITING_TEST,
-    canPass: reviewer && withTester,
-    canFail: reviewer && withTester,
+    canStart: isError
+      ? canBuild && status === WORK_PLAN_POINT_STATUS.PENDING
+      : canBuild &&
+        !hasOpenErrorChild &&
+        (status === WORK_PLAN_POINT_STATUS.PENDING || status === WORK_PLAN_POINT_STATUS.RETURNED),
+    canSubmitTest:
+      !isError && canBuild && status === WORK_PLAN_POINT_STATUS.IN_PROGRESS && (starter || canLead),
+    canStartTest: !isError && reviewer && status === WORK_PLAN_POINT_STATUS.AWAITING_TEST,
+    canPass: !isError && reviewer && withTester,
+    canFail: !isError && reviewer && withTester,
     canDoubt: onTeam && !done,
     canReply: onTeam,
   };

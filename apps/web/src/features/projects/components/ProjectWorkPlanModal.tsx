@@ -168,7 +168,7 @@ export function ProjectWorkPlanModal({
       open
       size="lg"
       title={`Summary · ${projectName}`}
-      description="The developer presses Start, then Send to tester — that pauses their leftover time. The tester marks Good or Error. An error lets the developer Resume the same remaining time."
+      description="The developer presses Start, then Send to tester — that pauses leftover time. The tester marks Good or Error. Admin, project manager and team lead see extra time past the estimate, every send, and each tester error until Good."
       onClose={onClose}
       headerActions={
         data?.canAssign && !showEditor && data.phases.length > 0 ? (
