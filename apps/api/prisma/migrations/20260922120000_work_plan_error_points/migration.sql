@@ -20,7 +20,13 @@ ALTER TABLE "project_work_plan_points"
     FOREIGN KEY ("parent_point_id") REFERENCES "project_work_plan_points"("id")
     ON DELETE CASCADE ON UPDATE CASCADE;
 
-ALTER TYPE "WorkPlanEventKind" ADD VALUE 'PASSED';
+-- WorkPlanEventKind is created later (20260930190000). Skip if the type is not there yet;
+-- PASSED is added in 20260930191000 once the enum exists.
+DO $$ BEGIN
+  ALTER TYPE "WorkPlanEventKind" ADD VALUE IF NOT EXISTS 'PASSED';
+EXCEPTION
+  WHEN undefined_object THEN NULL;
+END $$;
 
 UPDATE "project_work_plans"
 SET "assigned_at" = "updated_at"
