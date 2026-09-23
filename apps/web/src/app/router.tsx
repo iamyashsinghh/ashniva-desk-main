@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router';
 
 import { AuditPage } from '../features/audit/pages/AuditPage';
+import { SessionLogsPage } from '../features/session-logs/pages/SessionLogsPage';
 import { CompaniesPage } from '../features/admin/pages/CompaniesPage';
 import { RolesPage } from '../features/admin/pages/RolesPage';
 import { UsersPage } from '../features/admin/pages/UsersPage';
@@ -58,6 +59,8 @@ import { ProductDetailPage } from '../features/products/pages/ProductDetailPage'
 import { ProductsPage } from '../features/products/pages/ProductsPage';
 import { SystemStatusPage } from '../features/system/pages/SystemStatusPage';
 import { CreateTaskPage } from '../features/tasks/pages/CreateTaskPage';
+import { CreateInternWorkPage } from '../features/tasks/pages/CreateInternWorkPage';
+import { InternWorkPage } from '../features/tasks/pages/InternWorkPage';
 import { TaskDetailPage } from '../features/tasks/pages/TaskDetailPage';
 import { TasksPage } from '../features/tasks/pages/TasksPage';
 import { CommunicationSettingsPage } from '../features/communication/pages/CommunicationSettingsPage';
@@ -94,6 +97,12 @@ export const router = createBrowserRouter([
           { path: 'tasks', element: <TasksPage />, handle: handle('Tasks') },
           { path: 'tasks/new', element: <CreateTaskPage />, handle: handle('New task') },
           { path: 'tasks/:id', element: <TaskDetailPage />, handle: handle('Task') },
+          { path: 'intern-work', element: <InternWorkPage />, handle: handle('Intern work') },
+          {
+            path: 'intern-work/new',
+            element: <CreateInternWorkPage />,
+            handle: handle('Assign intern work'),
+          },
           { path: 'messages', element: <MessagesPage />, handle: handle('Messages') },
           // The id in the path is what `conversationLink` has always built for a direct message
           // and a group. Without this route those notification links landed on a screen that
@@ -250,6 +259,11 @@ export const router = createBrowserRouter([
             handle: handle('Branding'),
           },
           { path: 'admin/audit', element: <AuditPage />, handle: handle('Audit history') },
+          {
+            path: 'team/session-logs',
+            element: <SessionLogsPage />,
+            handle: handle('Team login & break log'),
+          },
           { path: 'profile', element: <ProfilePage />, handle: handle('Profile') },
           { path: 'system/status', element: <SystemStatusPage />, handle: handle('System status') },
           { path: '*', element: <NotFoundPage />, handle: handle('Not found') },

@@ -29,4 +29,5 @@ export const DEFAULT_TASK_CATEGORIES: readonly SeedTaskCategory[] = [
   { name: 'Release Approval', kind: TASK_CATEGORY_KIND.MANAGEMENT },
   { name: 'Documentation', kind: TASK_CATEGORY_KIND.OTHER },
   { name: 'Administrative', kind: TASK_CATEGORY_KIND.OTHER },
+  { name: 'Intern work', kind: TASK_CATEGORY_KIND.OTHER },
 ];

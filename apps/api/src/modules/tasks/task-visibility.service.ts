@@ -125,7 +125,22 @@ export class TaskVisibilityService {
 
   /** The predicate to `AND` into any task query made on the actor's behalf. */
   async taskWhere(actor: AuthenticatedUser): Promise<Prisma.TaskWhereInput | undefined> {
-    return taskScopeWhere(await this.resolve(actor));
+    const scope = await this.resolve(actor);
+    const base = taskScopeWhere(scope);
+    // Intern work is private to the person who assigned it, the intern, and Super Admin.
+    const internGate: Prisma.TaskWhereInput = {
+      OR: [
+        { isInternTask: false },
+        {
+          isInternTask: true,
+          OR: [{ createdById: actor.userId }, { assignedToId: actor.userId }],
+        },
+      ],
+    };
+    if (!base) {
+      return undefined;
+    }
+    return { AND: [base, internGate] };
   }
 
   /**

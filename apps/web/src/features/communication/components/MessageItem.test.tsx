@@ -63,6 +63,7 @@ function file(over: Partial<FileSummary> = {}): FileSummary {
     contentType: 'text/plain',
     sizeBytes: 4096,
     visibility: 'INTERNAL',
+    caption: null,
     uploadedBy: { id: SOMEBODY_ELSE, name: 'Priya S', email: 'priya@example.com' },
     createdAt: '2026-09-13T09:00:00.000Z',
     ...over,

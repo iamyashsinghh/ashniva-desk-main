@@ -10,6 +10,7 @@ import {
   AssignWorkPlanDto,
   SaveWorkPlanAssignmentsDto,
   AddWorkPlanWorkDto,
+  CombineWorkPlanTitlesDto,
   WorkPlanNoteDto,
 } from './dto/work-plan.dto';
 import { WorkPlanService } from './work-plan.service';
@@ -82,6 +83,20 @@ export class WorkPlanController {
     @Body() dto: AddWorkPlanWorkDto,
   ): Promise<ProjectWorkPlan> {
     return this.plans.addWork(actor, projectId, dto);
+  }
+
+  @Post('combine-titles')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({
+    summary:
+      'Combine topics in one phase into a single topic. Minutes add up. Developer, team lead, project manager and director.',
+  })
+  combineTitles(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: CombineWorkPlanTitlesDto,
+  ): Promise<ProjectWorkPlan> {
+    return this.plans.combineTitles(actor, projectId, dto);
   }
 
   @Post('assign')

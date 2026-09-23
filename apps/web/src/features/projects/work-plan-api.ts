@@ -1,6 +1,7 @@
 import type {
   AddWorkPlanWorkInput,
   AssignWorkPlanInput,
+  CombineWorkPlanTitlesInput,
   ParseWorkPlanInput,
   ProjectWorkPlan,
   SaveWorkPlanAssignmentsInput,
@@ -133,6 +134,17 @@ export function useWorkPlanMutations(projectId: string) {
           body,
         }),
       onSuccess: invalidate,
+    }),
+    combineTitles: useMutation({
+      mutationFn: (body: CombineWorkPlanTitlesInput) =>
+        apiRequest<ProjectWorkPlan>(`/projects/${projectId}/work-plan/combine-titles`, {
+          method: 'POST',
+          body,
+        }),
+      onSuccess: async () => {
+        await invalidate();
+        await queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      },
     }),
   };
 }

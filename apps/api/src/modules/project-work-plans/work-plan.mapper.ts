@@ -187,6 +187,11 @@ export class WorkPlanMapper {
     extras: { assignedAt: string | null; hasOpenErrorChild: boolean },
   ): WorkPlanPoint {
     const status = point.status as WorkPlanPointStatus;
+    const timerPaused = isWorkPlanTimerFrozen(
+      status,
+      point.pausedRemainingSeconds,
+      point.completedAt,
+    );
     const actions = workPlanPointActions({
       status,
       startedById: point.startedById,
@@ -197,6 +202,7 @@ export class WorkPlanMapper {
       assignedToId: assignee?.id ?? null,
       isError: point.isError,
       hasOpenErrorChild: extras.hasOpenErrorChild,
+      timerPaused,
     });
     return {
       id: point.id,
@@ -218,7 +224,7 @@ export class WorkPlanMapper {
       ),
       overdue: isWorkPlanOverdue(point.dueAt, now, point.completedAt, point.pausedRemainingSeconds),
       pausedRemainingSeconds: point.pausedRemainingSeconds,
-      timerPaused: isWorkPlanTimerFrozen(status, point.pausedRemainingSeconds, point.completedAt),
+      timerPaused,
       extraSeconds: flags.canAssign
         ? extraSeconds(
             point.overrunSeconds,

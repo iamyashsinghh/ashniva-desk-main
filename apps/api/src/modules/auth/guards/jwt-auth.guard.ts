@@ -32,16 +32,34 @@ export class JwtAuthGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
+    const request = context.switchToHttp().getRequest<RequestWithUser>();
+    const token = this.readBearerToken(request.headers.authorization);
+
     if (isPublic) {
+      // Optional auth: logout and similar public routes still attach the user when a
+      // bearer token is present so side-effects (e.g. pause work-plan timers) can run.
+      if (token) {
+        await this.attachUser(request, token).catch(() => undefined);
+      }
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<RequestWithUser>();
-    const token = this.readBearerToken(request.headers.authorization);
     if (!token) {
       throw new UnauthorizedException('Missing bearer token');
     }
 
+    try {
+      await this.attachUser(request, token);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new UnauthorizedException('Invalid or expired token');
+    }
+    return true;
+  }
+
+  private async attachUser(request: RequestWithUser, token: string): Promise<void> {
     const claims = await this.tokenService.verifyAccessToken(token).catch(() => {
       throw new UnauthorizedException('Invalid or expired token');
     });
@@ -67,7 +85,6 @@ export class JwtAuthGuard implements CanActivate {
 
     request.user = user;
     this.tenantContext.set({ organizationId: user.organizationId, userId: user.userId });
-    return true;
   }
 
   private readBearerToken(header: string | undefined): string | undefined {

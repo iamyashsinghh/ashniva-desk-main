@@ -247,6 +247,14 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, readonly PermissionKey[]>
     P.REPORT_READ_OWN,
   ],
 
+  /** Learning assignments from a director, PM or team lead. Comments and attachments only on their own work. */
+  [ROLE_KEYS.INTERN]: [
+    P.PROJECT_READ,
+    P.TASK_READ,
+    P.TASK_WORK,
+    P.COMMENT_INTERNAL,
+  ],
+
   // The permission is not the gate — project membership is. Withholding it from an internal
   // employee who is a legitimate project member would break them silently.
   [ROLE_KEYS.INTERNAL_EMPLOYEE]: [

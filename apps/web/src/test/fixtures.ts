@@ -56,6 +56,7 @@ export function taskDetailFixture(overrides: Partial<TaskDetail> = {}): TaskDeta
     clientOrganization: { id: ACME.id, name: ACME.name, slug: ACME.slug },
     category: null,
     module: null,
+    isInternTask: false,
     assignedTo: PRIYA,
     createdBy: SNEHA,
     reviewer: SNEHA,

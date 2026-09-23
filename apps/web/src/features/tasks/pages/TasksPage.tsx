@@ -39,6 +39,7 @@ const VIEW_LABELS: Record<TaskListView, string> = {
   review: 'Reviews',
   done: 'Completed',
   all: 'All',
+  intern: 'Intern work',
 };
 
 type Layout = 'board' | 'list';
@@ -120,9 +121,12 @@ export function TasksPage() {
     search ? { key: 'search', label: `Search: ${search}` } : null,
   ].filter((entry) => entry !== null);
 
-  const visibleViews = VIEWS.filter((entry) =>
-    entry === 'by-me' || entry === 'team' ? canAssign : true,
-  );
+  const visibleViews = VIEWS.filter((entry) => {
+    if (entry === 'intern') {
+      return false;
+    }
+    return entry === 'by-me' || entry === 'team' ? canAssign : true;
+  });
 
   return (
     <div className="tasks-page">

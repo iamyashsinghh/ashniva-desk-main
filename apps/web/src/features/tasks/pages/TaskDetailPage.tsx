@@ -16,7 +16,7 @@ import { Link, useParams } from 'react-router';
 import { QueryState } from '../../../shared/components/QueryState';
 import { TaskStatusPill } from '../../../shared/components/StatusPills';
 import { describeDue, formatDate, formatMinutes } from '../../../shared/lib/format';
-import { usePermission } from '../../auth/session-context';
+import { usePermission, useSession } from '../../auth/session-context';
 import { taskAnchor } from '../../communication/conversation-anchors';
 import { ConversationPanel } from '../../communication/components/ConversationPanel';
 import { FileList } from '../../files/components/FileList';
@@ -47,6 +47,7 @@ export function TaskDetailPage() {
 }
 
 function TaskDetailBody({ task }: { task: TaskDetail }) {
+  const session = useSession();
   const canInternalComments = usePermission(PERMISSIONS.COMMENT_INTERNAL);
   // The permission is not the gate — the server checks project membership on every request. This
   // only decides whether to render a panel that would refuse them anyway.
@@ -54,13 +55,26 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
   const canEditFiles = task.actions.some(
     (action) => (action.action === 'log-work' || action.action === 'edit') && action.enabled,
   );
+  const userId = session.user?.id;
+  const canUploadInternFiles = Boolean(
+    task.isInternTask &&
+      userId &&
+      (task.assignedTo?.id === userId || task.createdBy.id === userId),
+  );
+  const canUploadFiles = canEditFiles || canUploadInternFiles;
+  const crumbs = task.isInternTask
+    ? [
+        { key: 'intern', label: 'Intern work', href: '/intern-work' },
+        { key: 'task', label: task.key },
+      ]
+    : [
+        { key: 'tasks', label: 'Tasks', href: '/tasks' },
+        { key: 'task', label: task.key },
+      ];
   return (
     <div className="task-detail">
       <PageHeader
-        breadcrumbs={[
-          { key: 'tasks', label: 'Tasks', href: '/tasks' },
-          { key: 'task', label: task.key },
-        ]}
+        breadcrumbs={crumbs}
         renderBreadcrumbLink={(href, children) => <Link to={href}>{children}</Link>}
         title={task.title}
         subtitle={
@@ -68,6 +82,7 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
             <TaskStatusPill status={task.status} />
             <PriorityDot priority={task.priority} showLabel />
             <VisibilityBadge visibility={task.clientVisible ? 'CLIENT' : 'INTERNAL'} />
+            {task.isInternTask ? <Badge>Intern work</Badge> : null}
             {task.ticket ? (
               <Link to={`/tickets/${task.ticket.id}`}>From ticket T-{task.ticket.number}</Link>
             ) : null}
@@ -107,11 +122,12 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
             <FileList
               files={task.files}
               parent={{ taskId: task.id }}
-              canUpload={canEditFiles}
-              chooseVisibility
+              canUpload={canUploadFiles}
+              chooseVisibility={!task.isInternTask}
+              askCaption={task.isInternTask}
             />
           </Card>
-          {canChat ? (
+          {canChat && !task.isInternTask ? (
             <ConversationPanel anchor={taskAnchor(task.id)} title="Internal chat" />
           ) : null}
           <Card title="History">

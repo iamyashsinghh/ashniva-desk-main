@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 
 import { OrganizationMembershipsModule } from '../organization-memberships/organization-memberships.module';
+import { WorkPlanLogoutPauseModule } from '../project-work-plans/work-plan-logout-pause.module';
 import { UsersModule } from '../users/users.module';
 import { AccountTokensRepository } from './account-tokens.repository';
 import { AccountTokensService } from './account-tokens.service';
@@ -23,7 +24,12 @@ import { TokenService } from './token.service';
  * login / refresh / logout / switch-organization / me, and the global guards.
  */
 @Module({
-  imports: [JwtModule.register({}), OrganizationMembershipsModule, forwardRef(() => UsersModule)],
+  imports: [
+    JwtModule.register({}),
+    OrganizationMembershipsModule,
+    forwardRef(() => UsersModule),
+    WorkPlanLogoutPauseModule,
+  ],
   controllers: [AuthController],
   providers: [
     PasswordHashingService,

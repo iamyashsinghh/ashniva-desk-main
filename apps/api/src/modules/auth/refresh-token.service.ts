@@ -88,6 +88,17 @@ export class RefreshTokenService {
     }
   }
 
+  /** Looks up the session behind a refresh cookie without rotating or revoking it. */
+  async peek(
+    presentedToken: string,
+  ): Promise<{ userId: string; organizationId: string | null } | null> {
+    const existing = await this.repository.findByHash(this.hashToken(presentedToken));
+    if (!existing || existing.revokedAt || existing.expiresAt <= new Date()) {
+      return null;
+    }
+    return { userId: existing.userId, organizationId: existing.organizationId };
+  }
+
   async revokeAllForUser(userId: string): Promise<void> {
     await this.repository.revokeAllForUser(userId, new Date());
   }

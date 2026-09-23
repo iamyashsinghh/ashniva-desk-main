@@ -39,9 +39,13 @@ export class CreateTaskDto {
   @MaxLength(200)
   title!: string;
 
-  @ApiProperty({ format: 'uuid' })
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Required for ordinary tasks. Optional for intern work — left blank uses Intern work.',
+  })
+  @IsOptional()
   @IsUUID()
-  projectId!: string;
+  projectId?: string;
 
   @ApiPropertyOptional({ maxLength: 5000 })
   @IsOptional()
@@ -152,6 +156,15 @@ export class CreateTaskDto {
   @IsOptional()
   @IsUUID()
   milestoneId?: string;
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      'Learning work for an intern. Only a director, project manager or team lead may create it.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isInternTask?: boolean;
 }
 
 export class UpdateTaskDto {

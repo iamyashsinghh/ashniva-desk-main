@@ -196,3 +196,16 @@ export class AddWorkPlanWorkDto {
   @IsIn(PRIORITIES)
   priority?: Priority | null;
 }
+
+export class CombineWorkPlanTitlesDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  phaseId!: string;
+
+  @ApiProperty({ type: [String], minItems: 2 })
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(30)
+  @IsUUID('all', { each: true })
+  titleIds!: string[];
+}

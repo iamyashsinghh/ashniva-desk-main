@@ -62,6 +62,7 @@ export function toFileSummary(row: FileRow): FileSummary {
     contentType: row.contentType,
     sizeBytes: row.sizeBytes,
     visibility: row.visibility as Visibility,
+    caption: row.caption,
     uploadedBy: row.uploadedBy,
     createdAt: row.createdAt.toISOString(),
   };
@@ -137,6 +138,7 @@ export class FilesService {
       milestoneId: dto.milestoneId,
       changeRequestId: dto.changeRequestId,
       approvalId: dto.approvalId,
+      caption: dto.caption?.trim() || null,
     });
     await this.auditLog.record({
       action: AUDIT_ACTION.FILE_UPLOADED,

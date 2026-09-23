@@ -44,6 +44,41 @@ describe('JwtAuthGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
   });
 
+  it('attaches the user on a public route when a bearer token is present', async () => {
+    tokenService.verifyAccessToken.mockResolvedValue({
+      sub: 'u1',
+      organizationId: 'o1',
+      roleKey: ROLE_KEYS.DEVELOPER,
+    });
+    memberships.findActiveMembership.mockResolvedValue({
+      role: {
+        key: ROLE_KEYS.DEVELOPER,
+        templateKey: null,
+        permissions: [{ permission: { key: PERMISSIONS.TASK_WORK } }],
+      },
+      organization: { isServiceProvider: true },
+    } as never);
+
+    const { context, request } = buildContext('Bearer ok', true);
+    await tenantContext.run({}, async () => {
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(request.user).toEqual({
+        userId: 'u1',
+        organizationId: 'o1',
+        roleKey: ROLE_KEYS.DEVELOPER,
+        permissions: [PERMISSIONS.TASK_WORK],
+        isServiceProvider: true,
+      });
+    });
+  });
+
+  it('still allows a public route when the bearer token is bad', async () => {
+    tokenService.verifyAccessToken.mockRejectedValue(new Error('bad'));
+    const { context, request } = buildContext('Bearer bad', true);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(request.user).toBeUndefined();
+  });
+
   it('rejects missing tokens', async () => {
     const { context } = buildContext(undefined);
     await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);

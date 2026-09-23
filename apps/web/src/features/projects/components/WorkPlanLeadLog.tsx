@@ -18,6 +18,7 @@ export function WorkPlanPointDetail({
   remaining: number;
 }) {
   const extra = useExtra(point);
+  const under = underSeconds(point, remaining, extra);
   return (
     <div className="work-plan__lead-detail">
       <dl>
@@ -31,6 +32,12 @@ export function WorkPlanPointDetail({
             {point.isError ? '—' : extraLabel(point, extra)}
           </dd>
         </div>
+        {!point.isError && under > 0 ? (
+          <div>
+            <dt>Finished early</dt>
+            <dd className="work-plan__lead-under">{formatDuration(under)} under</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Assigned</dt>
           <dd>{point.assignedAt ? formatDateTime(point.assignedAt) : '—'}</dd>
@@ -39,6 +46,12 @@ export function WorkPlanPointDetail({
           <dt>Started</dt>
           <dd>{point.startedAt ? formatDateTime(point.startedAt) : '—'}</dd>
         </div>
+        {point.completedAt ? (
+          <div>
+            <dt>Completed</dt>
+            <dd>{formatDateTime(point.completedAt)}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Status</dt>
           <dd>{WORK_PLAN_POINT_STATUS_LABELS[point.status]}</dd>
@@ -65,6 +78,11 @@ export function WorkPlanPointDetail({
 
 export function WorkPlanLeadLog({ point }: { point: WorkPlanPoint }) {
   const sends = point.events.filter((event) => event.kind === WORK_PLAN_EVENT_KIND.SENT_TO_TESTER);
+  const starts = point.events.filter(
+    (event) =>
+      event.kind === WORK_PLAN_EVENT_KIND.STARTED || event.kind === WORK_PLAN_EVENT_KIND.RESUMED,
+  );
+  const stops = point.events.filter((event) => event.kind === WORK_PLAN_EVENT_KIND.STOPPED);
   if (point.events.length === 0) {
     return null;
   }
@@ -72,7 +90,11 @@ export function WorkPlanLeadLog({ point }: { point: WorkPlanPoint }) {
   return (
     <div className="work-plan__lead-log">
       <p className="work-plan__lead-stats">
-        Sent to tester {sends.length} {sends.length === 1 ? 'time' : 'times'}
+        Timeline · started {starts.length} {starts.length === 1 ? 'time' : 'times'}
+        {stops.length > 0 ? ` · stopped ${stops.length}` : ''}
+        {sends.length > 0
+          ? ` · sent to tester ${sends.length} ${sends.length === 1 ? 'time' : 'times'}`
+          : ''}
       </p>
       <ol>
         {point.events.map((event) => (
@@ -104,13 +126,33 @@ function extraLabel(point: WorkPlanPoint, extra: number): string {
   return `${formatDuration(extra)} more${counting}`;
 }
 
+/** Leftover assigned time when the point finished under estimate. */
+function underSeconds(point: WorkPlanPoint, remaining: number, extra: number): number {
+  if (!point.completedAt || point.isError || extra > 0) {
+    return 0;
+  }
+  if (point.pausedRemainingSeconds != null && point.pausedRemainingSeconds > 0) {
+    return point.pausedRemainingSeconds;
+  }
+  return remaining > 0 ? remaining : 0;
+}
+
 function LeadEventRow({ event }: { event: WorkPlanPointEvent }) {
   const sent = event.kind === WORK_PLAN_EVENT_KIND.SENT_TO_TESTER;
   const passed = event.kind === WORK_PLAN_EVENT_KIND.PASSED;
+  const stopped = event.kind === WORK_PLAN_EVENT_KIND.STOPPED;
+  const started =
+    event.kind === WORK_PLAN_EVENT_KIND.STARTED || event.kind === WORK_PLAN_EVENT_KIND.RESUMED;
   const testerTook =
-    !sent && event.sinceSubmitSeconds != null
+    !sent && !started && !stopped && event.sinceSubmitSeconds != null
       ? ` · tester took ${formatDuration(event.sinceSubmitSeconds)}`
       : '';
+  const afterStart =
+    sent || stopped
+      ? ` · ${formatDuration(event.elapsedSeconds)} after start`
+      : started && event.elapsedSeconds > 0
+        ? ` · ${formatDuration(event.elapsedSeconds)} into task`
+        : '';
   return (
     <div className="work-plan__lead-event">
       <b>
@@ -118,10 +160,12 @@ function LeadEventRow({ event }: { event: WorkPlanPointEvent }) {
       </b>
       <span>
         {event.actor.name}
-        {sent ? ` · ${formatDuration(event.elapsedSeconds)} after start` : testerTook}
+        {afterStart}
+        {testerTook}
         {event.extraSeconds > 0 ? ` · ${formatDuration(event.extraSeconds)} extra` : ''}
+        {event.body && (stopped || started) ? ` · ${event.body}` : ''}
       </span>
-      {!sent && !passed && event.body ? <p>{event.body}</p> : null}
+      {!sent && !passed && !started && !stopped && event.body ? <p>{event.body}</p> : null}
     </div>
   );
 }

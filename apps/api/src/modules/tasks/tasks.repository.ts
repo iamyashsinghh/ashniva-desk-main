@@ -92,6 +92,8 @@ export interface TaskListFilter {
   priority?: Prisma.TaskWhereInput['priority'];
   clientOrganizationId?: string;
   clientVisible?: boolean;
+  /** When set, keep only (or exclude) intern learning tasks. */
+  isInternTask?: boolean;
   search?: string;
   dueOn?: Date;
   /** Only work that is startable now: no scheduled start, or one that has already passed. */
@@ -159,6 +161,9 @@ export function buildTaskWhere(filter: TaskListFilter): Prisma.TaskWhereInput {
   }
   if (filter.clientVisible !== undefined) {
     and.push({ clientVisible: filter.clientVisible });
+  }
+  if (filter.isInternTask !== undefined) {
+    and.push({ isInternTask: filter.isInternTask });
   }
   if (filter.dueOn) {
     and.push({ dueDate: filter.dueOn });

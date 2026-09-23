@@ -534,6 +534,9 @@ enum WorkPlanNoteKind {
 }
 
 enum WorkPlanEventKind {
+  STARTED
+  STOPPED
+  RESUMED
   SENT_TO_TESTER
   ERROR
   PASSED
@@ -978,6 +981,8 @@ model Task {
   priority           Priority   @default(MEDIUM)
   categoryId         String?    @map("category_id") @db.Uuid
   module             String?
+  /// Learning work for an intern. Only the assigner, the intern and Super Admin see it.
+  isInternTask       Boolean    @default(false) @map("is_intern_task")
   assignedToId       String?    @map("assigned_to_id") @db.Uuid
   createdById        String     @map("created_by_id") @db.Uuid
   reviewerId         String?    @map("reviewer_id") @db.Uuid
@@ -1318,6 +1323,8 @@ model File {
   /// every other file — package 9b adds a parent, not a second file system.
   messageId       String?    @map("message_id") @db.Uuid
   name            String
+  /// Short note on what this attachment is for (e.g. "screenshot of login error").
+  caption         String?
   contentType     String     @map("content_type")
   sizeBytes       Int        @map("size_bytes")
   /// Object key in the bucket: <organizationId>/<uuid>/<sanitized name>. Never exposed to clients.

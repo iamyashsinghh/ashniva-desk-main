@@ -29,6 +29,8 @@ import {
   matchWorkPlanAdditionPhase,
   workPlanFromFreeText,
   workPlanPointActions,
+  combineWorkPlanTitles,
+  isWorkPlanTimerFrozen,
   VISIBILITY,
   type AuthenticatedUser,
   type ProjectWorkPlan,
@@ -47,6 +49,7 @@ import { ProjectsRepository } from '../projects/projects.repository';
 import type {
   AddWorkPlanWorkDto,
   AssignWorkPlanDto,
+  CombineWorkPlanTitlesDto,
   ParseWorkPlanDto,
   SaveWorkPlanAssignmentsDto,
   SaveWorkPlanDto,
@@ -220,6 +223,135 @@ export class WorkPlanService {
       },
     });
     return this.detail(actor, flags, project, fresh ?? row);
+  }
+
+  async combineTitles(
+    actor: AuthenticatedUser,
+    projectId: string,
+    dto: CombineWorkPlanTitlesDto,
+  ): Promise<ProjectWorkPlan> {
+    const { flags, project } = await this.access(actor, projectId);
+    if (!flags.canAssign && !flags.canWork) {
+      throw new ForbiddenException(
+        'Only a developer, team lead, project manager or director can combine topics',
+      );
+    }
+    const titleIds = [...new Set(dto.titleIds)];
+    if (titleIds.length < 2) {
+      throw new BadRequestException('Pick at least two topics in the same phase');
+    }
+    const existing = await this.plans.findByProject(actor.organizationId, projectId);
+    if (!existing) {
+      throw new NotFoundException('Work plan not found');
+    }
+    const phase = existing.phases.find((item) => item.id === dto.phaseId);
+    if (!phase) {
+      throw new NotFoundException('Phase not found');
+    }
+    const selected = titleIds.map((id) => {
+      const title = phase.titles.find((item) => item.id === id);
+      if (!title) {
+        throw new BadRequestException('Every topic must be in the same phase');
+      }
+      return title;
+    });
+    selected.sort((left, right) => left.sortOrder - right.sortOrder);
+
+    if (!flags.canAssign) {
+      for (const title of selected) {
+        const assigneeId = effectiveWorkPlanAssigneeId(
+          title.assignedToId,
+          phase.assignedToId,
+          existing.assignedToId,
+        );
+        if (assigneeId !== actor.userId) {
+          throw new ForbiddenException('You can only combine topics assigned to you');
+        }
+      }
+    }
+
+    for (const title of selected) {
+      for (const point of title.points) {
+        if (point.startedAt || point.status !== WORK_PLAN_POINT_STATUS.PENDING) {
+          throw new ConflictException(
+            'Started or finished topics cannot be combined. Finish them first, or keep them separate.',
+          );
+        }
+        if (point.isError) {
+          throw new ConflictException('Topics with error steps cannot be combined yet.');
+        }
+      }
+    }
+
+    let combined;
+    try {
+      combined = combineWorkPlanTitles({
+        titles: selected.map((title) => ({
+          title: title.title,
+          points: title.points.map((point) => ({
+            body: point.body,
+            estimateMinutes: point.estimateMinutes,
+            isError: point.isError,
+          })),
+        })),
+      });
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Cannot combine');
+    }
+
+    const keep = selected[0]!;
+    const dropIds = selected.slice(1).map((title) => title.id);
+    const pointIds = selected.flatMap((title) => title.points.map((point) => point.id));
+
+    await this.prisma.$transaction(async (tx) => {
+      if (dropIds.length > 0) {
+        await tx.task.updateMany({
+          where: {
+            organizationId: actor.organizationId,
+            workPlanTitleId: { in: dropIds },
+            deletedAt: null,
+          },
+          data: { deletedAt: new Date(), workPlanTitleId: null },
+        });
+      }
+      if (pointIds.length > 0) {
+        await tx.projectWorkPlanPoint.deleteMany({ where: { id: { in: pointIds } } });
+      }
+      if (dropIds.length > 0) {
+        await tx.projectWorkPlanTitle.deleteMany({ where: { id: { in: dropIds } } });
+      }
+      await tx.projectWorkPlanTitle.update({
+        where: { id: keep.id },
+        data: { title: combined.title },
+      });
+      await tx.projectWorkPlanPoint.create({
+        data: {
+          titleId: keep.id,
+          body: combined.body,
+          estimateMinutes: combined.estimateMinutes,
+          sortOrder: 0,
+        },
+      });
+    });
+
+    const fresh = await this.plans.findByProject(actor.organizationId, projectId);
+    if (fresh) {
+      await this.planTasks.sync(actor, project, fresh);
+    }
+    await this.auditLog.record({
+      action: AUDIT_ACTION.WORK_PLAN_UPDATED,
+      entityType: AUDIT_ENTITY_TYPE.PROJECT,
+      entityId: projectId,
+      organizationId: actor.organizationId,
+      actorUserId: actor.userId,
+      after: {
+        combinedTitleId: keep.id,
+        phaseId: phase.id,
+        fromTitleIds: titleIds,
+        estimateMinutes: combined.estimateMinutes,
+      },
+    });
+    return this.detail(actor, flags, project, fresh);
   }
 
   private async phasesFromPdf(pdf: Buffer): Promise<WorkPlanDraftPhase[]> {
@@ -451,6 +583,11 @@ export class WorkPlanService {
       assignedToId,
       isError: point.isError,
       hasOpenErrorChild: Boolean(openErrorChild),
+      timerPaused: isWorkPlanTimerFrozen(
+        point.status,
+        point.pausedRemainingSeconds,
+        point.completedAt,
+      ),
     });
     if (!actions.canStart) {
       if (openErrorChild) {
@@ -468,12 +605,22 @@ export class WorkPlanService {
     if (point.isError && point.parentPointId) {
       return this.resumeParentFromError(actor, projectId, point, now);
     }
+    const wasPaused = point.pausedRemainingSeconds != null;
     const startedAt = point.startedAt ?? now;
-    // Resume from leftover seconds after Send to tester; first Start still uses the estimate.
+    // Resume from leftover seconds after Send to tester / logout; first Start still uses the estimate.
     const dueAt =
       point.pausedRemainingSeconds != null
         ? dueAtFromRemaining(now, point.pausedRemainingSeconds)
         : (point.dueAt ?? dueAtFromStart(startedAt, point.estimateMinutes));
+    const remaining = remainingSeconds(
+      point.dueAt,
+      now,
+      point.completedAt,
+      point.pausedRemainingSeconds,
+    );
+    const overrunAtStart =
+      point.overrunSeconds +
+      extraThisRunSeconds(point.dueAt, now, remaining, point.pausedRemainingSeconds);
     await this.prisma.projectWorkPlanPoint.update({
       where: { id: point.id },
       data: {
@@ -484,6 +631,16 @@ export class WorkPlanService {
         startedById: point.startedById ?? actor.userId,
       },
     });
+    await this.prisma.projectWorkPlanEvent.create({
+      data: {
+        organizationId: actor.organizationId,
+        pointId: point.id,
+        actorId: actor.userId,
+        kind: wasPaused ? WORK_PLAN_EVENT_KIND.RESUMED : WORK_PLAN_EVENT_KIND.STARTED,
+        elapsedSeconds: elapsedSeconds(point.startedAt ?? now, now),
+        extraSeconds: overrunAtStart,
+      },
+    });
     await this.ensureScore(point.title.phase.planId, actor.userId);
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_POINT_STARTED,
@@ -491,7 +648,7 @@ export class WorkPlanService {
       entityId: projectId,
       organizationId: actor.organizationId,
       actorUserId: actor.userId,
-      after: { pointId: point.id },
+      after: { pointId: point.id, resumed: wasPaused },
     });
     return this.get(actor, projectId);
   }
@@ -1259,14 +1416,17 @@ export class WorkPlanService {
       status: string;
       startedById: string | null;
       isError?: boolean;
+      pausedRemainingSeconds?: number | null;
+      completedAt?: Date | null;
       title: {
         assignedToId: string | null;
         phase: { assignedToId: string | null; plan: { assignedToId: string | null } };
       };
     },
   ) {
+    const status = point.status as (typeof WORK_PLAN_POINT_STATUS)[keyof typeof WORK_PLAN_POINT_STATUS];
     return workPlanPointActions({
-      status: point.status as (typeof WORK_PLAN_POINT_STATUS)[keyof typeof WORK_PLAN_POINT_STATUS],
+      status,
       startedById: point.startedById,
       actorId: actor.userId,
       canWork: flags.canWork,
@@ -1278,6 +1438,11 @@ export class WorkPlanService {
         point.title.phase.plan.assignedToId,
       ),
       isError: Boolean(point.isError),
+      timerPaused: isWorkPlanTimerFrozen(
+        status,
+        point.pausedRemainingSeconds,
+        point.completedAt ?? null,
+      ),
     });
   }
 
@@ -1314,28 +1479,47 @@ export class WorkPlanService {
           remainingSeconds(parent.dueAt, now, parent.completedAt, parent.pausedRemainingSeconds),
         )
       : parent.dueAt;
-    await this.prisma.$transaction([
-      ...(resumeParent
-        ? [
-            this.prisma.projectWorkPlanPoint.update({
-              where: { id: parent.id },
-              data: {
-                status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
-                dueAt,
-                pausedRemainingSeconds: null,
-              },
-            }),
-          ]
-        : []),
-      this.prisma.projectWorkPlanPoint.update({
+    await this.prisma.$transaction(async (tx) => {
+      if (resumeParent) {
+        await tx.projectWorkPlanPoint.update({
+          where: { id: parent.id },
+          data: {
+            status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
+            dueAt,
+            pausedRemainingSeconds: null,
+          },
+        });
+        await tx.projectWorkPlanEvent.create({
+          data: {
+            organizationId: actor.organizationId,
+            pointId: parent.id,
+            actorId: actor.userId,
+            kind: WORK_PLAN_EVENT_KIND.RESUMED,
+            body: 'Resumed via error step',
+            elapsedSeconds: elapsedSeconds(parent.startedAt, now),
+            extraSeconds: parent.overrunSeconds,
+          },
+        });
+      }
+      await tx.projectWorkPlanPoint.update({
         where: { id: errorPoint.id },
         data: {
           status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
           startedAt: now,
           startedById: errorPoint.startedById ?? actor.userId,
         },
-      }),
-    ]);
+      });
+      await tx.projectWorkPlanEvent.create({
+        data: {
+          organizationId: actor.organizationId,
+          pointId: errorPoint.id,
+          actorId: actor.userId,
+          kind: WORK_PLAN_EVENT_KIND.STARTED,
+          elapsedSeconds: 0,
+          extraSeconds: 0,
+        },
+      });
+    });
     await this.ensureScore(parent.title.phase.planId, actor.userId);
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_POINT_STARTED,

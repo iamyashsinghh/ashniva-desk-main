@@ -14,6 +14,7 @@ export interface UploadFileInput {
   changeRequestId?: string;
   approvalId?: string;
   visibility?: Visibility;
+  caption?: string;
 }
 
 const PARENT_FIELDS = [
@@ -36,6 +37,7 @@ export function uploadFile(input: UploadFileInput): Promise<FileSummary> {
     }
   }
   if (input.visibility) formData.append('visibility', input.visibility);
+  if (input.caption?.trim()) formData.append('caption', input.caption.trim());
   return apiRequest<FileSummary>('/files', { method: 'POST', formData });
 }
 

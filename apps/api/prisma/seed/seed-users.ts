@@ -12,6 +12,7 @@ export type SeedUserKey =
   | 'developer2'
   | 'tester'
   | 'support'
+  | 'intern'
   | 'employee'
   | 'clientAdmin'
   | 'clientEmployee'
@@ -86,6 +87,14 @@ export const DEMO_USERS: readonly DemoUser[] = [
     name: 'Vikram J',
     title: 'Support Executive',
     roleKey: ROLE_KEYS.SUPPORT_EXECUTIVE,
+    organization: 'serviceProvider',
+  },
+  {
+    key: 'intern',
+    email: 'intern@example.com',
+    name: 'Neha P',
+    title: 'Intern',
+    roleKey: ROLE_KEYS.INTERN,
     organization: 'serviceProvider',
   },
   {

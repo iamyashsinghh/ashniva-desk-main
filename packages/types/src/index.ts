@@ -62,6 +62,7 @@ export * from './api/tickets';
 export * from './api/portal';
 export * from './api/dashboards';
 export * from './api/audit';
+export * from './api/session-logs';
 export * from './api/billing';
 export * from './api/qa';
 export * from './api/releases';

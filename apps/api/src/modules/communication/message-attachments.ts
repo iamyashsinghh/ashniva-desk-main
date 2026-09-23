@@ -47,6 +47,7 @@ export function toMessageFileSummary(row: MessageAttachmentRow): FileSummary {
     contentType: row.contentType,
     sizeBytes: row.sizeBytes,
     visibility: row.visibility as Visibility,
+    caption: row.caption,
     uploadedBy: row.uploadedBy,
     createdAt: row.createdAt.toISOString(),
   };

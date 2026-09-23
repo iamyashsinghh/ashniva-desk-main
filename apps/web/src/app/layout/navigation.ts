@@ -81,6 +81,15 @@ export function navigationFor(user: SessionUser): NavigationGroup[] {
     work.push({ label: 'My tasks today', to: '/tasks?view=today' });
     work.push({ label: 'Tasks', to: '/tasks', prefix: true, mobile: true });
   }
+  if (
+    user.roleKey === ROLE_KEYS.INTERN ||
+    (has(PERMISSIONS.TASK_ASSIGN) &&
+      (user.roleKey === ROLE_KEYS.SUPER_ADMIN ||
+        user.roleKey === ROLE_KEYS.PROJECT_MANAGER ||
+        user.roleKey === ROLE_KEYS.TEAM_LEAD))
+  ) {
+    work.push({ label: 'Intern work', to: '/intern-work', prefix: true });
+  }
   if (has(PERMISSIONS.TASK_REVIEW) || user.roleKey === ROLE_KEYS.TESTER) {
     work.push({ label: 'Reviews', to: '/tasks?view=review' });
   }
@@ -148,6 +157,9 @@ export function navigationFor(user: SessionUser): NavigationGroup[] {
   if (has(PERMISSIONS.REPORT_READ_OWN)) {
     work.push({ label: 'Daily reports', to: '/reports' });
     work.push({ label: 'Reports', to: '/reports/advanced' });
+  }
+  if (has(PERMISSIONS.REPORT_READ_TEAM)) {
+    work.push({ label: 'Login & break log', to: '/team/session-logs' });
   }
   work.push({ label: 'Notifications', to: '/notifications' });
 

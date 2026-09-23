@@ -41,7 +41,7 @@ export function ProjectWorkPlanModal({
   onClose: () => void;
 }) {
   const plan = useWorkPlanQuery(projectId);
-  const { parse, save, start, submitTest, complete, fail, saveAssignments, addWork } =
+  const { parse, save, start, submitTest, complete, fail, saveAssignments, addWork, combineTitles } =
     useWorkPlanMutations(projectId);
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | undefined>();
@@ -287,13 +287,23 @@ export function ProjectWorkPlanModal({
             fail.isPending ||
             saveAssignments.isPending ||
             addWork.isPending ||
-            save.isPending
+            save.isPending ||
+            combineTitles.isPending
           }
           assignment={liveAssign}
           placement={placement}
           onAssignmentChange={setAssignDraft}
           onReorder={canEdit ? (phases) => void onReorder(phases) : undefined}
           onMoveError={setError}
+          onCombineTitles={(phaseId, titleIds) => {
+            setError(undefined);
+            void combineTitles
+              .mutateAsync({ phaseId, titleIds })
+              .then(() => {
+                setPlacement(null);
+              })
+              .catch((cause) => setError(errorMessage(cause)));
+          }}
           onEdit={
             canEdit
               ? () => {

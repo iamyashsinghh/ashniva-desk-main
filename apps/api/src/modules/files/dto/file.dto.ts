@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { VISIBILITY, type Visibility } from '@ashniva/types';
-import { IsIn, IsOptional, IsUUID } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 /** Multipart fields sent alongside the `file` part. */
 export class UploadFileDto {
@@ -43,6 +43,15 @@ export class UploadFileDto {
   @IsOptional()
   @IsIn(Object.values(VISIBILITY))
   visibility?: Visibility;
+
+  @ApiPropertyOptional({
+    maxLength: 500,
+    description: 'Short note on what this attachment is for',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  caption?: string;
 }
 
 /**

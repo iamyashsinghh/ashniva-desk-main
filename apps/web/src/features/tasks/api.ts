@@ -72,7 +72,7 @@ export function useTaskQuery(id: string | undefined) {
 
 export interface CreateTaskInput {
   title: string;
-  projectId: string;
+  projectId?: string;
   description?: string;
   assignedToId?: string;
   priority?: Priority;
@@ -91,6 +91,9 @@ export interface CreateTaskInput {
   clientVisible?: boolean;
   saveAsDraft?: boolean;
   ticketId?: string;
+  milestoneId?: string;
+  /** Learning work for an intern. */
+  isInternTask?: boolean;
 }
 
 /**

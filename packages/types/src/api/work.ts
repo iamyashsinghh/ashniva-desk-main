@@ -78,6 +78,8 @@ export const TASK_LIST_VIEW = {
   REVIEW: 'review',
   DONE: 'done',
   ALL: 'all',
+  /** Learning work for interns. Separate from the ordinary task board. */
+  INTERN: 'intern',
 } as const;
 
 export type TaskListView = (typeof TASK_LIST_VIEW)[keyof typeof TASK_LIST_VIEW];
@@ -109,6 +111,8 @@ export interface TaskSummary extends TaskRef {
   clientOrganization: OrganizationRef | null;
   category: TaskCategoryRef | null;
   module: string | null;
+  /** Learning assignment for an intern. Hidden from the ordinary task board. */
+  isInternTask: boolean;
   assignedTo: UserRef | null;
   createdBy: UserRef;
   reviewer: UserRef | null;
@@ -202,6 +206,8 @@ export interface FileSummary {
   contentType: string;
   sizeBytes: number;
   visibility: Visibility;
+  /** Short note on what this file is for. */
+  caption: string | null;
   uploadedBy: UserRef;
   createdAt: string;
 }

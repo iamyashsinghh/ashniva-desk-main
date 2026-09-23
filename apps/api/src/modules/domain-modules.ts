@@ -37,6 +37,7 @@ import { ReleaseNotesModule } from './release-notes/release-notes.module';
 import { ReleasesModule } from './releases/releases.module';
 import { ReportsModule } from './reports/reports.module';
 import { SearchModule } from './search/search.module';
+import { SessionLogsModule } from './session-logs/session-logs.module';
 import { RolesPermissionsModule } from './roles-permissions/roles-permissions.module';
 import { SlaEscalationsModule } from './sla-escalations/sla-escalations.module';
 import { SupportCallbacksModule } from './support-callbacks/support-callbacks.module';
@@ -60,6 +61,7 @@ export const DomainModules = [
   BrandingModule,
   AuthModule,
   AuditLogsModule,
+  SessionLogsModule,
   OrganizationsModule,
   OrganizationMembershipsModule,
   // Identity and structure

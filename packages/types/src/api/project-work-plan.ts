@@ -69,7 +69,7 @@ export interface WorkPlanPoint {
    * Keeps counting while the developer is over time and the point is not done.
    */
   extraSeconds: number;
-  /** Send-to-tester and tester-error trail. Admin / PM / TL only. */
+  /** Start / stop / resume / send-to-tester / tester trail. Admin / PM / TL only. */
   events: WorkPlanPointEvent[];
   startedBy: UserRef | null;
   notes: WorkPlanNote[];
@@ -184,6 +184,12 @@ export interface AddWorkPlanWorkInput {
   prompt: string;
   assignedToId?: string | null;
   priority?: Priority | null;
+}
+
+/** Merge topics in one phase into a single topic. Minutes from every step are added. */
+export interface CombineWorkPlanTitlesInput {
+  phaseId: string;
+  titleIds: string[];
 }
 
 export interface WorkPlanNoteInput {

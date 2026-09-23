@@ -1,7 +1,8 @@
-import { Inject, Injectable, UnauthorizedException, forwardRef } from '@nestjs/common';
+import { Inject, Injectable, Logger, UnauthorizedException, forwardRef } from '@nestjs/common';
 import { AUDIT_ACTION, AUDIT_ENTITY_TYPE, type SessionResponse } from '@ashniva/types';
 
 import { AuditLogService } from '../audit-logs/audit-log.service';
+import { WorkPlanLogoutPauseService } from '../project-work-plans/work-plan-logout-pause.service';
 import { UsersRepository } from '../users/users.repository';
 import { PasswordHashingService } from './password-hashing.service';
 import { RefreshTokenService, type ClientMetadata } from './refresh-token.service';
@@ -27,6 +28,8 @@ export interface LoginInput {
  */
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @Inject(forwardRef(() => UsersRepository)) private readonly users: UsersRepository,
     private readonly passwords: PasswordHashingService,
@@ -34,6 +37,7 @@ export class AuthService {
     private readonly refreshTokens: RefreshTokenService,
     private readonly sessions: SessionService,
     private readonly auditLog: AuditLogService,
+    private readonly workPlanLogoutPause: WorkPlanLogoutPauseService,
   ) {}
 
   async login(input: LoginInput, metadata: ClientMetadata): Promise<IssuedSession> {
@@ -79,15 +83,45 @@ export class AuthService {
     return { body, refreshToken: rotated.token, refreshTokenExpiresAt: rotated.expiresAt };
   }
 
-  async logout(presentedToken: string | undefined, userId?: string): Promise<void> {
+  async logout(
+    presentedToken: string | undefined,
+    userId?: string,
+    organizationId?: string,
+    metadata: ClientMetadata = {},
+  ): Promise<void> {
+    let resolvedUserId = userId;
+    let resolvedOrgId = organizationId;
+
+    // Logout is @Public(), so the bearer may be missing/expired. Fall back to the refresh cookie.
+    if (presentedToken && (!resolvedUserId || !resolvedOrgId)) {
+      const session = await this.refreshTokens.peek(presentedToken);
+      if (session) {
+        resolvedUserId = resolvedUserId ?? session.userId;
+        resolvedOrgId = resolvedOrgId ?? session.organizationId ?? undefined;
+      }
+    }
+
+    if (resolvedUserId) {
+      try {
+        await this.workPlanLogoutPause.pauseRunningTimers(resolvedUserId, resolvedOrgId);
+      } catch (error) {
+        this.logger.warn(
+          `Could not pause work-plan timers on logout for ${resolvedUserId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
     if (presentedToken) {
       await this.refreshTokens.revoke(presentedToken);
     }
     await this.auditLog.record({
       action: AUDIT_ACTION.AUTH_LOGOUT,
       entityType: AUDIT_ENTITY_TYPE.AUTH,
-      actorUserId: userId,
-      entityId: userId,
+      organizationId: resolvedOrgId,
+      actorUserId: resolvedUserId,
+      entityId: resolvedUserId,
+      ...metadata,
     });
   }
 

@@ -59,8 +59,11 @@ export const WORK_PLAN_NOTE_KIND = {
 
 export type WorkPlanNoteKind = (typeof WORK_PLAN_NOTE_KIND)[keyof typeof WORK_PLAN_NOTE_KIND];
 
-/** Admin / PM / TL trail on a point: every Send to tester and every tester error. */
+/** Admin / PM / TL trail: timer start/stop/resume, Send to tester, and tester outcomes. */
 export const WORK_PLAN_EVENT_KIND = {
+  STARTED: 'STARTED',
+  STOPPED: 'STOPPED',
+  RESUMED: 'RESUMED',
   SENT_TO_TESTER: 'SENT_TO_TESTER',
   ERROR: 'ERROR',
   PASSED: 'PASSED',
@@ -69,6 +72,9 @@ export const WORK_PLAN_EVENT_KIND = {
 export type WorkPlanEventKind = (typeof WORK_PLAN_EVENT_KIND)[keyof typeof WORK_PLAN_EVENT_KIND];
 
 export const WORK_PLAN_EVENT_KIND_LABELS: Record<WorkPlanEventKind, string> = {
+  STARTED: 'Started',
+  STOPPED: 'Stopped',
+  RESUMED: 'Resumed',
   SENT_TO_TESTER: 'Sent to tester',
   ERROR: 'Error',
   PASSED: 'Good',
@@ -304,6 +310,54 @@ export function workPlanPhasesVisibleToDeveloper<
     .filter((phase) => phase.titles.length > 0);
 }
 
+const COMBINED_TITLE_MAX = 200;
+const COMBINED_BODY_MAX = 4000;
+/** Hard ceiling for one combined step — a week of minutes. */
+export const WORK_PLAN_COMBINED_ESTIMATE_MAX_MINUTES = 7 * 24 * 60;
+
+/**
+ * Builds the kept topic after combining several in the same phase.
+ * Minutes from every non-error step are added into one step.
+ */
+export function combineWorkPlanTitles(input: {
+  titles: Array<{ title: string; points: Array<{ body: string; estimateMinutes: number; isError?: boolean }> }>;
+}): { title: string; body: string; estimateMinutes: number } {
+  if (input.titles.length < 2) {
+    throw new Error('Need at least two topics to combine');
+  }
+  const points = input.titles.flatMap((title) => title.points.filter((point) => !point.isError));
+  const estimateMinutes = points.reduce((sum, point) => sum + point.estimateMinutes, 0);
+  if (estimateMinutes < 1) {
+    throw new Error('Combined topics need at least one minute');
+  }
+  if (estimateMinutes > WORK_PLAN_COMBINED_ESTIMATE_MAX_MINUTES) {
+    throw new Error('Combined time is too large');
+  }
+  const title = clipCombined(
+    input.titles.map((item) => item.title.trim()).filter(Boolean).join(' · '),
+    COMBINED_TITLE_MAX,
+  );
+  const body = clipCombined(
+    points
+      .map((point) => point.body.trim())
+      .filter(Boolean)
+      .join('\n'),
+    COMBINED_BODY_MAX,
+  );
+  return {
+    title: title || 'Combined topic',
+    body: body || title || 'Combined topic',
+    estimateMinutes,
+  };
+}
+
+function clipCombined(value: string, max: number): string {
+  if (value.length <= max) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+}
+
 /** Buttons on one point, derived from status and who is looking. */
 export function workPlanPointActions(input: {
   status: WorkPlanPointStatus;
@@ -317,6 +371,8 @@ export function workPlanPointActions(input: {
   isError?: boolean;
   /** Parent still has an error step that has not been started. */
   hasOpenErrorChild?: boolean;
+  /** Clock frozen (Send to tester, logout, or returned). Developer must Start again to continue. */
+  timerPaused?: boolean;
 }): {
   canStart: boolean;
   canSubmitTest: boolean;
@@ -336,6 +392,7 @@ export function workPlanPointActions(input: {
     assignedToId,
     isError,
     hasOpenErrorChild,
+    timerPaused,
   } = input;
   const done = status === WORK_PLAN_POINT_STATUS.COMPLETED;
   const starter = startedById === actorId;
@@ -348,14 +405,22 @@ export function workPlanPointActions(input: {
   const withTester =
     status === WORK_PLAN_POINT_STATUS.AWAITING_TEST || status === WORK_PLAN_POINT_STATUS.TESTING;
   const canBuild = builder && owns;
+  const pausedInProgress =
+    Boolean(timerPaused) && status === WORK_PLAN_POINT_STATUS.IN_PROGRESS;
   return {
     canStart: isError
       ? canBuild && status === WORK_PLAN_POINT_STATUS.PENDING
       : canBuild &&
         !hasOpenErrorChild &&
-        (status === WORK_PLAN_POINT_STATUS.PENDING || status === WORK_PLAN_POINT_STATUS.RETURNED),
+        (status === WORK_PLAN_POINT_STATUS.PENDING ||
+          status === WORK_PLAN_POINT_STATUS.RETURNED ||
+          pausedInProgress),
     canSubmitTest:
-      !isError && canBuild && status === WORK_PLAN_POINT_STATUS.IN_PROGRESS && (starter || canLead),
+      !isError &&
+      canBuild &&
+      status === WORK_PLAN_POINT_STATUS.IN_PROGRESS &&
+      !timerPaused &&
+      (starter || canLead),
     canStartTest: !isError && reviewer && status === WORK_PLAN_POINT_STATUS.AWAITING_TEST,
     canPass: !isError && reviewer && withTester,
     canFail: !isError && reviewer && withTester,

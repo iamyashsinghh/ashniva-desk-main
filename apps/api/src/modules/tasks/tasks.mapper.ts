@@ -71,6 +71,7 @@ export function toTaskSummary(row: TaskSummaryRow, today = todayUtc()): TaskSumm
         }
       : null,
     module: row.module,
+    isInternTask: row.isInternTask,
     assignedTo: row.assignedTo,
     createdBy: row.createdBy,
     reviewer: row.reviewer,
@@ -152,6 +153,7 @@ export function toFile(row: TaskDetailRow['files'][number]): FileSummary {
     contentType: row.contentType,
     sizeBytes: row.sizeBytes,
     visibility: row.visibility as Visibility,
+    caption: row.caption,
     uploadedBy: row.uploadedBy,
     createdAt: row.createdAt.toISOString(),
   };

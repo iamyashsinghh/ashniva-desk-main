@@ -21,6 +21,7 @@ import {
   workPlanPhasesVisibleToDeveloper,
   workPlanPointActions,
   effectiveWorkPlanAssignedAt,
+  combineWorkPlanTitles,
 } from './work-plan';
 
 describe('parseWorkPlanFromText', () => {
@@ -259,6 +260,22 @@ describe('workPlanPointActions', () => {
         ...base,
         assignedToId: 'dev-1',
         status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
+        timerPaused: true,
+      }).canStart,
+    ).toBe(true);
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-1',
+        status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
+        timerPaused: true,
+      }).canSubmitTest,
+    ).toBe(false);
+    expect(
+      workPlanPointActions({
+        ...base,
+        assignedToId: 'dev-1',
+        status: WORK_PLAN_POINT_STATUS.IN_PROGRESS,
       }).canPass,
     ).toBe(false);
     expect(
@@ -423,6 +440,42 @@ describe('workPlanPhasesVisibleToDeveloper', () => {
       },
     ]);
     expect(workPlanPhasesVisibleToDeveloper(phases, 'dev-3')).toEqual([]);
+  });
+});
+
+describe('combineWorkPlanTitles', () => {
+  it('adds minutes from every topic into one combined topic', () => {
+    expect(
+      combineWorkPlanTitles({
+        titles: [
+          { title: 'Topic 1', points: [{ body: 'A', estimateMinutes: 10 }] },
+          { title: 'Topic 2', points: [{ body: 'B', estimateMinutes: 15 }] },
+          { title: 'Topic 3', points: [{ body: 'C', estimateMinutes: 15 }] },
+          { title: 'Topic 4', points: [{ body: 'D', estimateMinutes: 10 }] },
+        ],
+      }),
+    ).toEqual({
+      title: 'Topic 1 · Topic 2 · Topic 3 · Topic 4',
+      body: 'A\nB\nC\nD',
+      estimateMinutes: 50,
+    });
+  });
+
+  it('skips error steps when summing minutes', () => {
+    expect(
+      combineWorkPlanTitles({
+        titles: [
+          {
+            title: 'Fix login',
+            points: [
+              { body: 'Build form', estimateMinutes: 20 },
+              { body: 'Broken field', estimateMinutes: 1, isError: true },
+            ],
+          },
+          { title: 'OTP', points: [{ body: 'Send code', estimateMinutes: 10 }] },
+        ],
+      }).estimateMinutes,
+    ).toBe(30);
   });
 });
 

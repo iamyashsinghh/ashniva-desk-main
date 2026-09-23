@@ -32,6 +32,7 @@ function build(overrides: { userFound?: boolean; passwordOk?: boolean } = {}) {
       organizationId: 'org-2',
     })),
     revoke: jest.fn(async () => undefined),
+    peek: jest.fn(async () => ({ userId: user.id, organizationId: 'org-1' })),
   };
   const sessions = {
     resolveOrganizationId: jest.fn(
@@ -44,6 +45,7 @@ function build(overrides: { userFound?: boolean; passwordOk?: boolean } = {}) {
     })),
   };
   const auditLog = { record: jest.fn(async () => undefined) };
+  const workPlanLogoutPause = { pauseRunningTimers: jest.fn(async () => 0) };
 
   const service = new AuthService(
     users as unknown as UsersRepository,
@@ -52,8 +54,9 @@ function build(overrides: { userFound?: boolean; passwordOk?: boolean } = {}) {
     refreshTokens as unknown as RefreshTokenService,
     sessions as unknown as SessionService,
     auditLog as unknown as AuditLogService,
+    workPlanLogoutPause as never,
   );
-  return { service, users, passwords, tokens, refreshTokens, sessions, auditLog };
+  return { service, users, passwords, tokens, refreshTokens, sessions, auditLog, workPlanLogoutPause };
 }
 
 describe('AuthService', () => {
@@ -100,5 +103,19 @@ describe('AuthService', () => {
     await service.switchOrganization(user.id, 'org-3', 'refresh-1', {});
     expect(refreshTokens.revoke).toHaveBeenCalledWith('refresh-1');
     expect(refreshTokens.issue).toHaveBeenCalledWith(user.id, 'org-3', {});
+  });
+
+  it('pauses work-plan timers on logout using the bearer identity', async () => {
+    const { service, workPlanLogoutPause, refreshTokens } = build();
+    await service.logout('refresh-1', user.id, 'org-1');
+    expect(workPlanLogoutPause.pauseRunningTimers).toHaveBeenCalledWith(user.id, 'org-1');
+    expect(refreshTokens.revoke).toHaveBeenCalledWith('refresh-1');
+  });
+
+  it('pauses work-plan timers on logout from the refresh cookie when no bearer user', async () => {
+    const { service, workPlanLogoutPause, refreshTokens } = build();
+    await service.logout('refresh-1');
+    expect(refreshTokens.peek).toHaveBeenCalledWith('refresh-1');
+    expect(workPlanLogoutPause.pauseRunningTimers).toHaveBeenCalledWith(user.id, 'org-1');
   });
 });

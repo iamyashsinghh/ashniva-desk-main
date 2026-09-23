@@ -1,8 +1,10 @@
 import {
   PRIORITY,
+  WORK_PLAN_POINT_STATUS,
   type Priority,
   type ProjectWorkPlan,
   type WorkPlanPhaseInput,
+  type WorkPlanTitle,
 } from '@ashniva/types';
 import { Button, PriorityDot } from '@ashniva/ui';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
@@ -39,6 +41,7 @@ export function WorkPlanReader({
   onEdit,
   onReorder,
   onMoveError,
+  onCombineTitles,
   onStart,
   onSubmitTest,
   onPass,
@@ -52,13 +55,17 @@ export function WorkPlanReader({
   onEdit?: () => void;
   onReorder?: (phases: WorkPlanPhaseInput[]) => void;
   onMoveError?: (reason: string) => void;
+  onCombineTitles?: (phaseId: string, titleIds: string[]) => void;
   onStart: (pointId: string) => void;
   onSubmitTest: (pointId: string) => void;
   onPass: (pointId: string) => void;
   onFail: (pointId: string, body: string, fileId?: string) => Promise<void> | void;
 }) {
   const canReorder = Boolean(plan.canAssign && onReorder);
+  const canCombine = Boolean((plan.canAssign || plan.canWork) && onCombineTitles);
   const [over, setOver] = useState<WorkPlanDropTarget | null>(null);
+  const [combinePhaseId, setCombinePhaseId] = useState<string | null>(null);
+  const [selectedTitleIds, setSelectedTitleIds] = useState<string[]>([]);
   const draggingRef = useRef<WorkPlanDragItem | null>(null);
 
   function setDragItem(item: WorkPlanDragItem | null) {
@@ -75,6 +82,11 @@ export function WorkPlanReader({
     const node = document.querySelector(`[data-work-plan-id="${cssEscape(placement.firstId)}"]`);
     node?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [placement?.firstId]);
+
+  useEffect(() => {
+    const alive = new Set(plan.phases.flatMap((phase) => phase.titles.map((title) => title.id)));
+    setSelectedTitleIds((ids) => ids.filter((id) => alive.has(id)));
+  }, [plan]);
 
   if (plan.phases.length === 0) {
     return (
@@ -98,6 +110,26 @@ export function WorkPlanReader({
   function patchAssignment(next: AssignmentDraft) {
     onAssignmentChange(next);
   }
+
+  function toggleTitle(phaseId: string, titleId: string) {
+    if (combinePhaseId && combinePhaseId !== phaseId) {
+      setCombinePhaseId(phaseId);
+      setSelectedTitleIds([titleId]);
+      return;
+    }
+    setCombinePhaseId(phaseId);
+    setSelectedTitleIds((ids) =>
+      ids.includes(titleId) ? ids.filter((id) => id !== titleId) : [...ids, titleId],
+    );
+  }
+
+  const selectedMinutes =
+    combinePhaseId == null
+      ? 0
+      : (plan.phases
+          .find((phase) => phase.id === combinePhaseId)
+          ?.titles.filter((title) => selectedTitleIds.includes(title.id))
+          .reduce((sum, title) => sum + titleEstimateMinutes(title), 0) ?? 0);
 
   function dropOn(target: WorkPlanDropTarget, event: DragEvent<HTMLElement>) {
     event.preventDefault();
@@ -136,10 +168,36 @@ export function WorkPlanReader({
       <div className="work-plan__toolbar">
         <p className="work-plan__hint">
           {plan.canAssign
-            ? 'Assign the whole project, or split phases and topics. Drag the handle on a phase, topic or step to move it. Press Save in the header for assignments. You can still edit or add after a developer has started.'
-            : 'Developer starts the timer, then sends the point to the tester. The clock keeps running until Complete.'}
+            ? 'Assign the whole project, or split phases and topics. Drag handles to reorder. Tick topics in the same phase and press Combine to merge their minutes into one topic. Press Save in the header for assignments.'
+            : canCombine
+              ? 'Tick topics in the same phase that you want to do together, then Combine — their minutes add into one topic. Start the timer, then send the point to the tester.'
+              : 'Developer starts the timer, then sends the point to the tester. The clock keeps running until Complete.'}
         </p>
-        {onEdit ? <Button onClick={onEdit}>Edit plan</Button> : null}
+        <div className="work-plan__toolbar-actions">
+          {canCombine && selectedTitleIds.length >= 2 && combinePhaseId ? (
+            <Button
+              variant="primary"
+              size="sm"
+              loading={busy}
+              onClick={() => onCombineTitles?.(combinePhaseId, selectedTitleIds)}
+            >
+              Combine {selectedTitleIds.length} topics · {selectedMinutes} min
+            </Button>
+          ) : null}
+          {canCombine && selectedTitleIds.length > 0 ? (
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                setSelectedTitleIds([]);
+                setCombinePhaseId(null);
+              }}
+            >
+              Clear selection
+            </Button>
+          ) : null}
+          {onEdit ? <Button onClick={onEdit}>Edit plan</Button> : null}
+        </div>
       </div>
       {plan.canAssign && assignment ? (
         <div className="work-plan__assign-row">
@@ -165,6 +223,8 @@ export function WorkPlanReader({
       {plan.phases.map((phase) => {
         const phaseHighlight = Boolean(placement?.phaseIds.includes(phase.id));
         const phaseDrop = dropClass(over, { kind: 'phase', phaseId: phase.id });
+        const phaseCanCombine =
+          canCombine && phase.titles.filter((title) => titleIsCombinable(title)).length >= 2;
         return (
           <section
             key={phase.id}
@@ -260,12 +320,15 @@ export function WorkPlanReader({
               const titleHighlight = Boolean(
                 placement?.titleIds.includes(title.id) || phaseHighlight,
               );
+              const combinable = phaseCanCombine && titleIsCombinable(title);
+              const checked = selectedTitleIds.includes(title.id);
               return (
                 <div
                   key={title.id}
                   className={[
                     'work-plan__title',
                     titleHighlight ? 'work-plan__just-added' : '',
+                    checked ? 'work-plan__title--selected' : '',
                     dropClass(over, { kind: 'title', phaseId: phase.id, titleId: title.id }),
                   ]
                     .filter(Boolean)
@@ -301,6 +364,17 @@ export function WorkPlanReader({
                   ) : null}
                   <div className="work-plan__read-head">
                     <div className="work-plan__name-row">
+                      {combinable ? (
+                        <label className="work-plan__combine-pick">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={busy}
+                            onChange={() => toggleTitle(phase.id, title.id)}
+                          />
+                          <span className="sr-only">Combine {title.title}</span>
+                        </label>
+                      ) : null}
                       {canReorder ? (
                         <DragHandle
                           label={`Move topic ${title.title}`}
@@ -314,6 +388,7 @@ export function WorkPlanReader({
                         />
                       ) : null}
                       <h4 className="work-plan__title-name">{title.title}</h4>
+                      <span className="work-plan__title-mins">{titleEstimateMinutes(title)} min</span>
                     </div>
                     <div className="work-plan__assign-row">
                       <WorkPlanAssigneeSelect
@@ -444,6 +519,22 @@ export function WorkPlanReader({
         );
       })}
     </div>
+  );
+}
+
+function titleEstimateMinutes(title: WorkPlanTitle): number {
+  return title.points
+    .filter((point) => !point.isError)
+    .reduce((sum, point) => sum + point.estimateMinutes, 0);
+}
+
+function titleIsCombinable(title: WorkPlanTitle): boolean {
+  return (
+    title.points.length > 0 &&
+    title.points.every(
+      (point) =>
+        !point.isError && !point.startedAt && point.status === WORK_PLAN_POINT_STATUS.PENDING,
+    )
   );
 }
 

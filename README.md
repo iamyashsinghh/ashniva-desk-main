@@ -71,6 +71,7 @@ is set explicitly, so demo passwords never reach a real deployment by accident.
 | `developer2@example.com` | Arjun M | Developer | Ashniva Technologies | Same as above (second developer for workload) |
 | `tester@example.com` | Kavya T | Tester / QA | Ashniva Technologies | QA dashboard, tasks in Review / testing, pass or return |
 | `support@example.com` | Vikram J | Support Executive | Ashniva Technologies | Support dashboard with SLA at risk and breached, ticket queue and timers, waiting-for-client |
+| `intern@example.com` | Neha P | Intern | Ashniva Technologies | Intern work: open assigned learning tasks, reply in comments, upload attachments with a caption |
 | `employee@example.com` | Deepak B | Internal employee | Ashniva Technologies | Raise and follow own tickets only |
 | `client-admin@example.com` | Sunita M | Client Admin | Acme Retail Pvt Ltd | Client portal: contracts and remaining hours, approvals to decide, change requests, reports, tickets |
 | `client-employee@example.com` | Ramesh P | Client Employee | Acme Retail Pvt Ltd | Client portal: raise and follow tickets and change requests; cannot decide approvals |

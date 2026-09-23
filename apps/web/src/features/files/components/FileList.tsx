@@ -1,5 +1,5 @@
 import type { FileSummary, Visibility } from '@ashniva/types';
-import { Button, EmptyState, VisibilityBadge } from '@ashniva/ui';
+import { Button, EmptyState, FormField, Input, VisibilityBadge } from '@ashniva/ui';
 import { useRef, useState } from 'react';
 
 import { errorMessage } from '../../../shared/lib/api-client';
@@ -24,6 +24,8 @@ interface FileListProps {
   canRemove?: (file: FileSummary) => boolean;
   /** Internal staff choose; clients always upload client-visible files. */
   chooseVisibility?: boolean;
+  /** Ask for a short note on what the file is for (intern work and similar). */
+  askCaption?: boolean;
   /** Called with the new file so callers can collect ids before the parent exists. */
   onUploaded?: (file: FileSummary) => void;
 }
@@ -35,15 +37,24 @@ export function FileList({
   canUpload,
   canRemove = () => canUpload,
   chooseVisibility = false,
+  askCaption = false,
   onUploaded,
 }: FileListProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [visibility, setVisibility] = useState<Visibility>('INTERNAL');
+  const [caption, setCaption] = useState('');
   const [error, setError] = useState<string | undefined>();
   const { upload, remove } = useFileMutations();
 
   async function handleFile(file: File | undefined) {
     if (!file) {
+      return;
+    }
+    if (askCaption && !caption.trim()) {
+      setError('Add a short note on what this attachment is for');
+      if (inputRef.current) {
+        inputRef.current.value = '';
+      }
       return;
     }
     setError(undefined);
@@ -52,8 +63,10 @@ export function FileList({
         file,
         ...parent,
         visibility: chooseVisibility ? visibility : undefined,
+        caption: askCaption ? caption.trim() : undefined,
       });
       onUploaded?.(uploaded);
+      setCaption('');
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -72,6 +85,7 @@ export function FileList({
           {files.map((file) => (
             <li key={file.id} className="file-list__item">
               <FileLink file={file} />
+              {file.caption ? <p className="file-list__caption">{file.caption}</p> : null}
               <span className="muted">
                 {Math.max(1, Math.round(file.sizeBytes / 1024))} KB · {file.uploadedBy.name} ·{' '}
                 {formatRelative(file.createdAt)}
@@ -94,6 +108,18 @@ export function FileList({
       )}
       {canUpload ? (
         <div className="file-list__upload">
+          {askCaption ? (
+            <FormField
+              label="What is this attachment for?"
+              hint="Example: screenshot of the login error, or draft of the weekly notes."
+            >
+              <Input
+                value={caption}
+                onChange={(event) => setCaption(event.target.value)}
+                placeholder="Describe the file before uploading"
+              />
+            </FormField>
+          ) : null}
           <input
             ref={inputRef}
             type="file"

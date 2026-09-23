@@ -38,6 +38,7 @@ export interface CreateFileInput {
   sizeBytes: number;
   storageKey: string;
   visibility: Visibility;
+  caption?: string | null;
   taskId?: string;
   ticketId?: string;
   projectId?: string;

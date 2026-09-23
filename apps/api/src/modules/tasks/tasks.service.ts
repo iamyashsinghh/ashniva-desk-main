@@ -10,9 +10,13 @@ import {
   NOTIFICATION_TYPE,
   PERMISSIONS,
   PRIORITY,
+  PROJECT_TYPE,
+  ROLE_KEYS,
   TASK_ACTION,
+  TASK_CATEGORY_KIND,
   TASK_STATUS,
   VISIBILITY,
+  isManagerRole,
   type AuthenticatedUser,
   type CommentSummary,
   type PaginatedResponse,
@@ -106,7 +110,21 @@ export class TasksService {
 
   async create(actor: AuthenticatedUser, dto: CreateTaskDto): Promise<TaskDetail> {
     this.assertInternal(actor);
-    const project = await this.projects.findById(actor.organizationId, dto.projectId);
+    const isInternTask = Boolean(dto.isInternTask);
+    if (isInternTask && !isManagerRole(actor.roleKey)) {
+      throw new ForbiddenException(
+        'Only a director, project manager or team lead can assign intern work',
+      );
+    }
+    if (isInternTask && !dto.assignedToId) {
+      throw new BadRequestException('Pick an intern to assign this work to');
+    }
+    if (!dto.projectId && !isInternTask) {
+      throw new BadRequestException('Choose a project');
+    }
+    const projectId =
+      dto.projectId ?? (await this.ensureInternWorkProject(actor)).id;
+    const project = await this.projects.findById(actor.organizationId, projectId);
     if (!project) {
       throw new NotFoundException('Project not found');
     }
@@ -118,9 +136,16 @@ export class TasksService {
       throw new ForbiddenException('Your role can only assign tasks to yourself');
     }
     await this.assertPeople(actor, [dto.assignedToId, dto.reviewerId, dto.testerId]);
-    if (dto.categoryId) {
+    if (isInternTask && dto.assignedToId) {
+      await this.assertInternAssignee(actor, dto.assignedToId);
+    }
+    let categoryId = dto.categoryId ?? null;
+    if (isInternTask && !categoryId) {
+      categoryId = await this.internCategoryId(actor.organizationId);
+    }
+    if (categoryId) {
       const category = await this.prisma.taskCategory.findFirst({
-        where: { id: dto.categoryId, organizationId: actor.organizationId, isActive: true },
+        where: { id: categoryId, organizationId: actor.organizationId, isActive: true },
       });
       if (!category) {
         throw new BadRequestException('Unknown task category');
@@ -138,26 +163,27 @@ export class TasksService {
 
     const status = dto.assignedToId && !dto.saveAsDraft ? TASK_STATUS.ASSIGNED : TASK_STATUS.DRAFT;
     const row = await this.tasks.create(actor.organizationId, {
-      projectId: dto.projectId,
+      projectId: project.id,
       title: dto.title,
       description: dto.description ?? null,
       status,
       priority: dto.priority ?? PRIORITY.MEDIUM,
-      categoryId: dto.categoryId ?? null,
-      module: dto.module ?? null,
+      categoryId,
+      module: dto.module ?? (isInternTask ? 'Intern work' : null),
+      isInternTask,
       assignedToId: dto.assignedToId ?? null,
       createdById: actor.userId,
-      reviewerId: dto.reviewerId ?? null,
-      testerId: dto.testerId ?? null,
-      ticketId: dto.ticketId ?? null,
-      milestoneId: dto.milestoneId ?? null,
+      reviewerId: isInternTask ? null : (dto.reviewerId ?? null),
+      testerId: isInternTask ? null : (dto.testerId ?? null),
+      ticketId: isInternTask ? null : (dto.ticketId ?? null),
+      milestoneId: isInternTask ? null : (dto.milestoneId ?? null),
       dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
       scheduledStartAt: dto.scheduledStartAt ? new Date(dto.scheduledStartAt) : null,
       dueAt: dto.dueAt ? new Date(dto.dueAt) : null,
       workAreas: dto.workAreas ?? [],
       estimateMinutes: dto.estimateMinutes ?? null,
       acceptanceCriteria: dto.acceptanceCriteria ?? null,
-      clientVisible: dto.clientVisible ?? false,
+      clientVisible: isInternTask ? false : (dto.clientVisible ?? false),
     });
     if (row.milestoneId) {
       await this.milestones.recompute(row.milestoneId);
@@ -171,6 +197,7 @@ export class TasksService {
         title: row.title,
         status,
         assignedToId: row.assignedToId,
+        isInternTask,
       },
     });
     if (status === TASK_STATUS.ASSIGNED) {
@@ -294,5 +321,46 @@ export class TasksService {
     if (!milestone) {
       throw new BadRequestException('The milestone must belong to the task’s project');
     }
+  }
+
+  private async assertInternAssignee(actor: AuthenticatedUser, userId: string): Promise<void> {
+    const membership = await this.prisma.organizationMembership.findFirst({
+      where: { organizationId: actor.organizationId, userId, deletedAt: null },
+      select: { role: { select: { key: true } } },
+    });
+    if (membership?.role.key !== ROLE_KEYS.INTERN) {
+      throw new BadRequestException('Intern work can only be assigned to an intern');
+    }
+  }
+
+  /**
+   * Bucket for intern assignments that are not tied to a client project.
+   * Created once per organization the first time someone assigns without picking a project.
+   */
+  private async ensureInternWorkProject(actor: AuthenticatedUser) {
+    const existing = await this.projects.findByCode(actor.organizationId, 'INT');
+    if (existing) {
+      return existing;
+    }
+    return this.projects.create(actor.organizationId, actor.userId, {
+      code: 'INT',
+      name: 'Intern work',
+      description: 'Learning assignments that are not tied to a client project.',
+      type: PROJECT_TYPE.INTERNAL_WORK,
+      status: 'ACTIVE',
+      managerUserId: actor.userId,
+    });
+  }
+
+  private async internCategoryId(organizationId: string): Promise<string | null> {
+    const category = await this.prisma.taskCategory.findFirst({
+      where: {
+        organizationId,
+        isActive: true,
+        OR: [{ name: 'Intern work' }, { kind: TASK_CATEGORY_KIND.OTHER, name: { contains: 'Intern' } }],
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+    return category?.id ?? null;
   }
 }

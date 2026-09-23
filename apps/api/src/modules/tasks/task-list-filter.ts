@@ -85,6 +85,8 @@ export async function buildTaskListFilter(
     search: query.search,
     limit: query.limit,
     cursor: query.cursor,
+    // Ordinary boards never mix in intern learning work; the Intern view opts in.
+    isInternTask: (query.view ?? TASK_LIST_VIEW.MY) === TASK_LIST_VIEW.INTERN,
     // These narrow whatever the view selected; they never decide the scope themselves, so a
     // dashboard card can point at exactly the set of tasks it counted.
     ...(query.overdue ? { overdueAsOf: today } : {}),
@@ -155,6 +157,11 @@ export async function buildTaskListFilter(
         ...base,
         assignedToId: query.assignedToId ?? actor.userId,
         status: [TASK_STATUS.COMPLETED],
+      };
+    case TASK_LIST_VIEW.INTERN:
+      return {
+        ...base,
+        status: defaultStatus,
       };
     case TASK_LIST_VIEW.ALL:
     default:

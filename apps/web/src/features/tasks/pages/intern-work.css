@@ -1,0 +1,16 @@
+.intern-work {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.intern-work__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.intern-work__hint {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}

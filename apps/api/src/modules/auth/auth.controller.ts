@@ -119,7 +119,12 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
     @CurrentUser() user: AuthenticatedUser | undefined,
   ): Promise<void> {
-    await this.auth.logout(readRefreshCookie(request), user?.userId);
+    await this.auth.logout(
+      readRefreshCookie(request),
+      user?.userId,
+      user?.organizationId,
+      metadataFrom(request),
+    );
     clearRefreshCookie(request, response);
   }
 

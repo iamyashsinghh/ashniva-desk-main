@@ -7,13 +7,20 @@ import { TasksModule } from '../tasks/tasks.module';
 import { WorkPlanController } from './work-plan.controller';
 import { WorkPlanEventsService } from './work-plan-events.service';
 import { WorkPlanGeminiService } from './work-plan-gemini';
+import { WorkPlanLogoutPauseModule } from './work-plan-logout-pause.module';
 import { WorkPlanMapper } from './work-plan.mapper';
 import { WorkPlanRepository } from './work-plan.repository';
 import { WorkPlanService } from './work-plan.service';
 import { WorkPlanTasksService } from './work-plan-tasks.service';
 
 @Module({
-  imports: [ProjectsModule, FilesModule, NotificationsModule, TasksModule],
+  imports: [
+    ProjectsModule,
+    FilesModule,
+    NotificationsModule,
+    TasksModule,
+    WorkPlanLogoutPauseModule,
+  ],
   controllers: [WorkPlanController],
   providers: [
     WorkPlanRepository,
@@ -23,5 +30,6 @@ import { WorkPlanTasksService } from './work-plan-tasks.service';
     WorkPlanTasksService,
     WorkPlanService,
   ],
+  exports: [WorkPlanLogoutPauseModule],
 })
 export class ProjectWorkPlansModule {}
