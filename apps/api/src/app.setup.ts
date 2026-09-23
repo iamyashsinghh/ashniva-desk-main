@@ -9,7 +9,7 @@ import { widgetAwareCors } from './widget-cors';
 
 export const API_GLOBAL_PREFIX = 'api';
 export const API_DEFAULT_VERSION = '1';
-
+ 
 /**
  * Applies the middleware, prefix, versioning and validation used by the running server
  * AND by the e2e tests, so both behave identically.
