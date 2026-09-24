@@ -13,6 +13,7 @@ import {
   emptyDraft,
   isDraftValid,
   toDraft,
+  toSavePhases,
   type AddedWorkPlacement,
 } from '../work-plan-layout';
 import { useWorkPlanMutations, useWorkPlanQuery } from '../work-plan-api';
@@ -55,7 +56,6 @@ export function ProjectWorkPlanModal({
   const canEdit = Boolean(data?.canAssign);
   const pdfLocked = hasStartedWork(data);
   const showEditor = Boolean(canEdit && editing && draft);
-  const startedIds = startedPointIds(data);
   const assignmentKey = data?.canAssign ? assignmentFingerprint(data) : '';
   const liveAssign = assignDraft ?? (data?.canAssign ? assignmentDraftFrom(data) : null);
   const assignDirty = Boolean(
@@ -99,7 +99,7 @@ export function ProjectWorkPlanModal({
     }
     setError(undefined);
     try {
-      await save.mutateAsync({ phases: draft });
+      await save.mutateAsync({ phases: toSavePhases(draft) });
       setEditing(false);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -129,7 +129,7 @@ export function ProjectWorkPlanModal({
       if (assignDirty) {
         await onSaveAssignments();
       }
-      await save.mutateAsync({ phases });
+      await save.mutateAsync({ phases: toSavePhases(phases) });
       setDraft(phases);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -171,17 +171,32 @@ export function ProjectWorkPlanModal({
       description="The developer presses Start, then Send to tester — that pauses leftover time. The tester marks Good or Error. Admin, project manager and team lead see extra time past the estimate, every send, and each tester error until Good."
       onClose={onClose}
       headerActions={
-        data?.canAssign && !showEditor && data.phases.length > 0 ? (
-          <Button
-            variant="primary"
-            size="sm"
-            loading={saveAssignments.isPending}
-            disabled={!assignDirty}
-            disabledReason={!assignDirty ? 'Change an assignment to save it.' : undefined}
-            onClick={() => void onSaveAssignments()}
-          >
-            Save
-          </Button>
+        canEdit && !showEditor ? (
+          <>
+            {data && data.phases.length > 0 ? (
+              <Button
+                variant="primary"
+                size="sm"
+                loading={saveAssignments.isPending}
+                disabled={!assignDirty}
+                disabledReason={!assignDirty ? 'Change an assignment to save it.' : undefined}
+                onClick={() => void onSaveAssignments()}
+              >
+                Save
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              onClick={() => {
+                setDraft(
+                  data && data.phases.length === 0 ? emptyDraft() : toDraft(data?.phases ?? []),
+                );
+                setEditing(true);
+              }}
+            >
+              {data && data.phases.length === 0 ? 'Add phase' : 'Edit plan'}
+            </Button>
+          </>
         ) : null
       }
       footer={
@@ -276,7 +291,7 @@ export function ProjectWorkPlanModal({
       {plan.isLoading || !data ? (
         <p className="muted">Loading the plan…</p>
       ) : showEditor && draft ? (
-        <WorkPlanEditor draft={draft} startedIds={startedIds} onChange={setDraft} />
+        <WorkPlanEditor draft={draft} onChange={setDraft} />
       ) : (
         <WorkPlanReader
           plan={data}
@@ -304,14 +319,6 @@ export function ProjectWorkPlanModal({
               })
               .catch((cause) => setError(errorMessage(cause)));
           }}
-          onEdit={
-            canEdit
-              ? () => {
-                  setDraft(data.phases.length === 0 ? emptyDraft() : toDraft(data.phases));
-                  setEditing(true);
-                }
-              : undefined
-          }
           onStart={(id) => {
             setError(undefined);
             void start.mutateAsync(id).catch((cause) => setError(errorMessage(cause)));

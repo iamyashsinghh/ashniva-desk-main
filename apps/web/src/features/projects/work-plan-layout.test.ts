@@ -4,6 +4,7 @@ import {
   canAcceptDrop,
   describeAddedWork,
   moveWorkPlanDraft,
+  toSavePhases,
   type WorkPlanDragItem,
 } from './work-plan-layout';
 
@@ -149,5 +150,57 @@ describe('describeAddedWork', () => {
     expect(placed.phaseIds).toEqual([]);
     expect(placed.lines).toEqual(['Added to Auth: OTP']);
     expect(placed.titleIds).toHaveLength(1);
+  });
+});
+
+describe('toSavePhases', () => {
+  it('keeps existing ids and only sends isError when true', () => {
+    const payload = toSavePhases([
+      {
+        id: P1,
+        heading: ' Auth ',
+        titles: [
+          {
+            id: T1,
+            title: ' Login ',
+            points: [
+              { id: S1, body: ' OTP ', estimateMinutes: 45, isError: false },
+              { body: ' New step ', estimateMinutes: 15 },
+              { id: S2, body: ' Broken ', estimateMinutes: 1, isError: true },
+            ],
+          },
+        ],
+      },
+      {
+        heading: 'New phase',
+        titles: [
+          {
+            title: 'Topic',
+            points: [{ body: 'Step', estimateMinutes: 30 }],
+          },
+        ],
+      },
+    ]);
+    expect(payload).toEqual([
+      {
+        id: P1,
+        heading: 'Auth',
+        titles: [
+          {
+            id: T1,
+            title: 'Login',
+            points: [
+              { id: S1, body: 'OTP', estimateMinutes: 45 },
+              { body: 'New step', estimateMinutes: 15 },
+              { id: S2, body: 'Broken', estimateMinutes: 1, isError: true },
+            ],
+          },
+        ],
+      },
+      {
+        heading: 'New phase',
+        titles: [{ title: 'Topic', points: [{ body: 'Step', estimateMinutes: 30 }] }],
+      },
+    ]);
   });
 });

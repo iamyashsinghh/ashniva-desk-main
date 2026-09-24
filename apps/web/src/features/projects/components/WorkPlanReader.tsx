@@ -38,7 +38,6 @@ export function WorkPlanReader({
   assignment,
   placement,
   onAssignmentChange,
-  onEdit,
   onReorder,
   onMoveError,
   onCombineTitles,
@@ -52,7 +51,6 @@ export function WorkPlanReader({
   assignment: AssignmentDraft | null;
   placement?: AddedWorkPlacement | null;
   onAssignmentChange: (next: AssignmentDraft) => void;
-  onEdit?: () => void;
   onReorder?: (phases: WorkPlanPhaseInput[]) => void;
   onMoveError?: (reason: string) => void;
   onCombineTitles?: (phaseId: string, titleIds: string[]) => void;
@@ -93,16 +91,11 @@ export function WorkPlanReader({
       <div className="work-plan">
         <p className="work-plan__hint">
           {plan.canAssign
-            ? 'Describe extra work below and AI will add related steps here, or add a phase by hand.'
+            ? 'Use Add phase in the header, or describe extra work below and AI will add related steps here.'
             : plan.source
               ? 'Nothing is assigned to you yet.'
               : 'No phase plan yet. A manager will add it from Summary.'}
         </p>
-        {onEdit ? (
-          <Button className="work-plan__add" variant="primary" onClick={onEdit}>
-            Add phase
-          </Button>
-        ) : null}
       </div>
     );
   }
@@ -196,7 +189,6 @@ export function WorkPlanReader({
               Clear selection
             </Button>
           ) : null}
-          {onEdit ? <Button onClick={onEdit}>Edit plan</Button> : null}
         </div>
       </div>
       {plan.canAssign && assignment ? (

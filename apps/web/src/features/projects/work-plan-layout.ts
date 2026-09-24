@@ -92,6 +92,24 @@ export function toDraft(
   }));
 }
 
+/** Payload for PUT /work-plan — keeps existing ids so save is additive, not a wipe. */
+export function toSavePhases(draft: WorkPlanPhaseInput[]): WorkPlanPhaseInput[] {
+  return draft.map((phase) => ({
+    ...(phase.id ? { id: phase.id } : {}),
+    heading: phase.heading.trim(),
+    titles: phase.titles.map((title) => ({
+      ...(title.id ? { id: title.id } : {}),
+      title: title.title.trim(),
+      points: title.points.map((point) => ({
+        ...(point.id ? { id: point.id } : {}),
+        body: point.body.trim(),
+        estimateMinutes: point.estimateMinutes,
+        ...(point.isError ? { isError: true } : {}),
+      })),
+    })),
+  }));
+}
+
 export function describeAddedWork(before: PhaseRow[], after: PhaseRow[]): AddedWorkPlacement {
   const previousPhases = new Set(before.map((phase) => phase.id));
   const previousTitles = new Set(before.flatMap((phase) => phase.titles.map((title) => title.id)));

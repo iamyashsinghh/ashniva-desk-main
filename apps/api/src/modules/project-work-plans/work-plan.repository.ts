@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { ProjectWorkPlanSource } from '../../generated/prisma/client';
 
 import { PrismaService } from '../../database/prisma.service';
@@ -138,8 +138,8 @@ export class WorkPlanRepository {
                   },
                 })
               ).id;
+          keptPhaseIds.add(phaseId);
           if (knownPhase) {
-            keptPhaseIds.add(phaseId);
             await tx.projectWorkPlanPhase.update({
               where: { id: phaseId },
               data: { heading: phase.heading.trim(), sortOrder: phaseIndex },
@@ -159,8 +159,8 @@ export class WorkPlanRepository {
                     },
                   })
                 ).id;
+            keptTitleIds.add(titleId);
             if (knownTitle) {
-              keptTitleIds.add(titleId);
               await tx.projectWorkPlanTitle.update({
                 where: { id: titleId },
                 data: { title: title.title.trim(), sortOrder: titleIndex, phaseId },
@@ -184,7 +184,8 @@ export class WorkPlanRepository {
                 });
                 continue;
               }
-              await tx.projectWorkPlanPoint.create({
+              // New steps from Edit / add-on — never create tester-error rows via save.
+              const created = await tx.projectWorkPlanPoint.create({
                 data: {
                   titleId,
                   body: point.body.trim(),
@@ -192,6 +193,7 @@ export class WorkPlanRepository {
                   sortOrder: pointIndex,
                 },
               });
+              keptPointIds.add(created.id);
             }
           }
         }
@@ -200,32 +202,18 @@ export class WorkPlanRepository {
           if (keptPointIds.has(point.id)) {
             continue;
           }
-          if (point.startedAt) {
-            throw new ConflictException(
-              'Started points cannot be removed. Keep them in the plan, or finish them first.',
-            );
-          }
+          // Assigners may remove started or completed steps when editing the plan.
           await tx.projectWorkPlanPoint.delete({ where: { id: point.id } });
         }
         for (const title of titleById.values()) {
           if (keptTitleIds.has(title.id)) {
             continue;
           }
-          if (title.points.some((point) => point.startedAt && !keptPointIds.has(point.id))) {
-            throw new ConflictException('A topic with started work cannot be removed.');
-          }
           await tx.projectWorkPlanTitle.delete({ where: { id: title.id } });
         }
         for (const phase of phaseById.values()) {
           if (keptPhaseIds.has(phase.id)) {
             continue;
-          }
-          if (
-            phase.titles.some((title) =>
-              title.points.some((point) => point.startedAt && !keptPointIds.has(point.id)),
-            )
-          ) {
-            throw new ConflictException('A phase with started work cannot be removed.');
           }
           await tx.projectWorkPlanPhase.delete({ where: { id: phase.id } });
         }

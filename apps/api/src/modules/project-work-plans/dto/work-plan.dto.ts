@@ -5,6 +5,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -43,6 +44,12 @@ export class WorkPlanPointDto {
   @Min(1)
   @Max(24 * 60)
   estimateMinutes!: number;
+
+  /** Editor may echo this from the plan. Server never creates error rows from a save. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isError?: boolean;
 }
 
 export class WorkPlanNoteDto {
