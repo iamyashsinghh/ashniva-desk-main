@@ -1,15 +1,22 @@
-import { PERMISSIONS, isClientRole } from '@ashniva/types';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { PERMISSIONS, TASK_LIST_VIEW, isClientRole } from '@ashniva/types';
+import { useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { mobileEnv } from '../../config/env';
+import { Avatar } from '../../shared/components/Avatar';
+import { Banner } from '../../shared/components/feedback';
+import { SectionHeader } from '../../shared/components/layout';
 import { NavigationRow } from '../../shared/components/navigation-list';
-import { AppText, Card, Screen } from '../../shared/components/primitives';
+import { AppText, Screen } from '../../shared/components/primitives';
 import { useNetworkStatus } from '../../shared/hooks/use-network-status';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { useSession } from '../auth/SessionProvider';
 import { isProviderUser } from '../auth/audience';
 import { canUseInternalChat } from '../chat/chat-access';
+import { ClientSummary } from './HomeDashboard';
+import { InternalSummary } from './InternalSummary';
 import { useClientWaiting } from './use-client-waiting';
 
 /**
@@ -33,6 +40,13 @@ export function HomeScreen({
   onOpenApprovals,
   onOpenSignOffs,
   onOpenMyTime,
+  onOpenApproval,
+  onOpenTask,
+  onOpenTasks,
+  onOpenTicket,
+  onOpenTickets,
+  onOpenAlerts,
+  onOpenProfile,
 }: {
   onRefresh?: () => void;
   onOpenProjects: () => void;
@@ -41,12 +55,22 @@ export function HomeScreen({
   onOpenApprovals: () => void;
   onOpenSignOffs: () => void;
   onOpenMyTime: () => void;
+  /** The summaries on Home open the same screens their tabs do; each is optional. */
+  onOpenApproval?: (id: string) => void;
+  onOpenTask?: (id: string) => void;
+  onOpenTasks?: () => void;
+  onOpenTicket?: (id: string) => void;
+  onOpenTickets?: () => void;
+  onOpenAlerts?: () => void;
+  onOpenProfile?: () => void;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const { user, status, can } = useSession();
   const { isOnline } = useNetworkStatus();
   const waiting = useClientWaiting(user);
+  const [refreshing, setRefreshing] = useState(false);
 
   if (!user) {
     return null;
@@ -65,115 +89,164 @@ export function HomeScreen({
   const showSignOffs = !isProvider && can(PERMISSIONS.PROJECT_READ);
   const showMyTime = isProvider && can(PERMISSIONS.REPORT_READ_OWN);
 
+  const refresh = async () => {
+    setRefreshing(true);
+    onRefresh?.();
+    waiting.refresh();
+    // Only what Home itself shows; each is a query Home already made.
+    await Promise.allSettled(
+      isClient
+        ? []
+        : [
+            queryClient.refetchQueries({ queryKey: ['tasks', TASK_LIST_VIEW.MY], type: 'active' }),
+            queryClient.refetchQueries({ queryKey: ['tickets'], type: 'active' }),
+            queryClient.refetchQueries({ queryKey: ['notifications'], type: 'active' }),
+          ],
+    );
+    setRefreshing(false);
+  };
+
+  // A client has Home, Tickets, Updates, Invoices and You — no Alerts tab to jump to.
+  const hasAlertsTab = !isClient;
+
   return (
     <Screen>
       <ScrollView
         contentContainerStyle={{
-          gap: theme.spacing.md,
-          padding: theme.spacing.lg,
+          gap: theme.spacing.section,
+          padding: theme.spacing.screen,
           paddingBottom: insets.bottom + theme.spacing.xl,
         }}
         refreshControl={
           <RefreshControl
-            refreshing={false}
-            onRefresh={() => {
-              onRefresh?.();
-              waiting.refresh();
-            }}
+            refreshing={refreshing}
+            onRefresh={() => void refresh()}
             tintColor={theme.colors.primary}
           />
         }
       >
-        <View style={{ gap: theme.spacing.xs }}>
-          <AppText size="xl" weight="bold">
-            {greeting()}, {user.name.split(' ')[0]}
-          </AppText>
-          <AppText tone="muted">
-            {user.roleName} · {user.organization.name}
-          </AppText>
+        <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <AppText variant="title">
+              {greeting()}, {user.name.split(' ')[0]}
+            </AppText>
+            <AppText size="sm" tone="muted" numberOfLines={1}>
+              {user.roleName} · {user.organization.name}
+            </AppText>
+          </View>
+          {onOpenProfile ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Your profile"
+              hitSlop={8}
+              onPress={onOpenProfile}
+            >
+              <Avatar name={user.name} size={44} />
+            </Pressable>
+          ) : null}
         </View>
 
-        {status === 'offline' ? (
-          <Card>
-            <AppText weight="medium">Working offline</AppText>
-            <AppText size="sm" tone="muted">
-              Your session could not be checked. What you see was loaded earlier, and nothing new
-              will arrive until you are back on a connection.
-            </AppText>
-          </Card>
+        {status === 'offline' || !isOnline ? (
+          <Banner tone="warning" title={status === 'offline' ? 'Working offline' : 'No connection'}>
+            {status === 'offline'
+              ? 'Your session could not be checked. What you see was loaded earlier, and nothing new will arrive until you are back on a connection.'
+              : 'Lists will show what was last loaded. Pull down to try again once you are back on.'}
+          </Banner>
         ) : null}
 
-        {showProjects ? (
-          <NavigationRow
-            label="Projects"
-            description="Where each project stands and who is on it."
-            onPress={onOpenProjects}
+        {isClient ? (
+          <ClientSummary onOpenApprovals={onOpenApprovals} onOpenApproval={onOpenApproval} />
+        ) : (
+          <InternalSummary
+            onOpenTask={onOpenTask}
+            onOpenTasks={onOpenTasks}
+            onOpenTicket={onOpenTicket}
+            onOpenTickets={onOpenTickets}
+            onOpenAlerts={hasAlertsTab ? onOpenAlerts : undefined}
           />
-        ) : null}
+        )}
 
-        {showApprovals ? (
-          <NavigationRow
-            label="Approvals"
-            description={
-              isProvider
-                ? 'Requests to prepare, publish and follow up with a client.'
-                : 'What your team has asked you to approve.'
-            }
-            badge={waiting.pendingApprovals}
-            badgeUnit="waiting for you"
-            onPress={onOpenApprovals}
-          />
-        ) : null}
+        <View style={{ gap: theme.spacing.sm }}>
+          <SectionHeader title="Go to" />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md }}>
+            {showProjects ? (
+              <NavigationRow
+                layout="tile"
+                label="Projects"
+                mark="Pr"
+                description="Where each project stands and who is on it."
+                onPress={onOpenProjects}
+              />
+            ) : null}
 
-        {showSignOffs ? (
-          <NavigationRow
-            label="Sign-offs"
-            description="Changes your team has finished, for you to try and answer."
-            onPress={onOpenSignOffs}
-          />
-        ) : null}
+            {showApprovals ? (
+              <NavigationRow
+                layout="tile"
+                label="Approvals"
+                mark="Ap"
+                description={
+                  isProvider
+                    ? 'Requests to prepare, publish and follow up with a client.'
+                    : 'What your team has asked you to approve.'
+                }
+                badge={waiting.pendingApprovals}
+                badgeUnit="waiting for you"
+                onPress={onOpenApprovals}
+              />
+            ) : null}
 
-        {showChat ? (
-          <NavigationRow
-            label="Messages"
-            description="Internal conversations on your projects, tasks and tickets."
-            onPress={onOpenConversations}
-          />
-        ) : null}
+            {showSignOffs ? (
+              <NavigationRow
+                layout="tile"
+                label="Sign-offs"
+                mark="So"
+                description="Changes your team has finished, for you to try and answer."
+                onPress={onOpenSignOffs}
+              />
+            ) : null}
 
-        {showQa ? (
-          <NavigationRow
-            label="Testing"
-            description="Your testing queue and the pass/fail form."
-            onPress={onOpenQa}
-          />
-        ) : null}
+            {showChat ? (
+              <NavigationRow
+                layout="tile"
+                label="Messages"
+                mark="Me"
+                description="Internal conversations on your projects, tasks and tickets."
+                onPress={onOpenConversations}
+              />
+            ) : null}
 
-        {showMyTime ? (
-          <NavigationRow
-            label="My time"
-            description="The hours you have logged, by the day you did them."
-            onPress={onOpenMyTime}
-          />
-        ) : null}
+            {showQa ? (
+              <NavigationRow
+                layout="tile"
+                label="Testing"
+                mark="Qa"
+                description="Your testing queue and the pass/fail form."
+                onPress={onOpenQa}
+              />
+            ) : null}
 
-        <Card>
-          <AppText weight="medium">{isClient ? 'What you can do here' : 'On your phone'}</AppText>
-          <AppText size="sm" tone="muted">
+            {showMyTime ? (
+              <NavigationRow
+                layout="tile"
+                label="My time"
+                mark="Ti"
+                description="The hours you have logged, by the day you did them."
+                onPress={onOpenMyTime}
+              />
+            ) : null}
+          </View>
+        </View>
+
+        <View style={{ gap: theme.spacing.xs, paddingHorizontal: theme.spacing.xs }}>
+          <AppText size="sm" weight="medium" tone="muted">
+            {isClient ? 'What you can do here' : 'On your phone'}
+          </AppText>
+          <AppText size="xs" tone="faint">
             {isClient
               ? 'Raise a ticket, follow the ones you have open, approve what your team sends you, read what has been published, and check an invoice.'
               : 'Your tasks, the tickets you are on, approvals, your logged time, and what needs your attention. Everything else — reports, administration, billing setup — is on the web app.'}
           </AppText>
-        </Card>
-
-        {!isOnline ? (
-          <Card>
-            <AppText weight="medium">No connection</AppText>
-            <AppText size="sm" tone="muted">
-              Lists will show what was last loaded. Pull down to try again once you are back on.
-            </AppText>
-          </Card>
-        ) : null}
+        </View>
 
         {mobileEnv.isDevelopment ? (
           <AppText size="xs" tone="faint">

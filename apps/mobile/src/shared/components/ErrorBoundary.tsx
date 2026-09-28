@@ -1,6 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { spacing } from '../theme/theme';
+import { BrandMark } from './brand';
 import { AppText, Button, Screen } from './primitives';
 
 /**
@@ -48,10 +50,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <Screen>
-        <View style={{ flex: 1, gap: 16, justifyContent: 'center', padding: 24 }}>
-          <AppText size="xl" weight="bold">
-            Something went wrong
-          </AppText>
+        <View style={{ flex: 1, gap: spacing.lg, justifyContent: 'center', padding: spacing.xl }}>
+          <BrandMark size={40} />
+          <AppText variant="title">Something went wrong</AppText>
           <AppText tone="muted">
             This screen could not be shown. Nothing you did has been lost — go back and try again.
           </AppText>

@@ -92,6 +92,13 @@ function HomeTab() {
       onOpenApprovals={() => navigation.navigate('Approvals')}
       onOpenSignOffs={() => navigation.navigate('SignOffs')}
       onOpenMyTime={() => navigation.navigate('MyTime')}
+      onOpenApproval={(id) => navigation.navigate('ApprovalDetail', { id })}
+      onOpenTask={(id) => navigation.navigate('TaskDetail', { id })}
+      onOpenTasks={() => navigation.navigate('Main', { screen: 'Tasks' })}
+      onOpenTicket={(id) => navigation.navigate('TicketDetail', { id })}
+      onOpenTickets={() => navigation.navigate('Main', { screen: 'Tickets' })}
+      onOpenAlerts={() => navigation.navigate('Main', { screen: 'Notifications' })}
+      onOpenProfile={() => navigation.navigate('Main', { screen: 'Profile' })}
     />
   );
 }
