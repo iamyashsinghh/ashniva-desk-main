@@ -8,6 +8,7 @@ import { ProjectsModule } from '../projects/projects.module';
 import { WorkLogsModule } from '../work-logs/work-logs.module';
 import { CommentsRepository } from './comments.repository';
 import { TaskEventsService } from './task-events.service';
+import { TaskMentionsService } from './task-mentions.service';
 import { TaskReviewService } from './task-review.service';
 import { TaskTransitionsService } from './task-transitions.service';
 import { TasksController } from './tasks.controller';
@@ -35,6 +36,7 @@ import { TasksService } from './tasks.service';
     CommentsRepository,
     TasksService,
     TaskEventsService,
+    TaskMentionsService,
     TaskTransitionsService,
     TaskReviewService,
   ],

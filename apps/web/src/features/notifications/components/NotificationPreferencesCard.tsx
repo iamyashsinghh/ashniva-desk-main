@@ -23,7 +23,9 @@ function isEnabled(
   channel: NotificationChannel,
 ): boolean {
   const found = entries.find((entry) => entry.type === type && entry.channel === channel);
-  return found ? found.enabled : channel === NOTIFICATION_CHANNEL.IN_APP;
+  return found
+    ? found.enabled
+    : channel === NOTIFICATION_CHANNEL.IN_APP || channel === NOTIFICATION_CHANNEL.PUSH;
 }
 
 /** Every switch the screen shows, in a stable order, over the stored answers. */

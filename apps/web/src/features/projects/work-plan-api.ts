@@ -6,6 +6,9 @@ import type {
   ProjectWorkPlan,
   SaveWorkPlanAssignmentsInput,
   SaveWorkPlanInput,
+  WorkPlanExplainApplyInput,
+  WorkPlanExplainPreview,
+  WorkPlanExplainPreviewInput,
 } from '@ashniva/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -123,6 +126,21 @@ export function useWorkPlanMutations(projectId: string) {
       mutationFn: (body: SaveWorkPlanAssignmentsInput) =>
         apiRequest<ProjectWorkPlan>(`/projects/${projectId}/work-plan/assignments`, {
           method: 'PUT',
+          body,
+        }),
+      onSuccess: invalidate,
+    }),
+    explainPreview: useMutation({
+      mutationFn: (body: WorkPlanExplainPreviewInput & { attempt?: number }) =>
+        apiRequest<WorkPlanExplainPreview>(`/projects/${projectId}/work-plan/explain-preview`, {
+          method: 'POST',
+          body,
+        }),
+    }),
+    explainApply: useMutation({
+      mutationFn: (body: WorkPlanExplainApplyInput) =>
+        apiRequest<ProjectWorkPlan>(`/projects/${projectId}/work-plan/explain-apply`, {
+          method: 'POST',
           body,
         }),
       onSuccess: invalidate,

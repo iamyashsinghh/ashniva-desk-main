@@ -152,6 +152,7 @@ export function toMessageSummary(
     createdAt: row.createdAt.toISOString(),
     editedAt: row.editedAt?.toISOString() ?? null,
     deletedAt: row.deletedAt?.toISOString() ?? null,
+    restrictedToUserIds: row.restrictedToUserIds,
     ...abilities,
   };
 }

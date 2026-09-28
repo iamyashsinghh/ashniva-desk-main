@@ -1,10 +1,13 @@
 import { Drawer } from '@ashniva/ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useMatches } from 'react-router';
 
 import { LiveMessageToasts } from '../../features/communication/components/LiveMessageToasts';
 import { MessengerDock } from '../../features/communication/components/MessengerDock';
 import { MessengerProvider } from '../../features/communication/messenger-context';
+import { NotificationAnnouncer } from '../../features/notifications/components/NotificationAnnouncer';
+import { NotificationPermissionBanner } from '../../features/notifications/components/NotificationPermissionBanner';
+import { wireNotificationAttentionUnlock } from '../../features/notifications/notify-attention';
 import { RealtimeProvider } from '../providers/RealtimeProvider';
 import { MobileTabBar } from './MobileTabBar';
 import { Sidebar, SidebarPanel } from './Sidebar';
@@ -37,6 +40,8 @@ export function AppShell({ homePath = '/' }: AppShellProps) {
   const title = findTitle(matches) ?? 'Ashniva Desk';
   const closeSidebar = () => setSidebarOpen(false);
 
+  useEffect(() => wireNotificationAttentionUnlock(), []);
+
   return (
     <RealtimeProvider>
       <div className="app-shell">
@@ -55,6 +60,7 @@ export function AppShell({ homePath = '/' }: AppShellProps) {
             homePath={homePath}
           />
           <main id="main-content" className="app-content" tabIndex={-1}>
+            <NotificationPermissionBanner />
             <Outlet />
           </main>
           <MobileTabBar onMore={() => setSidebarOpen(true)} />
@@ -65,6 +71,7 @@ export function AppShell({ homePath = '/' }: AppShellProps) {
           <LiveMessageToasts />
           <MessengerDock />
         </MessengerProvider>
+        <NotificationAnnouncer />
       </div>
     </RealtimeProvider>
   );

@@ -11,8 +11,8 @@ export interface ToastStackProps {
    * the difference between useful and baffling.
    */
   'aria-label': string;
-  /** Which corner it sits in. Bottom-right is the default, and the only one in use today. */
-  position?: 'bottom-end' | 'bottom-start';
+  /** Which corner it sits in. Bottom-right is the default. */
+  position?: 'bottom-end' | 'bottom-start' | 'top-end' | 'top-start';
   children: ReactNode;
 }
 

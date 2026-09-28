@@ -65,6 +65,7 @@ export interface WorkPlanActorFlags {
   canTest: boolean;
   canLead: boolean;
   canAssign: boolean;
+  canExplainWithAi: boolean;
 }
 
 @Injectable()
@@ -91,6 +92,7 @@ export class WorkPlanMapper {
         canManage: flags.canManage,
         canWork: flags.canWork,
         canAssign: flags.canAssign,
+        canExplainWithAi: flags.canExplainWithAi,
       };
     }
     const planPriority = (row.priority as Priority | null) ?? PRIORITY.MEDIUM;
@@ -114,6 +116,7 @@ export class WorkPlanMapper {
       canManage: flags.canManage,
       canWork: flags.canWork,
       canAssign: flags.canAssign,
+      canExplainWithAi: flags.canExplainWithAi,
     };
   }
 

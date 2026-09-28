@@ -285,6 +285,13 @@
   gap: 8px;
 }
 
+.composer__mentions {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .composer__row {
   display: flex;
   align-items: center;

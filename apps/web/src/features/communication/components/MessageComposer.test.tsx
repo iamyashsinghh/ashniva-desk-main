@@ -53,6 +53,21 @@ function type(element: HTMLElement, value: string) {
 describe('MessageComposer', () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it('warns that a tagged group message is private before it is sent', () => {
+    const { composer } = renderComposer({ tagsArePrivate: true });
+    type(composer, 'ready for review');
+    expect(screen.queryByText(/Private message/)).not.toBeInTheDocument();
+
+    type(composer, `@[${PRIYA}] ready for review`);
+    expect(screen.getByText(/Private message/)).toBeInTheDocument();
+  });
+
+  it('does not warn outside a group, where tagging keeps a message public', () => {
+    const { composer } = renderComposer();
+    type(composer, `@[${PRIYA}] ready for review`);
+    expect(screen.queryByText(/Private message/)).not.toBeInTheDocument();
+  });
+
   it('says so, rather than failing when pressed, when the server refused', () => {
     const { composer } = renderComposer({ canPost: false, reason: 'NOT_ON_PROJECT' });
 
@@ -278,6 +293,7 @@ describe('MessageComposer', () => {
       createdAt: '2026-09-13T09:00:00.000Z',
       editedAt: null,
       deletedAt: null,
+      restrictedToUserIds: [],
       canEdit: false,
       canDelete: false,
     };

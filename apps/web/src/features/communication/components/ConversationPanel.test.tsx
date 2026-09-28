@@ -84,6 +84,7 @@ function messageFixture(over: Partial<MessageSummary> = {}): MessageSummary {
     createdAt: '2026-09-13T09:00:00.000Z',
     editedAt: null,
     deletedAt: null,
+    restrictedToUserIds: [],
     canEdit: false,
     canDelete: false,
     ...over,

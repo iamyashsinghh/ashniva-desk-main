@@ -647,6 +647,49 @@ export function workPlanAdditionsFromModelJson(raw: unknown): WorkPlanDraftAddit
   }));
 }
 
+/**
+ * AI rewrite of existing Summary steps. Ids must match the plan; estimates in the reply are
+ * ignored by the server so minutes stay under human control.
+ */
+export function workPlanExplainFromModelJson(
+  raw: unknown,
+): Array<{ id: string; title: string; points: Array<{ id: string; body: string }> }> {
+  const parsed = typeof raw === 'string' ? parseJsonObject(raw) : raw;
+  if (!isRecord(parsed)) {
+    return [];
+  }
+  const titles: Array<{ id: string; title: string; points: Array<{ id: string; body: string }> }> =
+    [];
+  for (const row of arrayOf(parsed.titles)) {
+    if (titles.length >= MAX_TITLES || !isRecord(row)) {
+      continue;
+    }
+    const id = uuidOf(row.id);
+    const title = clip(stringOf(row.title), MAX_HEADING);
+    if (!id || !title) {
+      continue;
+    }
+    const points: Array<{ id: string; body: string }> = [];
+    for (const point of arrayOf(row.points)) {
+      if (points.length >= MAX_POINTS || !isRecord(point)) {
+        continue;
+      }
+      const pointId = uuidOf(point.id);
+      const body = clip(
+        stringOf(point.body) ?? stringOf(point.description) ?? stringOf(point.text),
+        MAX_BODY,
+      );
+      if (pointId && body) {
+        points.push({ id: pointId, body });
+      }
+    }
+    if (points.length > 0) {
+      titles.push({ id, title, points });
+    }
+  }
+  return titles;
+}
+
 /** Existing phase by id, then heading; undefined means open a new phase. */
 export function matchWorkPlanAdditionPhase<T extends { id?: string; heading: string }>(
   addition: WorkPlanDraftAddition,

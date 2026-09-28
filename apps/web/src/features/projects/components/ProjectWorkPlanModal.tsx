@@ -1,6 +1,7 @@
 import {
   type AddWorkPlanWorkInput,
   type ProjectWorkPlan,
+  type WorkPlanExplainPreview,
   type WorkPlanPhaseInput,
 } from '@ashniva/types';
 import { Alert, Button, Modal } from '@ashniva/ui';
@@ -20,6 +21,10 @@ import { useWorkPlanMutations, useWorkPlanQuery } from '../work-plan-api';
 import { WorkPlanAddWorkPanel } from './WorkPlanAddWorkPanel';
 import { WorkPlanEditor } from './WorkPlanEditor';
 import {
+  WorkPlanAssignWordsDialog,
+  WorkPlanExplainDialog,
+} from './WorkPlanExplainDialog';
+import {
   assignmentDraftFrom,
   assignmentFingerprint,
   WorkPlanReader,
@@ -27,6 +32,8 @@ import {
 } from './WorkPlanReader';
 
 import '../work-plan.css';
+
+type ExplainStep = 'idle' | 'ask-words' | 'review';
 
 /**
  * Phase plan for one project: upload a PDF, edit phases by hand, start a point to run its
@@ -42,8 +49,19 @@ export function ProjectWorkPlanModal({
   onClose: () => void;
 }) {
   const plan = useWorkPlanQuery(projectId);
-  const { parse, save, start, submitTest, complete, fail, saveAssignments, addWork, combineTitles } =
-    useWorkPlanMutations(projectId);
+  const {
+    parse,
+    save,
+    start,
+    submitTest,
+    complete,
+    fail,
+    saveAssignments,
+    explainPreview,
+    explainApply,
+    addWork,
+    combineTitles,
+  } = useWorkPlanMutations(projectId);
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | undefined>();
   const [draft, setDraft] = useState<WorkPlanPhaseInput[] | null>(null);
@@ -51,6 +69,13 @@ export function ProjectWorkPlanModal({
   const [editing, setEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [placement, setPlacement] = useState<AddedWorkPlacement | null>(null);
+  const [explainStep, setExplainStep] = useState<ExplainStep>('idle');
+  const [explainPreviewData, setExplainPreviewData] = useState<WorkPlanExplainPreview | null>(
+    null,
+  );
+  const [explainAttempt, setExplainAttempt] = useState(0);
+  const [explainError, setExplainError] = useState<string | undefined>();
+  const [aiHint, setAiHint] = useState<string | undefined>();
 
   const data = plan.data;
   const canEdit = Boolean(data?.canAssign);
@@ -163,6 +188,59 @@ export function ProjectWorkPlanModal({
     }
   }
 
+  /** Save: ask AI only when configured; never rewrite without Yes. */
+  function onSaveAssignmentsClick() {
+    setError(undefined);
+    setAiHint(undefined);
+    if (!data?.canExplainWithAi) {
+      void onSaveAssignments();
+      return;
+    }
+    setExplainStep('ask-words');
+  }
+
+  async function loadExplainPreview(attempt: number) {
+    setExplainError(undefined);
+    setExplainAttempt(attempt);
+    setExplainStep('review');
+    try {
+      const preview = await explainPreview.mutateAsync({ attempt });
+      setExplainPreviewData(preview);
+    } catch (cause) {
+      setExplainError(errorMessage(cause));
+    }
+  }
+
+  async function onExplainUpdate() {
+    if (!explainPreviewData) {
+      return;
+    }
+    setExplainError(undefined);
+    try {
+      await explainApply.mutateAsync({
+        titles: explainPreviewData.titles.map((title) => ({
+          id: title.id,
+          title: title.title,
+          points: title.points.map((point) => ({ id: point.id, body: point.body })),
+        })),
+      });
+      setExplainStep('idle');
+      setExplainPreviewData(null);
+      setDraft(null);
+      setAiHint(
+        'AI wording is on the plan. Set times in Edit plan if needed, then press Save again for assignments.',
+      );
+    } catch (cause) {
+      setExplainError(errorMessage(cause));
+    }
+  }
+
+  async function onExplainKeepMine() {
+    setExplainStep('idle');
+    setExplainPreviewData(null);
+    await onSaveAssignments();
+  }
+
   return (
     <Modal
       open
@@ -177,10 +255,12 @@ export function ProjectWorkPlanModal({
               <Button
                 variant="primary"
                 size="sm"
-                loading={saveAssignments.isPending}
+                loading={
+                  saveAssignments.isPending || explainPreview.isPending || explainApply.isPending
+                }
                 disabled={!assignDirty}
                 disabledReason={!assignDirty ? 'Change an assignment to save it.' : undefined}
-                onClick={() => void onSaveAssignments()}
+                onClick={onSaveAssignmentsClick}
               >
                 Save
               </Button>
@@ -222,6 +302,9 @@ export function ProjectWorkPlanModal({
     >
       {plan.isError ? <Alert tone="danger">{errorMessage(plan.error)}</Alert> : null}
       {error ? <Alert tone="danger">{error}</Alert> : null}
+      {aiHint ? (
+        <Alert tone="info" title={aiHint} dismissLabel="Dismiss" onDismiss={() => setAiHint(undefined)} />
+      ) : null}
       {placement && placement.lines.length > 0 && !showEditor ? (
         <Alert
           tone="info"
@@ -301,6 +384,8 @@ export function ProjectWorkPlanModal({
             complete.isPending ||
             fail.isPending ||
             saveAssignments.isPending ||
+            explainPreview.isPending ||
+            explainApply.isPending ||
             addWork.isPending ||
             save.isPending ||
             combineTitles.isPending
@@ -336,6 +421,33 @@ export function ProjectWorkPlanModal({
           }}
         />
       )}
+
+      {explainStep === 'ask-words' ? (
+        <WorkPlanAssignWordsDialog
+          onYes={() => void loadExplainPreview(0)}
+          onNo={() => {
+            setExplainStep('idle');
+            void onSaveAssignments();
+          }}
+          onClose={() => setExplainStep('idle')}
+        />
+      ) : null}
+
+      {explainStep === 'review' ? (
+        <WorkPlanExplainDialog
+          preview={explainPreviewData}
+          loading={explainPreview.isPending || explainApply.isPending}
+          error={explainError}
+          onUpdate={() => void onExplainUpdate()}
+          onKeepMine={() => void onExplainKeepMine()}
+          onRetry={() => void loadExplainPreview(explainAttempt + 1)}
+          onClose={() => {
+            setExplainStep('idle');
+            setExplainPreviewData(null);
+            setExplainError(undefined);
+          }}
+        />
+      ) : null}
     </Modal>
   );
 }

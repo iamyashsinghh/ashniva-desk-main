@@ -8,6 +8,7 @@ import {
 
 import { REALTIME_EVENTS } from '../../infrastructure/realtime/realtime-rooms';
 import { RealtimeService } from '../../infrastructure/realtime/realtime.service';
+import { PrismaService } from '../../database/prisma.service';
 import { AuditLogService } from '../audit-logs/audit-log.service';
 import { MilestoneProgressService } from '../milestones/milestone-progress.service';
 import { NotificationDispatcher } from '../notifications/notification-dispatcher.service';
@@ -25,6 +26,7 @@ export class TaskEventsService {
     private readonly dispatcher: NotificationDispatcher,
     private readonly recipients: NotificationRecipientsService,
     private readonly visibility: TaskVisibilityService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async changed(
@@ -59,19 +61,29 @@ export class TaskEventsService {
     );
   }
 
-  /** Task notifications: assignment, review requested, review returned. */
+  /** Task notifications: assignment, review requested, review returned, comment mentions. */
   async notify(
     actor: AuthenticatedUser,
     row: TaskSummaryRow,
     type: NotificationType,
     userIds: Array<string | null | undefined>,
     body: string | null = null,
+    dedupeKey?: string,
   ): Promise<void> {
     const key = `${row.project.code}-${row.number}`;
+    let mentionTitle: string | undefined;
+    if (type === NOTIFICATION_TYPE.TASK_COMMENT_MENTION) {
+      const actorUser = await this.prisma.user.findUnique({
+        where: { id: actor.userId },
+        select: { name: true },
+      });
+      mentionTitle = `${actorUser?.name ?? 'Somebody'} mentioned you on ${key}`;
+    }
     const titles: Partial<Record<NotificationType, string>> = {
       [NOTIFICATION_TYPE.TASK_ASSIGNED]: `Assigned to you: ${key} ${row.title}`,
       [NOTIFICATION_TYPE.TASK_REVIEW_REQUESTED]: `Ready for review: ${key} ${row.title}`,
       [NOTIFICATION_TYPE.TASK_REVIEW_REJECTED]: `Returned to you: ${key} ${row.title}`,
+      [NOTIFICATION_TYPE.TASK_COMMENT_MENTION]: mentionTitle,
     };
     await this.dispatcher.notify({
       type,
@@ -80,7 +92,9 @@ export class TaskEventsService {
       link: `/tasks/${row.id}`,
       entityType: 'task',
       entityId: row.id,
-      dedupeKey: `${type}:${row.id}:${row.status}:${row.assignedToId ?? ''}:${row.updatedAt.getTime()}`,
+      dedupeKey:
+        dedupeKey ??
+        `${type}:${row.id}:${row.status}:${row.assignedToId ?? ''}:${row.updatedAt.getTime()}`,
       recipients: await this.recipients.members(row.organizationId, userIds),
       excludeUserId: actor.userId,
     });

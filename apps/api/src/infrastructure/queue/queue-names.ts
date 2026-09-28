@@ -11,6 +11,7 @@ export const QUEUE_NAMES = {
   NOTIFICATIONS: 'notifications',
   SLA_MONITOR: 'sla-monitor',
   ROUTING_MONITOR: 'routing-monitor',
+  WORK_TIME_MONITOR: 'work-time-monitor',
   DAILY_REPORTS: 'daily-reports',
   CONTRACTS: 'contracts',
   IVR_EVENTS: 'ivr-events',

@@ -2,6 +2,7 @@ import {
   CONVERSATION_EVENTS,
   CONVERSATION_KIND,
   PAIR_MEMBERSHIP_KINDS,
+  TAGGED_PRIVATE_KINDS,
   type ConversationKind,
   type CreateConversationInput,
   type MessageSummary,
@@ -224,7 +225,7 @@ export function ConversationView({
             title="No messages yet"
             description={
               isGroup
-                ? 'Everybody in this group can read what is written here.'
+                ? 'Everybody in this group reads what is written here. A message that tags somebody is private to them, Super Admins and Project Managers.'
                 : 'Everyone on this project can read what is written here.'
             }
           />
@@ -253,6 +254,7 @@ export function ConversationView({
         canPost={abilities?.canPost ?? false}
         reason={abilities?.reason ?? null}
         compact={compact}
+        tagsArePrivate={TAGGED_PRIVATE_KINDS.includes(detailKind)}
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
         onSend={send}

@@ -37,8 +37,9 @@ describe('notification rules', () => {
     expect(quietHoursDeferral(outside, daytime)).toBeNull();
   });
 
-  it('only in-app is on by default', () => {
+  it('in-app and push are on by default', () => {
     expect(defaultChannelEnabled('IN_APP')).toBe(true);
+    expect(defaultChannelEnabled('PUSH')).toBe(true);
     expect(defaultChannelEnabled('EMAIL')).toBe(false);
     expect(defaultChannelEnabled('WHATSAPP')).toBe(false);
   });

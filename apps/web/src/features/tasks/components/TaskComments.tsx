@@ -1,5 +1,6 @@
 import {
   VISIBILITY,
+  splitMentions,
   type CommentSummary,
   type FileSummary,
   type TaskDetail,
@@ -14,12 +15,17 @@ import {
   Textarea,
   VisibilityBadge,
 } from '@ashniva/ui';
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import { errorMessage } from '../../../shared/lib/api-client';
 import { formatDateTime } from '../../../shared/lib/format';
+import { useComposerMentions } from '../../communication/components/composer-mentions';
+import { MentionPicker } from '../../communication/components/MentionPicker';
 import { downloadFile, useFileObjectUrl } from '../../files/api';
 import { useTaskMutations } from '../api';
+import { useTaskMentionSearch } from './task-mention-search';
+
+import '../../communication/communication.css';
 
 type Filter = 'all' | 'internal' | 'client';
 
@@ -28,7 +34,7 @@ interface TaskCommentsProps {
   canInternal: boolean;
 }
 
-/** Comment thread with the Internal / Client / All filter and a composer with a visibility switch. */
+/** Comment thread with @mentions, visibility switch, and Internal / Client / All filter. */
 export function TaskComments({ task, canInternal }: TaskCommentsProps) {
   const [filter, setFilter] = useState<Filter>('all');
   const [body, setBody] = useState('');
@@ -36,9 +42,21 @@ export function TaskComments({ task, canInternal }: TaskCommentsProps) {
   const [error, setError] = useState<string | undefined>();
   const { comment } = useTaskMutations(task.id);
   const hasClient = Boolean(task.clientOrganization);
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const listboxId = useId();
+  const mentionSearch = useTaskMentionSearch(task.id);
+  const mentions = useComposerMentions(mentionSearch, textarea);
 
   const wanted = visibilityFor(filter);
   const visible = task.comments.filter((entry) => wanted === null || entry.visibility === wanted);
+
+  function apply(value: string, caret?: number) {
+    setBody(value);
+    mentions.noteDraft(value);
+    if (caret !== undefined) {
+      mentions.reactToDraft(value, caret);
+    }
+  }
 
   async function send() {
     if (body.trim().length === 0) {
@@ -49,6 +67,8 @@ export function TaskComments({ task, canInternal }: TaskCommentsProps) {
     try {
       await comment.mutateAsync({ body: body.trim(), visibility });
       setBody('');
+      mentions.noteDraft('');
+      mentionSearch.setTerm(null);
     } catch (cause) {
       setError(errorMessage(cause));
     }
@@ -79,13 +99,61 @@ export function TaskComments({ task, canInternal }: TaskCommentsProps) {
         )}
       </div>
       <div className="composer" style={{ marginTop: 12 }}>
-        <Textarea
-          rows={3}
-          placeholder={clientVisible ? 'Write to the client…' : 'Internal note…'}
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          aria-label="New comment"
-        />
+        <div className="composer__mentions">
+          {mentionSearch.isOpen ? (
+            <MentionPicker
+              query={mentionSearch.term ?? ''}
+              people={mentionSearch.people}
+              isLoading={mentionSearch.isLoading}
+              hasMore={mentionSearch.hasMore}
+              activeIndex={mentionSearch.activeIndex}
+              idPrefix={listboxId}
+              onChoose={(person) => {
+                const next = mentions.insert(
+                  person,
+                  textarea.current?.selectionStart ?? body.length,
+                );
+                apply(next);
+              }}
+            />
+          ) : null}
+          <Textarea
+            ref={textarea}
+            rows={3}
+            placeholder={
+              clientVisible
+                ? 'Write to the client… Type @ to mention someone'
+                : 'Internal note… Type @ to mention someone'
+            }
+            value={body}
+            aria-label="New comment"
+            aria-controls={mentionSearch.isOpen ? listboxId : undefined}
+            aria-activedescendant={
+              mentionSearch.isOpen
+                ? `${listboxId}-${mentionSearch.activeIndex}`
+                : undefined
+            }
+            onChange={(event) => {
+              apply(event.target.value, event.target.selectionStart);
+            }}
+            onKeyDown={(event) => {
+              const result = mentions.handleKey(event);
+              if (result === 'handled') {
+                event.preventDefault();
+                return;
+              }
+              if (typeof result === 'string') {
+                event.preventDefault();
+                apply(result);
+                return;
+              }
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                void send();
+              }
+            }}
+          />
+        </div>
         <div className="composer__row">
           <Switch
             tone="success"
@@ -118,6 +186,7 @@ export function TaskComments({ task, canInternal }: TaskCommentsProps) {
 
 export function CommentRow({ comment }: { comment: CommentSummary }) {
   const files = comment.files ?? [];
+  const names = new Map((comment.mentions ?? []).map((person) => [person.id, person.name]));
   return (
     <div
       className={['comment', comment.visibility === VISIBILITY.CLIENT ? 'comment--client' : '']
@@ -129,7 +198,17 @@ export function CommentRow({ comment }: { comment: CommentSummary }) {
         <span>{formatDateTime(comment.createdAt)}</span>
         <VisibilityBadge visibility={comment.visibility} />
       </div>
-      <div className="comment__body">{comment.body}</div>
+      <div className="comment__body">
+        {splitMentions(comment.body).map((part, index) =>
+          part.kind === 'text' ? (
+            <span key={index}>{part.text}</span>
+          ) : (
+            <span key={index} className="chat-mention">
+              {`@${names.get(part.userId) ?? 'someone'}`}
+            </span>
+          ),
+        )}
+      </div>
       {files.length > 0 ? (
         <div className="comment__files">
           {files.map((file) => (

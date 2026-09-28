@@ -185,6 +185,8 @@ export interface CommentSummary {
   author: UserRef;
   createdAt: string;
   files?: FileSummary[];
+  /** People named with `@[uuid]` in the body, for rendering names. */
+  mentions?: UserRef[];
 }
 
 export interface WorkLogSummary {

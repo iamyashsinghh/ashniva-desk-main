@@ -205,7 +205,7 @@ export class WorkPlanService {
     await this.applyNewWorkAssignment(row, previous, assignedToId, dto.priority ?? null);
     const fresh = await this.plans.findByProject(actor.organizationId, projectId);
     if (assignedToId) {
-      await this.events.assigned(actor, project, assignedToId, 'work on this plan');
+      await this.events.assigned(actor, project, assignedToId, 'work on this plan', `add-work:${row.id}:${Date.now()}`);
     }
     if (fresh) {
       await this.planTasks.sync(actor, project, fresh);
@@ -421,10 +421,16 @@ export class WorkPlanService {
     }
     const label =
       dto.scope === WORK_PLAN_ASSIGN_SCOPE.PROJECT
-        ? 'the project'
+        ? 'the whole plan'
         : dto.scope === WORK_PLAN_ASSIGN_SCOPE.PHASE
           ? 'a phase'
           : 'a topic';
+    const scopeKey =
+      dto.scope === WORK_PLAN_ASSIGN_SCOPE.PROJECT
+        ? `project:${row.id}:${assignedToId ?? 'none'}`
+        : dto.scope === WORK_PLAN_ASSIGN_SCOPE.PHASE
+          ? `phase:${dto.phaseId}:${assignedToId ?? 'none'}`
+          : `title:${dto.titleId}:${assignedToId ?? 'none'}`;
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_ASSIGNED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,
@@ -434,7 +440,7 @@ export class WorkPlanService {
       after: { scope: dto.scope, phaseId: dto.phaseId, titleId: dto.titleId, assignedToId },
     });
     if (assignedToId) {
-      await this.events.assigned(actor, project, assignedToId, label);
+      await this.events.assigned(actor, project, assignedToId, label, scopeKey);
     }
     await this.syncTasks(actor, project, projectId);
     return this.get(actor, projectId);
@@ -470,13 +476,6 @@ export class WorkPlanService {
       }
       this.assertOptionalDeveloper(project, title.assignedToId ?? null);
     }
-    const previousAssignees = new Set(
-      [
-        row.assignedToId,
-        ...row.phases.map((phase) => phase.assignedToId),
-        ...row.phases.flatMap((phase) => phase.titles.map((title) => title.assignedToId)),
-      ].filter((id): id is string => Boolean(id)),
-    );
     const now = new Date();
     const phaseById = new Map(row.phases.map((phase) => [phase.id, phase]));
     const titleById = new Map(
@@ -529,18 +528,197 @@ export class WorkPlanService {
       actorUserId: actor.userId,
       after: { assignedToId, priority, phases: dto.phases, titles: dto.titles },
     });
-    const nextAssignees = new Set(
-      [
-        assignedToId,
-        ...dto.phases.map((phase) => phase.assignedToId ?? null),
-        ...dto.titles.map((title) => title.assignedToId ?? null),
-      ].filter((id): id is string => Boolean(id)),
-    );
-    for (const userId of nextAssignees) {
-      if (!previousAssignees.has(userId)) {
-        await this.events.assigned(actor, project, userId, 'work on this plan');
+
+    // Notify each person who newly received a plan / phase / topic — not only people who were
+    // never on the plan at all. Re-assigning phase 2 to someone who already had phase 1 used to
+    // stay silent because they were already in `previousAssignees`.
+    const gained = new Map<string, string[]>();
+    const noteGain = (userId: string | null | undefined, label: string) => {
+      if (!userId) {
+        return;
+      }
+      const labels = gained.get(userId) ?? [];
+      labels.push(label);
+      gained.set(userId, labels);
+    };
+    if (assignedToId && assignedToId !== row.assignedToId) {
+      noteGain(assignedToId, 'the whole plan');
+    }
+    for (const phase of dto.phases) {
+      const previous = phaseById.get(phase.id)?.assignedToId ?? null;
+      const next = phase.assignedToId ?? null;
+      if (next && next !== previous) {
+        const heading = phaseById.get(phase.id)?.heading ?? 'a phase';
+        noteGain(next, `phase "${heading}"`);
       }
     }
+    for (const title of dto.titles) {
+      const previous = titleById.get(title.id)?.assignedToId ?? null;
+      const next = title.assignedToId ?? null;
+      if (next && next !== previous) {
+        const name = titleById.get(title.id)?.title ?? 'a topic';
+        noteGain(next, `topic "${name}"`);
+      }
+    }
+    for (const [userId, labels] of gained) {
+      const scopeLabel = labels.length === 1 ? labels[0]! : labels.join(', ');
+      const scopeKey = `assignments:${[...labels].sort().join('|')}:${userId}`;
+      await this.events.assigned(actor, project, userId, scopeLabel, scopeKey);
+    }
+
+    await this.syncTasks(actor, project, projectId);
+    return this.get(actor, projectId);
+  }
+
+  /**
+   * Rewrites Summary steps for the developer. Does not save — the manager still confirms and then
+   * Saves assignments / times themselves.
+   */
+  async explainPreview(
+    actor: AuthenticatedUser,
+    projectId: string,
+    dto: { titleIds?: string[]; attempt?: number },
+  ): Promise<{
+    titles: Array<{
+      id: string;
+      title: string;
+      phaseHeading: string;
+      originalTitle: string;
+      points: Array<{
+        id: string;
+        body: string;
+        originalBody: string;
+        estimateMinutes: number;
+      }>;
+    }>;
+  }> {
+    const { flags, project } = await this.access(actor, projectId);
+    if (!flags.canAssign) {
+      throw new ForbiddenException('Only a manager or team lead can rewrite this plan');
+    }
+    if (!this.gemini.isEnabled()) {
+      throw new BadRequestException('AI wording is not configured');
+    }
+    const row = await this.plans.findByProject(actor.organizationId, projectId);
+    if (!row) {
+      throw new NotFoundException('Work plan not found');
+    }
+    const wanted = dto.titleIds?.length ? new Set(dto.titleIds) : null;
+    const source = row.phases.flatMap((phase) =>
+      phase.titles
+        .filter((title) => !wanted || wanted.has(title.id))
+        .filter((title) => title.points.some((point) => !point.isError))
+        .map((title) => ({
+          phaseHeading: phase.heading,
+          id: title.id,
+          title: title.title,
+          points: title.points
+            .filter((point) => !point.isError)
+            .map((point) => ({
+              id: point.id,
+              body: point.body,
+              estimateMinutes: point.estimateMinutes,
+            })),
+        })),
+    );
+    if (source.length === 0) {
+      throw new BadRequestException('Pick topics with steps to rewrite');
+    }
+    const outline = source
+      .map((title) => {
+        const steps = title.points
+          .map(
+            (point) =>
+              `    - pointId=${point.id} (${point.estimateMinutes} min): ${point.body}`,
+          )
+          .join('\n');
+        return `- titleId=${title.id} [${title.phaseHeading}] "${title.title}"\n${steps}`;
+      })
+      .join('\n');
+    const rewritten = await this.gemini.explainWork({
+      outline,
+      attempt: dto.attempt ?? 0,
+    });
+    const byId = new Map(rewritten.titles.map((title) => [title.id, title]));
+    return {
+      titles: source.map((title) => {
+        const next = byId.get(title.id);
+        const pointById = new Map((next?.points ?? []).map((point) => [point.id, point]));
+        return {
+          id: title.id,
+          title: next?.title?.trim() || title.title,
+          phaseHeading: title.phaseHeading,
+          originalTitle: title.title,
+          points: title.points.map((point) => ({
+            id: point.id,
+            body: pointById.get(point.id)?.body?.trim() || point.body,
+            originalBody: point.body,
+            estimateMinutes: point.estimateMinutes,
+          })),
+        };
+      }),
+    };
+  }
+
+  /** Applies a confirmed rewrite to titles/point bodies only. Minutes stay as they were. */
+  async explainApply(
+    actor: AuthenticatedUser,
+    projectId: string,
+    dto: {
+      titles: Array<{ id: string; title: string; points: Array<{ id: string; body: string }> }>;
+    },
+  ): Promise<ProjectWorkPlan> {
+    const { flags, project } = await this.access(actor, projectId);
+    if (!flags.canAssign) {
+      throw new ForbiddenException('Only a manager or team lead can rewrite this plan');
+    }
+    const row = await this.plans.findByProject(actor.organizationId, projectId);
+    if (!row) {
+      throw new NotFoundException('Work plan not found');
+    }
+    const titleById = new Map(
+      row.phases.flatMap((phase) => phase.titles.map((title) => [title.id, title] as const)),
+    );
+    await this.prisma.$transaction(async (tx) => {
+      for (const title of dto.titles) {
+        const current = titleById.get(title.id);
+        if (!current) {
+          throw new NotFoundException('Title not found');
+        }
+        const nextTitle = title.title.trim();
+        if (nextTitle && nextTitle !== current.title) {
+          await tx.projectWorkPlanTitle.update({
+            where: { id: title.id },
+            data: { title: nextTitle.slice(0, 200) },
+          });
+        }
+        const pointById = new Map(current.points.map((point) => [point.id, point]));
+        for (const point of title.points) {
+          const existing = pointById.get(point.id);
+          if (!existing || existing.isError) {
+            throw new BadRequestException('Unknown or error step in rewrite');
+          }
+          const body = point.body.trim();
+          if (!body) {
+            throw new BadRequestException('Each step needs wording');
+          }
+          if (body !== existing.body) {
+            await tx.projectWorkPlanPoint.update({
+              where: { id: point.id },
+              data: { body: body.slice(0, 4000) },
+            });
+          }
+        }
+      }
+    });
+    await this.auditLog.record({
+      action: AUDIT_ACTION.WORK_PLAN_UPDATED,
+      entityType: AUDIT_ENTITY_TYPE.PROJECT,
+      entityId: projectId,
+      organizationId: actor.organizationId,
+      actorUserId: actor.userId,
+      after: { explainApply: dto.titles.map((title) => title.id) },
+    });
     await this.syncTasks(actor, project, projectId);
     return this.get(actor, projectId);
   }
@@ -1221,7 +1399,14 @@ export class WorkPlanService {
       (onProject && actor.roleKey === ROLE_KEYS.TEAM_LEAD);
     const canAssign = canManage || canLead;
     return {
-      flags: { canManage, canWork, canTest: canTest && onProject, canLead, canAssign },
+      flags: {
+        canManage,
+        canWork,
+        canTest: canTest && onProject,
+        canLead,
+        canAssign,
+        canExplainWithAi: canAssign && this.gemini.isEnabled(),
+      },
       project,
     };
   }

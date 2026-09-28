@@ -212,6 +212,27 @@ export function mentionsIn(body: string): string[] {
   return [...new Set([...matches].map((match) => match[1] as string))];
 }
 
+/** The conversation kinds in which tagging somebody makes the message private to them. */
+export const TAGGED_PRIVATE_KINDS: readonly ConversationKind[] = [CONVERSATION_KIND.GROUP];
+
+/**
+ * The people a message is restricted to, beyond its sender and the tagged-message reader roles.
+ *
+ * Empty means the whole conversation reads it. In a group, tagging somebody is a private word to
+ * them: nobody else in the group sees it, except `TAGGED_MESSAGE_READER_ROLE_KEYS`. Tagging only
+ * yourself names nobody else, so it stays an ordinary message.
+ */
+export function taggedAudienceOf(
+  kind: ConversationKind,
+  body: string,
+  senderId: string | null,
+): string[] {
+  if (!TAGGED_PRIVATE_KINDS.includes(kind)) {
+    return [];
+  }
+  return mentionsIn(body).filter((userId) => userId !== senderId);
+}
+
 /**
  * A body with every mention replaced by `label`.
  *
@@ -221,6 +242,23 @@ export function mentionsIn(body: string): string[] {
  */
 export function maskMentions(body: string, label = '@someone'): string {
   return body.replace(MENTION_PATTERN, label);
+}
+
+/**
+ * A body with each `@[uuid]` replaced by `@Name` from the map.
+ *
+ * Prefer this over `maskMentions` when the caller already has the people — a notification that
+ * says "@someone" when the roster is on hand is a missed chance to say who was named.
+ */
+export function labelMentions(
+  body: string,
+  names: ReadonlyMap<string, string>,
+  fallback = 'someone',
+): string {
+  return body.replace(MENTION_PATTERN, (_match, userId: string) => {
+    const name = names.get(userId)?.trim();
+    return `@${name && name.length > 0 ? name : fallback}`;
+  });
 }
 
 /**

@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { DERIVED_MEMBERSHIP_KINDS, type ConversationKind } from '@ashniva/types';
+import {
+  DERIVED_MEMBERSHIP_KINDS,
+  readsEveryTaggedMessage,
+  type AuthenticatedUser,
+  type ConversationKind,
+} from '@ashniva/types';
 
 import { PrismaService } from '../../database/prisma.service';
 import type { Prisma } from '../../generated/prisma/client';
@@ -30,6 +35,31 @@ export type MessageRow = Prisma.MessageGetPayload<{ include: typeof MESSAGE_INCL
 export type MessageRevisionRow = Prisma.MessageRevisionGetPayload<{
   include: typeof REVISION_INCLUDE;
 }>;
+
+/** Who is reading, as far as tagged group messages are concerned. */
+export interface MessageViewer {
+  userId: string;
+  /** Holds a tagged-message reader role, so no restricted message is hidden from them. */
+  readsEveryTagged: boolean;
+}
+
+export function messageViewerOf(actor: AuthenticatedUser): MessageViewer {
+  return { userId: actor.userId, readsEveryTagged: readsEveryTaggedMessage(actor.roleKey) };
+}
+
+/** The messages this viewer may see: unrestricted ones, their own, and those that tag them. */
+export function visibleMessagesWhere(viewer: MessageViewer): Prisma.MessageWhereInput {
+  if (viewer.readsEveryTagged) {
+    return {};
+  }
+  return {
+    OR: [
+      { restrictedToUserIds: { isEmpty: true } },
+      { senderId: viewer.userId },
+      { restrictedToUserIds: { has: viewer.userId } },
+    ],
+  };
+}
 
 /**
  * Data access for internal conversations.
@@ -170,9 +200,18 @@ export class ConversationsRepository {
     });
   }
 
-  messages(conversationId: string, limit: number, cursor?: string): Promise<MessageRow[]> {
+  messages(
+    conversationId: string,
+    viewer: MessageViewer,
+    limit: number,
+    cursor?: string,
+  ): Promise<MessageRow[]> {
     return this.prisma.message.findMany({
-      where: { conversationId, ...(cursor ? { id: { lt: cursor } } : {}) },
+      where: {
+        conversationId,
+        ...(cursor ? { id: { lt: cursor } } : {}),
+        ...visibleMessagesWhere(viewer),
+      },
       include: MESSAGE_INCLUDE,
       // Newest first so a cursor walks backwards through the thread; the caller reverses for
       // display. Ids are UUIDv7, so ordering by id is ordering by time and is stable under ties.
@@ -188,10 +227,17 @@ export class ConversationsRepository {
     });
   }
 
-  /** One message of one conversation. Scoped by conversation so an id from another thread misses. */
-  messageById(conversationId: string, messageId: string): Promise<MessageRow | null> {
+  /**
+   * One message of one conversation. Scoped by conversation so an id from another thread misses,
+   * and by viewer so a tagged message somebody may not see misses the same way.
+   */
+  messageById(
+    conversationId: string,
+    messageId: string,
+    viewer?: MessageViewer,
+  ): Promise<MessageRow | null> {
     return this.prisma.message.findFirst({
-      where: { id: messageId, conversationId },
+      where: { id: messageId, conversationId, ...(viewer ? visibleMessagesWhere(viewer) : {}) },
       include: MESSAGE_INCLUDE,
     });
   }
@@ -215,11 +261,12 @@ export class ConversationsRepository {
     message: MessageRow,
     body: string,
     editedById: string,
+    restrictedToUserIds: readonly string[] = message.restrictedToUserIds,
   ): Promise<MessageRow | null> {
     return this.prisma.$transaction(async (tx) => {
       const claimed = await tx.message.updateMany({
         where: { id: message.id, deletedAt: null, editedAt: message.editedAt },
-        data: { body, editedAt: new Date() },
+        data: { body, editedAt: new Date(), restrictedToUserIds: [...restrictedToUserIds] },
       });
       if (claimed.count === 0) {
         return null;
@@ -351,25 +398,34 @@ export class ConversationsRepository {
 
   /** Unread counts for a set of conversations, in one query. */
   async unreadCounts(
-    userId: string,
+    viewer: MessageViewer,
     conversations: readonly ConversationRow[],
   ): Promise<Map<string, number>> {
     const counts = new Map<string, number>();
     if (conversations.length === 0) {
       return counts;
     }
+    const { userId } = viewer;
     const rows = await this.prisma.message.groupBy({
       by: ['conversationId'],
       where: {
         conversationId: { in: conversations.map((row) => row.id) },
         senderId: { not: userId },
         deletedAt: null,
-        OR: conversations.map((row) => ({
-          conversationId: row.id,
-          createdAt: {
-            gt: row.members.find((member) => member.userId === userId)?.lastReadAt ?? new Date(0),
+        // Both clauses are an `OR`, so they go under `AND` rather than side by side.
+        AND: [
+          {
+            OR: conversations.map((row) => ({
+              conversationId: row.id,
+              createdAt: {
+                gt:
+                  row.members.find((member) => member.userId === userId)?.lastReadAt ??
+                  new Date(0),
+              },
+            })),
           },
-        })),
+          visibleMessagesWhere(viewer),
+        ],
       },
       _count: { _all: true },
     });
@@ -380,7 +436,10 @@ export class ConversationsRepository {
   }
 
   /** The last message of each conversation, for the list preview. */
-  async previews(conversationIds: readonly string[]): Promise<Map<string, MessageRow>> {
+  async previews(
+    conversationIds: readonly string[],
+    viewer: MessageViewer,
+  ): Promise<Map<string, MessageRow>> {
     const previews = new Map<string, MessageRow>();
     if (conversationIds.length === 0) {
       return previews;
@@ -388,7 +447,11 @@ export class ConversationsRepository {
     // One row per conversation would need a lateral join; taking the newest few and keeping the
     // first per conversation is simpler and bounded by the page size the caller already chose.
     const rows = await this.prisma.message.findMany({
-      where: { conversationId: { in: [...conversationIds] }, deletedAt: null },
+      where: {
+        conversationId: { in: [...conversationIds] },
+        deletedAt: null,
+        ...visibleMessagesWhere(viewer),
+      },
       include: MESSAGE_INCLUDE,
       orderBy: { id: 'desc' },
       take: conversationIds.length * 4,

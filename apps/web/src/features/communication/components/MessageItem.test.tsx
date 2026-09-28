@@ -31,6 +31,7 @@ function message(over: Partial<MessageSummary> = {}): MessageSummary {
     createdAt: '2026-09-13T09:00:00.000Z',
     editedAt: null,
     deletedAt: null,
+    restrictedToUserIds: [],
     canEdit: false,
     canDelete: false,
     ...over,
@@ -71,6 +72,18 @@ function file(over: Partial<FileSummary> = {}): FileSummary {
 }
 
 describe('MessageItem', () => {
+  it('labels a tagged group message as private, naming who it is for', () => {
+    renderItem({ restrictedToUserIds: [VIEWER, 'ravi'] }, false, {
+      audience: [{ id: 'ravi', name: 'Ravi K', email: 'ravi@example.com', projectRole: null }],
+    });
+    expect(screen.getByText('Private · to you, Ravi K')).toBeInTheDocument();
+  });
+
+  it('shows no private label on an ordinary message', () => {
+    renderItem();
+    expect(screen.queryByText(/Private ·/)).not.toBeInTheDocument();
+  });
+
   it('offers Edit on a message the server says may be changed', () => {
     renderItem({
       sender: { id: VIEWER, name: 'Dev One', email: 'dev@example.com' },

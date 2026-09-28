@@ -216,6 +216,10 @@
   min-width: 0;
 }
 
+.notification-permission-banner {
+  margin-bottom: 14px;
+}
+
 /* Bottom tab bar (phones only) --------------------------------------------------------- */
 .app-tabbar {
   display: none;

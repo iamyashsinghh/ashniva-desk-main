@@ -46,5 +46,5 @@ export function quietHoursDeferral(now: Date, settings: QuietHours): Date | null
 
 /** Default channel state when a person has not saved a preference. */
 export function defaultChannelEnabled(channel: string): boolean {
-  return channel === 'IN_APP';
+  return channel === 'IN_APP' || channel === 'PUSH';
 }

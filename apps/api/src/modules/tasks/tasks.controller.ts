@@ -4,6 +4,7 @@ import {
   PERMISSIONS,
   type AuthenticatedUser,
   type CommentSummary,
+  type MentionablePage,
   type PaginatedResponse,
   type TaskCategoryRef,
   type TaskDetail,
@@ -20,6 +21,7 @@ import {
   LogWorkDto,
   ReviewTaskDto,
   SubmitTaskDto,
+  TaskMentionableQueryDto,
   TaskNoteDto,
   UpdateTaskDto,
 } from './dto/task.dto';
@@ -73,6 +75,17 @@ export class TasksController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<TaskDetail> {
     return this.tasks.get(actor, id);
+  }
+
+  @Get(':id/mentionable')
+  @RequirePermissions(PERMISSIONS.TASK_READ)
+  @ApiOperation({ summary: 'People who can be @mentioned in a comment on this task' })
+  mentionable(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TaskMentionableQueryDto,
+  ): Promise<MentionablePage> {
+    return this.tasks.mentionable(actor, id, query);
   }
 
   @Patch(':id')

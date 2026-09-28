@@ -13,7 +13,6 @@ import { useRealtimeSocket } from '../../app/providers/realtime-socket-context';
 import { apiRequest } from '../../shared/lib/api-client';
 import { conversationKeys } from './api';
 import { contextLabelOf } from './conversation-filters';
-import { playMessageSound } from './message-sound';
 import { useMessenger } from './messenger-context';
 
 /** How long a card stays up. Long enough to read a line, short enough not to sit in the way. */
@@ -112,7 +111,6 @@ export function useLiveMessageToasts(): {
       if (!conversation || !live) {
         return;
       }
-      playMessageSound();
       const toast = toastFor(notification, conversation);
       setToasts((current) =>
         current.some((existing) => existing.key === toast.key)

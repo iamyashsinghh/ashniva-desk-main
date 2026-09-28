@@ -74,6 +74,7 @@ model Organization {
   notifications        Notification[]
   notificationPrefs    NotificationPreference[]
   notificationSettings NotificationSetting[]
+  pushSubscriptions    PushSubscription[]
   invitations          UserInvitation[]
   integrations         IntegrationConnection[]
   integrationEvents    IntegrationEvent[]
@@ -215,6 +216,7 @@ model User {
   notifications         Notification[]
   notificationPrefs     NotificationPreference[]
   notificationSettings  NotificationSetting[]
+  pushSubscriptions     PushSubscription[]
   invitations           UserInvitation[]         @relation("InvitationUser")
   sentInvitations       UserInvitation[]         @relation("InvitationSender")
   passwordResetTokens   PasswordResetToken[]
@@ -1566,10 +1568,14 @@ enum NotificationType {
   WORK_PLAN_RETURNED
   WORK_PLAN_DOUBT
   WORK_PLAN_ASSIGNED
+  WORK_PLAN_TIME_EXCEEDED
+  TASK_TIME_EXCEEDED
+  TASK_COMMENT_MENTION
 }
 
 enum NotificationChannel {
   IN_APP
+  PUSH
   EMAIL
   WHATSAPP
 }
@@ -2117,6 +2123,26 @@ model NotificationSetting {
 
   @@id([userId, organizationId])
   @@map("notification_settings")
+}
+
+/// Browser Web Push subscription for one device/browser. Endpoint is unique across the system.
+model PushSubscription {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  endpoint       String   @db.Text
+  p256dh         String
+  auth           String
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([endpoint])
+  @@index([userId, organizationId])
+  @@map("push_subscriptions")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -4743,6 +4769,9 @@ model Message {
   /// The sender's own id for this send, so a retried request returns the first message rather
   /// than posting a second one. Unique per conversation.
   clientMessageId String?            @map("client_message_id")
+  /// The tagged people a group message is private to; empty when the whole conversation reads it.
+  /// Only the sender, these people and the tagged-message reader roles see a restricted message.
+  restrictedToUserIds String[]       @default([]) @map("restricted_to_user_ids") @db.Uuid
   createdAt       DateTime           @default(now()) @map("created_at")
   editedAt        DateTime?          @map("edited_at")
   deletedAt       DateTime?          @map("deleted_at")

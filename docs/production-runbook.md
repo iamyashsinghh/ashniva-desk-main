@@ -139,6 +139,7 @@ The job column is the literal name — the scheduler id, and what "run a sweep b
 | `notifications` | `deliver-deferred` | deliver deferred notifications | every minute |
 | `notifications` | `daily-reminders` | daily reminders | 08:30 IST |
 | `sla-monitor` | `sla-monitor` | SLA warnings and breaches | every 2 minutes |
+| `work-time-monitor` | `work-time-monitor` | work-plan / task allotment overrun (PM + Super Admin) | every 2 minutes |
 | `routing-monitor` | `routing-monitor` | acknowledgement timers | every minute |
 | `ivr-events` | `call-monitor` | stale-call sweep | every minute |
 | `messaging` | `stalled-send-sweep` | stalled outbound-send sweep | every 5 minutes |

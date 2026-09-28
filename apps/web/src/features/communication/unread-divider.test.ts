@@ -24,6 +24,7 @@ function message(id: string, at: string, senderId = THEM): MessageSummary {
     createdAt: at,
     editedAt: null,
     deletedAt: null,
+    restrictedToUserIds: [],
     canEdit: false,
     canDelete: false,
   };

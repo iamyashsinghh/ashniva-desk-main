@@ -3,7 +3,9 @@ import {
   AUDIT_ACTION,
   AUDIT_ENTITY_TYPE,
   COMMUNICATION_ACTION,
+  taggedAudienceOf,
   type AuthenticatedUser,
+  type ConversationKind,
   type MessagePage,
   type MessageSummary,
   type MessageSystemKind,
@@ -21,6 +23,7 @@ import { abilitiesOf } from './message-abilities';
 import { UnadoptableAttachmentsError } from './message-attachments';
 import {
   ConversationsRepository,
+  messageViewerOf,
   type ConversationRow,
   type MessageRow,
 } from './conversations.repository';
@@ -82,7 +85,12 @@ export class MessagesService {
 
     const limit = query.limit ?? 50;
     // One more than asked for, so "is there another page" is answered without a second count.
-    const rows = await this.conversations.messages(row.id, limit + 1, query.cursor);
+    const rows = await this.conversations.messages(
+      row.id,
+      messageViewerOf(actor),
+      limit + 1,
+      query.cursor,
+    );
     const page = rows.slice(0, limit);
     // One resolver and one clock for the whole page: fifty messages judged against fifty
     // different instants could disagree about where the edit window closes.
@@ -159,6 +167,7 @@ export class MessagesService {
           // arrived as, and the preview describes it by its files instead.
           body,
           clientMessageId: dto.clientMessageId ?? null,
+          restrictedToUserIds: taggedAudienceOf(row.kind as ConversationKind, body, actor.userId),
         },
         attachmentIds,
       )) ??
@@ -193,7 +202,7 @@ export class MessagesService {
       });
     }
 
-    const audience = await this.audience.forSender(actor, row);
+    const audience = await this.audience.forMessage(actor, row, created.restrictedToUserIds);
     // The fan-out payload carries no abilities: every recipient would get a different answer and
     // none of them is the sender. Their client refetches, which asks the question properly.
     this.realtime.messagePosted(row, toMessageSummary(created), audience);

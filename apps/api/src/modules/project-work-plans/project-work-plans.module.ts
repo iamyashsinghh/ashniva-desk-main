@@ -1,5 +1,7 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 
+import { QUEUE_NAMES } from '../../infrastructure/queue/queue-names';
 import { FilesModule } from '../files/files.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ProjectsModule } from '../projects/projects.module';
@@ -12,6 +14,8 @@ import { WorkPlanMapper } from './work-plan.mapper';
 import { WorkPlanRepository } from './work-plan.repository';
 import { WorkPlanService } from './work-plan.service';
 import { WorkPlanTasksService } from './work-plan-tasks.service';
+import { WorkTimeMonitorProcessor } from './work-time-monitor.processor';
+import { WorkTimeMonitorService } from './work-time-monitor.service';
 
 @Module({
   imports: [
@@ -20,6 +24,7 @@ import { WorkPlanTasksService } from './work-plan-tasks.service';
     NotificationsModule,
     TasksModule,
     WorkPlanLogoutPauseModule,
+    BullModule.registerQueue({ name: QUEUE_NAMES.WORK_TIME_MONITOR }),
   ],
   controllers: [WorkPlanController],
   providers: [
@@ -29,7 +34,9 @@ import { WorkPlanTasksService } from './work-plan-tasks.service';
     WorkPlanEventsService,
     WorkPlanTasksService,
     WorkPlanService,
+    WorkTimeMonitorService,
+    WorkTimeMonitorProcessor,
   ],
-  exports: [WorkPlanLogoutPauseModule],
+  exports: [WorkPlanLogoutPauseModule, WorkTimeMonitorService],
 })
 export class ProjectWorkPlansModule {}

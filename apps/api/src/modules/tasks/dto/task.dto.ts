@@ -1,15 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  MAX_WORK_AREAS,
-  PRIORITY,
-  VISIBILITY,
-  WORK_AREA_MAX_LENGTH,
-  WORK_AREAS,
-  normalizeWorkAreas,
-  type Priority,
-  type Visibility,
-} from '@ashniva/types';
-import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
@@ -26,6 +16,20 @@ import {
   MinLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import {
+  DEFAULT_MENTIONABLE_LIMIT,
+  MAX_MENTIONABLE_LIMIT,
+  MAX_MENTIONABLE_QUERY_LENGTH,
+  MAX_WORK_AREAS,
+  MIN_MENTIONABLE_QUERY_LENGTH,
+  PRIORITY,
+  VISIBILITY,
+  WORK_AREA_MAX_LENGTH,
+  WORK_AREAS,
+  normalizeWorkAreas,
+  type Priority,
+  type Visibility,
+} from '@ashniva/types';
 
 export { ListTasksQueryDto } from './list-tasks-query.dto';
 
@@ -378,4 +382,28 @@ export class CreateCommentDto {
   @IsOptional()
   @IsIn(VISIBILITIES)
   visibility?: Visibility;
+}
+
+export class TaskMentionableQueryDto {
+  @ApiPropertyOptional({
+    maxLength: MAX_MENTIONABLE_QUERY_LENGTH,
+    description: `Part of a name or email. Below ${MIN_MENTIONABLE_QUERY_LENGTH} characters the list is returned in name order.`,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_MENTIONABLE_QUERY_LENGTH)
+  q?: string;
+
+  @ApiPropertyOptional({ maximum: MAX_MENTIONABLE_LIMIT, default: DEFAULT_MENTIONABLE_LIMIT })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(MAX_MENTIONABLE_LIMIT)
+  @Transform(({ value }) => (value === undefined ? undefined : Number(value)))
+  limit?: number;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  cursor?: string;
 }

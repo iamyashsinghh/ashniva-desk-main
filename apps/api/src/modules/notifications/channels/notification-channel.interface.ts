@@ -17,7 +17,7 @@ export interface NotificationMessage {
 }
 
 export interface NotificationChannel {
-  readonly key: 'EMAIL' | 'WHATSAPP';
+  readonly key: 'EMAIL' | 'WHATSAPP' | 'PUSH';
   /** False until a provider is configured; the dispatcher then skips the channel silently. */
   isConfigured(): boolean;
   send(message: NotificationMessage): Promise<void>;

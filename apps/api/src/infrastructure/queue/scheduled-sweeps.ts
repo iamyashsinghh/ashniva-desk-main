@@ -13,6 +13,7 @@ export const SCHEDULED_SWEEPS: Record<QueueName, readonly string[]> = {
   [QUEUE_NAMES.NOTIFICATIONS]: ['deliver-deferred', 'daily-reminders'],
   [QUEUE_NAMES.SLA_MONITOR]: ['sla-monitor'],
   [QUEUE_NAMES.ROUTING_MONITOR]: ['routing-monitor'],
+  [QUEUE_NAMES.WORK_TIME_MONITOR]: ['work-time-monitor'],
   [QUEUE_NAMES.DAILY_REPORTS]: ['daily-snapshot'],
   [QUEUE_NAMES.CONTRACTS]: ['contract-daily'],
   [QUEUE_NAMES.IVR_EVENTS]: ['call-monitor'],

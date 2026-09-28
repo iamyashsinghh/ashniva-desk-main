@@ -2,6 +2,7 @@ import {
   COMMUNICATION_REFUSAL_LABELS,
   MAX_MESSAGE_ATTACHMENTS,
   MAX_MESSAGE_LENGTH,
+  mentionsIn,
   type CommunicationRefusal,
   type MessageSummary,
 } from '@ashniva/types';
@@ -14,6 +15,7 @@ import { useComposerMentions } from './composer-mentions';
 import { useComposerSend, type SendMessageDraft } from './composer-send';
 import { grow } from './composer-textarea';
 import { withMentionsAsPlainText } from './mention-refusal';
+import { useMentionSearch } from './mention-search';
 import { MentionPicker } from './MentionPicker';
 
 export type { SendMessageDraft } from './composer-send';
@@ -30,6 +32,8 @@ export interface MessageComposerProps {
   onSend: (input: SendMessageDraft) => Promise<void>;
   /** Corner messenger: short placeholder, no character counter crowding the bar. */
   compact?: boolean;
+  /** A group, where tagging somebody makes the message private to them. */
+  tagsArePrivate?: boolean;
 }
 
 /**
@@ -61,6 +65,7 @@ export function MessageComposer({
   onCancelReply,
   onSend,
   compact = false,
+  tagsArePrivate = false,
 }: MessageComposerProps) {
   const [draft, setDraft] = useState('');
   const [attachmentError, setAttachmentError] = useState<string | undefined>();
@@ -74,13 +79,19 @@ export function MessageComposer({
     // Attaching or removing a file changes the message, so it changes the key it is sent under.
     sending.draftChanged,
   );
-  const mentions = useComposerMentions(conversationId, textarea);
+  const mentionSearch = useMentionSearch(conversationId);
+  const mentions = useComposerMentions(mentionSearch, textarea);
   const listboxId = useId();
 
   const trimmed = draft.trim();
   const tooLong = draft.length > MAX_MESSAGE_LENGTH;
   const canSubmit =
     canPost && !sending.busy && !tooLong && (trimmed.length > 0 || attachments.files.length > 0);
+  const goesPrivate = tagsArePrivate && mentionsIn(bodyToSend()).length > 0;
+  let placeholder = 'You cannot post here';
+  if (canPost) {
+    placeholder = compact ? 'Aa' : 'Write a message. Type @ to mention somebody.';
+  }
 
   /**
    * The draft, replaced wholesale — by choosing a mention, or by the one rewrite below.
@@ -213,6 +224,12 @@ export function MessageComposer({
         </ul>
       ) : null}
 
+      {goesPrivate ? (
+        <p className="chat-composer__private" role="status">
+          Private message: only the people you tag, Super Admins and Project Managers will see it.
+        </p>
+      ) : null}
+
       {mentions.search.isOpen ? (
         <MentionPicker
           query={mentions.search.term ?? ''}
@@ -255,7 +272,7 @@ export function MessageComposer({
           value={draft}
           maxLength={MAX_MESSAGE_LENGTH}
           aria-label="Write a message"
-          placeholder={canPost ? (compact ? 'Aa' : 'Write a message. Type @ to mention somebody.') : 'You cannot post here'}
+          placeholder={placeholder}
           disabled={!canPost}
           role="combobox"
           aria-expanded={mentions.search.isOpen}

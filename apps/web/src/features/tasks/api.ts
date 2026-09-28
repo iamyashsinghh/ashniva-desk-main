@@ -1,5 +1,6 @@
 import type {
   CommentSummary,
+  MentionablePage,
   PaginatedResponse,
   Priority,
   TaskDetail,
@@ -8,6 +9,7 @@ import type {
   TaskSummary,
   Visibility,
 } from '@ashniva/types';
+import { DEFAULT_MENTIONABLE_LIMIT } from '@ashniva/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiRequest } from '../../shared/lib/api-client';
@@ -36,6 +38,7 @@ export const taskKeys = {
   all: ['tasks'] as const,
   list: (params: TaskListParams) => ['tasks', 'list', params] as const,
   detail: (id: string) => ['tasks', 'detail', id] as const,
+  mentionable: (id: string, query: string) => ['tasks', 'mentionable', id, query] as const,
 };
 
 export function fetchTasks(params: TaskListParams): Promise<PaginatedResponse<TaskSummary>> {
@@ -67,6 +70,24 @@ export function useTaskQuery(id: string | undefined) {
     queryKey: taskKeys.detail(id ?? ''),
     queryFn: () => apiRequest<TaskDetail>(`/tasks/${id}`),
     enabled: Boolean(id),
+  });
+}
+
+/** People who can be @mentioned in a comment on this task. */
+export function useTaskMentionableQuery(
+  taskId: string | undefined,
+  query: string,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: taskKeys.mentionable(taskId ?? '', query),
+    queryFn: () =>
+      apiRequest<MentionablePage>(`/tasks/${taskId}/mentionable`, {
+        query: { q: query || undefined, limit: DEFAULT_MENTIONABLE_LIMIT },
+      }),
+    enabled: enabled && Boolean(taskId),
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
   });
 }
 

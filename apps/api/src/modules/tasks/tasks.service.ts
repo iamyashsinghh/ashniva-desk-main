@@ -17,8 +17,11 @@ import {
   TASK_STATUS,
   VISIBILITY,
   isManagerRole,
+  labelMentions,
+  mentionsIn,
   type AuthenticatedUser,
   type CommentSummary,
+  type MentionablePage,
   type PaginatedResponse,
   type TaskCategoryKind,
   type TaskCategoryRef,
@@ -32,6 +35,7 @@ import { AuditLogService } from '../audit-logs/audit-log.service';
 import { MilestoneProgressService } from '../milestones/milestone-progress.service';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { TaskEventsService } from './task-events.service';
+import { TaskMentionsService } from './task-mentions.service';
 import { CommentsRepository } from './comments.repository';
 import type {
   CreateCommentDto,
@@ -56,6 +60,7 @@ export class TasksService {
     private readonly auditLog: AuditLogService,
     private readonly milestones: MilestoneProgressService,
     private readonly events: TaskEventsService,
+    private readonly mentions: TaskMentionsService,
     private readonly visibility: TaskVisibilityService,
   ) {}
 
@@ -103,9 +108,10 @@ export class TasksService {
     if (!row) {
       throw new NotFoundException('Task not found');
     }
-    return toTaskDetail(row, listActions(row, actor), {
+    const detail = toTaskDetail(row, listActions(row, actor), {
       includeInternalComments: actor.permissions.includes(PERMISSIONS.COMMENT_INTERNAL),
     });
+    return this.attachCommentMentions(actor.organizationId, detail);
   }
 
   async create(actor: AuthenticatedUser, dto: CreateTaskDto): Promise<TaskDetail> {
@@ -251,6 +257,7 @@ export class TasksService {
     if (visibility === VISIBILITY.CLIENT && !task.project.clientOrganizationId) {
       throw new BadRequestException('This project has no client to show the comment to');
     }
+    const mentioned = await this.mentions.assertMentionsAreReachable(actor, id, dto.body);
     const row = await this.comments.create({
       organizationId: actor.organizationId,
       taskId: id,
@@ -258,7 +265,55 @@ export class TasksService {
       body: dto.body,
       visibility,
     });
-    return toComment(row);
+    const names = await this.mentions.resolveUsers(actor.organizationId, mentionsIn(row.body));
+    if (mentioned.length > 0) {
+      const labels = new Map(
+        [...names.entries()].map(([userId, person]) => [userId, person.name] as const),
+      );
+      await this.events.notify(
+        actor,
+        task,
+        NOTIFICATION_TYPE.TASK_COMMENT_MENTION,
+        mentioned,
+        labelMentions(dto.body, labels),
+        `${NOTIFICATION_TYPE.TASK_COMMENT_MENTION}:${row.id}`,
+      );
+    }
+    return {
+      ...toComment(row),
+      mentions: mentionsIn(row.body)
+        .map((userId) => names.get(userId))
+        .filter((person): person is NonNullable<typeof person> => Boolean(person)),
+    };
+  }
+
+  async mentionable(
+    actor: AuthenticatedUser,
+    id: string,
+    query: { q?: string; limit?: number; cursor?: string },
+  ): Promise<MentionablePage> {
+    await this.requireSummary(actor, id);
+    return this.mentions.list(actor, query);
+  }
+
+  private async attachCommentMentions(
+    organizationId: string,
+    detail: TaskDetail,
+  ): Promise<TaskDetail> {
+    const ids = [...new Set(detail.comments.flatMap((comment) => mentionsIn(comment.body)))];
+    if (ids.length === 0) {
+      return detail;
+    }
+    const names = await this.mentions.resolveUsers(organizationId, ids);
+    return {
+      ...detail,
+      comments: detail.comments.map((comment) => ({
+        ...comment,
+        mentions: mentionsIn(comment.body)
+          .map((userId) => names.get(userId))
+          .filter((person): person is NonNullable<typeof person> => Boolean(person)),
+      })),
+    };
   }
 
   /**

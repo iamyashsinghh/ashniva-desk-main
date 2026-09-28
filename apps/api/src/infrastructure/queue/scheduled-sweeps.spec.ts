@@ -10,6 +10,7 @@ import { DAILY_SNAPSHOT_JOB } from '../../modules/reports/daily-reports.processo
 import { SLA_MONITOR_JOB } from '../../modules/sla-escalations/sla-monitor.processor';
 import { STALLED_CALLBACK_SWEEP_JOB } from '../../modules/support-callbacks/support-callbacks.processor';
 import { ROUTING_MONITOR_JOB } from '../../modules/ticket-routing/routing-monitor.processor';
+import { WORK_TIME_MONITOR_JOB } from '../../modules/project-work-plans/work-time-monitor.processor';
 import { QUEUE_NAMES } from './queue-names';
 import { SCHEDULED_SWEEPS, isQueueName, sweepUsage } from './scheduled-sweeps';
 
@@ -24,6 +25,7 @@ describe('SCHEDULED_SWEEPS', () => {
       [QUEUE_NAMES.NOTIFICATIONS]: [DELIVER_JOB, REMINDERS_JOB],
       [QUEUE_NAMES.SLA_MONITOR]: [SLA_MONITOR_JOB],
       [QUEUE_NAMES.ROUTING_MONITOR]: [ROUTING_MONITOR_JOB],
+      [QUEUE_NAMES.WORK_TIME_MONITOR]: [WORK_TIME_MONITOR_JOB],
       [QUEUE_NAMES.DAILY_REPORTS]: [DAILY_SNAPSHOT_JOB],
       [QUEUE_NAMES.CONTRACTS]: [CONTRACT_DAILY_JOB],
       [QUEUE_NAMES.IVR_EVENTS]: [CALL_MONITOR_JOB],

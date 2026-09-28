@@ -1,4 +1,12 @@
-import { maskMentions, mentionsIn, splitMentions } from './conversation';
+import { readsEveryTaggedMessage, ROLE_KEYS } from '../roles/role-keys';
+import {
+  CONVERSATION_KIND,
+  labelMentions,
+  maskMentions,
+  mentionsIn,
+  splitMentions,
+  taggedAudienceOf,
+} from './conversation';
 
 /**
  * How a mention is written, read back and hidden.
@@ -61,6 +69,43 @@ describe('mentionsIn', () => {
   });
 });
 
+describe('taggedAudienceOf', () => {
+  it('makes a tagged group message private to the people it tags', () => {
+    expect(
+      taggedAudienceOf(CONVERSATION_KIND.GROUP, `@[${ALICE}] and @[${BOB}] please check`, 'me'),
+    ).toEqual([ALICE, BOB]);
+  });
+
+  it('leaves an untagged group message open to the whole group', () => {
+    expect(taggedAudienceOf(CONVERSATION_KIND.GROUP, 'standup at ten', 'me')).toEqual([]);
+  });
+
+  it('does not count the sender tagging themselves', () => {
+    expect(taggedAudienceOf(CONVERSATION_KIND.GROUP, `@[${ALICE}] note to self`, ALICE)).toEqual(
+      [],
+    );
+  });
+
+  it('changes nothing outside a group', () => {
+    for (const kind of [
+      CONVERSATION_KIND.PROJECT,
+      CONVERSATION_KIND.TASK,
+      CONVERSATION_KIND.TICKET,
+      CONVERSATION_KIND.DIRECT,
+      CONVERSATION_KIND.SCOPE_DIRECT,
+    ]) {
+      expect(taggedAudienceOf(kind, `@[${ALICE}] hi`, 'me')).toEqual([]);
+    }
+  });
+
+  it('lets only Super Admins and Project Managers read every tagged message', () => {
+    expect(readsEveryTaggedMessage(ROLE_KEYS.SUPER_ADMIN)).toBe(true);
+    expect(readsEveryTaggedMessage(ROLE_KEYS.PROJECT_MANAGER)).toBe(true);
+    expect(readsEveryTaggedMessage(ROLE_KEYS.TEAM_LEAD)).toBe(false);
+    expect(readsEveryTaggedMessage(ROLE_KEYS.DEVELOPER)).toBe(false);
+  });
+});
+
 describe('maskMentions', () => {
   it('replaces every mention, leaving the rest of the line alone', () => {
     expect(maskMentions(`@[${ALICE}] and @[${BOB}] — standup at ten`)).toBe(
@@ -74,6 +119,22 @@ describe('maskMentions', () => {
 
   it('takes a label, for a caller that has a better word than "someone"', () => {
     expect(maskMentions(`@[${ALICE}]`, '@you')).toBe('@you');
+  });
+});
+
+describe('labelMentions', () => {
+  it("puts each person's name on their mention", () => {
+    const names = new Map([
+      [ALICE, 'Alice'],
+      [BOB, 'Bob'],
+    ]);
+    expect(labelMentions(`@[${ALICE}] and @[${BOB}] — standup`, names)).toBe(
+      '@Alice and @Bob — standup',
+    );
+  });
+
+  it('falls back when a name is missing', () => {
+    expect(labelMentions(`@[${ALICE}] hi`, new Map())).toBe('@someone hi');
   });
 });
 

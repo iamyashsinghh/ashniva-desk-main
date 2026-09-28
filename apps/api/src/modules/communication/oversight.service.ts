@@ -12,7 +12,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { AuditLogService } from '../audit-logs/audit-log.service';
 import { CommunicationPolicyService } from './communication-policy.service';
 import { toConversationSummary } from './communication.mapper';
-import { ConversationsRepository } from './conversations.repository';
+import { ConversationsRepository, messageViewerOf } from './conversations.repository';
 
 /**
  * Super-admin oversight.
@@ -57,7 +57,10 @@ export class OversightService {
       after: { scope: 'list', projectId: filter.projectId ?? null, returned: rows.length },
     });
 
-    const previews = await this.conversations.previews(rows.map((row) => row.id));
+    const previews = await this.conversations.previews(
+      rows.map((row) => row.id),
+      messageViewerOf(actor),
+    );
     return rows.map((row) =>
       toConversationSummary(row, actor.userId, {
         // An inspector's unread count is meaningless — they are not a participant — and showing

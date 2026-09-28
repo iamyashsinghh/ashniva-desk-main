@@ -82,14 +82,17 @@ export class WorkPlanEventsService {
     project: ProjectRow,
     userId: string,
     scopeLabel: string,
+    /** Distinguishes one assignment from another so a second phase/topic is not dropped as a duplicate. */
+    scopeKey: string,
   ): Promise<void> {
     await this.send(
       actor,
       project,
       NOTIFICATION_TYPE.WORK_PLAN_ASSIGNED,
-      `Assigned ${scopeLabel} on ${project.code}`,
+      `Assigned to you on ${project.code}`,
       `You were given ${scopeLabel} on ${project.name}.`,
       [userId],
+      `work-plan-assigned:${project.id}:${userId}:${scopeKey}`,
     );
   }
 
@@ -100,6 +103,7 @@ export class WorkPlanEventsService {
     title: string,
     body: string,
     userIds: Array<string | null | undefined>,
+    dedupeKey?: string,
   ): Promise<void> {
     await this.dispatcher.notify({
       type,
@@ -108,7 +112,8 @@ export class WorkPlanEventsService {
       link: `/projects/${project.id}`,
       entityType: 'project',
       entityId: project.id,
-      dedupeKey: `work-plan:${type}:${project.id}:${actor.userId}:${body.slice(0, 24)}`,
+      dedupeKey:
+        dedupeKey ?? `work-plan:${type}:${project.id}:${actor.userId}:${body.slice(0, 24)}`,
       recipients: await this.recipients.members(actor.organizationId, userIds),
       excludeUserId: actor.userId,
     });

@@ -73,3 +73,19 @@ export function seesAllOrganizationProjects(roleKey: RoleKey): boolean {
 export function canUsePersonalChat(roleKey: RoleKey): boolean {
   return isManagerRole(roleKey);
 }
+
+/**
+ * Roles that read every tagged group message, whoever it names.
+ *
+ * A tagged message in a group is otherwise private to its sender and the people it tags; these
+ * roles keep sight of it so a private word between two colleagues is still visible to the people
+ * accountable for the team.
+ */
+export const TAGGED_MESSAGE_READER_ROLE_KEYS: readonly RoleKey[] = [
+  ROLE_KEYS.SUPER_ADMIN,
+  ROLE_KEYS.PROJECT_MANAGER,
+];
+
+export function readsEveryTaggedMessage(roleKey: RoleKey): boolean {
+  return TAGGED_MESSAGE_READER_ROLE_KEYS.includes(roleKey);
+}

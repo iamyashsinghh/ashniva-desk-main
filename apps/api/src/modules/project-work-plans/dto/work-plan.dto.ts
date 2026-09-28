@@ -216,3 +216,61 @@ export class CombineWorkPlanTitlesDto {
   @IsUUID('all', { each: true })
   titleIds!: string[];
 }
+
+export class WorkPlanExplainPreviewDto {
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(80)
+  @IsUUID('all', { each: true })
+  titleIds?: string[];
+
+  @ApiPropertyOptional({ description: '0 for first draft; raise on Retry' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(5)
+  attempt?: number;
+}
+
+export class WorkPlanExplainPointDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  id!: string;
+
+  @ApiProperty({ maxLength: 4000 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(4000)
+  body!: string;
+}
+
+export class WorkPlanExplainTitleDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  id!: string;
+
+  @ApiProperty({ maxLength: 200 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  title!: string;
+
+  @ApiProperty({ type: [WorkPlanExplainPointDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(40)
+  @ValidateNested({ each: true })
+  @Type(() => WorkPlanExplainPointDto)
+  points!: WorkPlanExplainPointDto[];
+}
+
+export class WorkPlanExplainApplyDto {
+  @ApiProperty({ type: [WorkPlanExplainTitleDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(80)
+  @ValidateNested({ each: true })
+  @Type(() => WorkPlanExplainTitleDto)
+  titles!: WorkPlanExplainTitleDto[];
+}

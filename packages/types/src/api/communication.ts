@@ -105,6 +105,13 @@ export interface MessageSummary {
   editedAt: string | null;
   deletedAt: string | null;
   /**
+   * The tagged people a group message is private to. Empty when the whole conversation reads it.
+   *
+   * Besides these, only the sender and `TAGGED_MESSAGE_READER_ROLE_KEYS` see a restricted message;
+   * the server never returns it to anybody else, so this is a label rather than a filter.
+   */
+  restrictedToUserIds: string[];
+  /**
    * What this caller may do to *this message*, decided server-side.
    *
    * On the message rather than on `ConversationAbilities` because the answer differs between two

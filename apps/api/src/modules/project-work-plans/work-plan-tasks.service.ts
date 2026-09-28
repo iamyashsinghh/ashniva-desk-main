@@ -97,7 +97,14 @@ export class WorkPlanTasksService {
         testerId,
         fromWorkPlan: true,
       });
-      await this.events.notify(actor, created, NOTIFICATION_TYPE.TASK_ASSIGNED, [assignedToId]);
+      await this.events.notify(
+        actor,
+        created,
+        NOTIFICATION_TYPE.TASK_ASSIGNED,
+        [assignedToId],
+        `From project summary · ${phase.heading} / ${taskTitle}`,
+        `TASK_ASSIGNED:${created.id}:${assignedToId}`,
+      );
       return;
     }
 
@@ -117,8 +124,18 @@ export class WorkPlanTasksService {
       deletedAt: null,
       module: existing.module ?? 'Work plan',
     });
+    // Notify whenever this title's effective assignee is (re)set to someone — including when a
+    // phase-level assignment newly covers them after sync. Skip only if nothing about the
+    // assignee actually moved.
     if (assigneeChanged) {
-      await this.events.notify(actor, updated, NOTIFICATION_TYPE.TASK_ASSIGNED, [assignedToId]);
+      await this.events.notify(
+        actor,
+        updated,
+        NOTIFICATION_TYPE.TASK_ASSIGNED,
+        [assignedToId],
+        `From project summary · ${phase.heading} / ${taskTitle}`,
+        `TASK_ASSIGNED:${updated.id}:${assignedToId}`,
+      );
     }
   }
 }

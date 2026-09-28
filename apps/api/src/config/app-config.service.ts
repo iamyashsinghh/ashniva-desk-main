@@ -105,6 +105,18 @@ export class AppConfigService {
     };
   }
 
+  /**
+   * Browser Web Push (VAPID). Missing keys mean the PUSH channel is not configured — the
+   * dispatcher skips it and every other channel keeps working.
+   */
+  get webPush() {
+    return {
+      publicKey: this.get('VAPID_PUBLIC_KEY'),
+      privateKey: this.get('VAPID_PRIVATE_KEY'),
+      subject: this.get('VAPID_SUBJECT'),
+    };
+  }
+
   get messaging() {
     return { useMockProviders: this.get('MESSAGING_PROVIDER') === 'mock' };
   }

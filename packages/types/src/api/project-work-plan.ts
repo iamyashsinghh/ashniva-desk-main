@@ -129,6 +129,8 @@ export interface ProjectWorkPlan {
   canManage: boolean;
   canWork: boolean;
   canAssign: boolean;
+  /** Gemini is configured — Save can offer an AI rewrite of the wording for developers. */
+  canExplainWithAi: boolean;
 }
 
 export interface AssignWorkPlanInput {
@@ -197,4 +199,43 @@ export interface WorkPlanNoteInput {
   kind?: WorkPlanNoteKind;
   /** Screenshot of the error, uploaded first. Shown on the linked task comment. */
   fileId?: string;
+}
+
+/**
+ * Ask the model to rewrite Summary steps so a developer can understand the work.
+ * Preview only — nothing is saved until explain-apply (and the person still Saves assignments).
+ */
+export interface WorkPlanExplainPreviewInput {
+  /** Titles to rewrite. Empty / omitted = every title that has steps. */
+  titleIds?: string[];
+  /** 0 first draft; raise on Retry so the model varies wording. */
+  attempt?: number;
+}
+
+export interface WorkPlanExplainPoint {
+  id: string;
+  body: string;
+  originalBody: string;
+  estimateMinutes: number;
+}
+
+export interface WorkPlanExplainTitle {
+  id: string;
+  title: string;
+  originalTitle: string;
+  phaseHeading: string;
+  points: WorkPlanExplainPoint[];
+}
+
+export interface WorkPlanExplainPreview {
+  titles: WorkPlanExplainTitle[];
+}
+
+/** Confirmed rewrite from the preview step. Estimates are ignored; only body/title text apply. */
+export interface WorkPlanExplainApplyInput {
+  titles: Array<{
+    id: string;
+    title: string;
+    points: Array<{ id: string; body: string }>;
+  }>;
 }

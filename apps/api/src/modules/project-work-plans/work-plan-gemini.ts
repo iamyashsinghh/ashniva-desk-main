@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
   workPlanAdditionsFromModelJson,
+  workPlanExplainFromModelJson,
   workPlanFromModelJson,
   type WorkPlanDraftAddition,
   type WorkPlanDraftPhase,
@@ -25,10 +26,22 @@ Rules:
 - Ignore covers, NDAs, billing tables and anything that is not project work.`;
 
 const EXPAND_FAIL = 'The extra work could not be planned. Try again, or add phases by hand.';
+const EXPLAIN_FAIL =
+  'The wording could not be improved. Try again, or keep your own words and Save.';
 
 export interface ExpandWorkInput {
   prompt: string;
   outline: string;
+}
+
+export interface ExplainWorkInput {
+  outline: string;
+  /** Raise slightly on Retry so the model tries a different wording. */
+  attempt?: number;
+}
+
+export interface ExplainWorkResult {
+  titles: Array<{ id: string; title: string; points: Array<{ id: string; body: string }> }>;
 }
 
 /**
@@ -74,6 +87,22 @@ export class WorkPlanGeminiService {
     return additions;
   }
 
+  /**
+   * Rewrites existing steps so a developer can understand the work. Ids stay the same; minutes
+   * are not changed by this path.
+   */
+  async explainWork(input: ExplainWorkInput): Promise<ExplainWorkResult> {
+    const text = await this.generateJson(
+      geminiTextGenerateBody(explainPrompt(input), input.attempt ?? 0),
+      EXPLAIN_FAIL,
+    );
+    const titles = workPlanExplainFromModelJson(text);
+    if (titles.length === 0) {
+      throw new BadRequestException(EXPLAIN_FAIL);
+    }
+    return { titles };
+  }
+
   private async generateJson(
     payload: Record<string, unknown>,
     failMessage: string,
@@ -115,17 +144,22 @@ export class WorkPlanGeminiService {
 
 /** REST JSON for generateContent: camelCase, no thinkingConfig (Gemini 3 rejects thinkingBudget). */
 export function geminiGenerateBody(pdf: Buffer): Record<string, unknown> {
-  return geminiJsonBody([
-    { text: PROMPT },
-    { inlineData: { mimeType: 'application/pdf', data: pdf.toString('base64') } },
-  ]);
+  return geminiJsonBody(
+    [
+      { text: PROMPT },
+      { inlineData: { mimeType: 'application/pdf', data: pdf.toString('base64') } },
+    ],
+    0.2,
+  );
 }
 
-export function geminiTextGenerateBody(prompt: string): Record<string, unknown> {
-  return geminiJsonBody([{ text: prompt }]);
+export function geminiTextGenerateBody(prompt: string, attempt = 0): Record<string, unknown> {
+  // Slightly warmer on Retry so the second pass is not a copy of the first.
+  const temperature = Math.min(0.55, 0.2 + attempt * 0.15);
+  return geminiJsonBody([{ text: prompt }], temperature);
 }
 
-function geminiJsonBody(parts: unknown[]): Record<string, unknown> {
+function geminiJsonBody(parts: unknown[], temperature: number): Record<string, unknown> {
   return {
     contents: [
       {
@@ -134,7 +168,7 @@ function geminiJsonBody(parts: unknown[]): Record<string, unknown> {
       },
     ],
     generationConfig: {
-      temperature: 0.2,
+      temperature,
       responseMimeType: 'application/json',
     },
   };
@@ -160,6 +194,28 @@ ${outline}
 
 Requested work:
 ${input.prompt}`;
+}
+
+function explainPrompt(input: ExplainWorkInput): string {
+  const outline = input.outline.trim() || '(empty)';
+  const retryNote =
+    (input.attempt ?? 0) > 0
+      ? `\nThis is rewrite attempt ${(input.attempt ?? 0) + 1}. Use a different wording than a first draft would — clearer steps, still the same work.\n`
+      : '';
+  return `You rewrite project-summary steps so a developer can understand exactly what to build.
+
+Return JSON only:
+{"titles":[{"id":"<same title id>","title":"<clear topic name>","points":[{"id":"<same point id>","body":"<clear step for the developer>"}]}]}
+
+Rules:
+- Keep every title id and point id exactly as given. Do not add or remove titles or points.
+- Rewrite body text in plain language: what to do, where, and when it is done. Short sentences.
+- You may tighten the title wording, but keep the same meaning.
+- Do not change estimateMinutes (omit them). Do not invent new product features.
+- Do not address the manager; write for the developer who will Start the work.
+${retryNote}
+Work to rewrite:
+${outline}`;
 }
 
 export function readGeminiText(body: unknown): string {

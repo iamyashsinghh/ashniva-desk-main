@@ -548,3 +548,33 @@
     justify-content: flex-start;
   }
 }
+
+.work-plan-explain {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.work-plan-explain__title {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.work-plan-explain__title ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.work-plan-explain__was {
+  margin-top: var(--space-half);
+}
+
+.work-plan-explain__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

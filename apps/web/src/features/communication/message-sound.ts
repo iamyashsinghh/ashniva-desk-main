@@ -32,28 +32,43 @@ export function unlockMessageSound(): void {
   }
 }
 
-/** A short rising ping. No-ops when the browser has not unlocked audio yet. */
+/** A short rising ping. Tries to resume a suspended context so a later gesture unlock sticks. */
 export function playMessageSound(): void {
   try {
     unlockMessageSound();
     const audio = audioContext();
-    if (!audio || audio.state !== 'running') {
+    if (!audio) {
       return;
     }
-    const now = audio.currentTime;
-    const oscillator = audio.createOscillator();
-    const gain = audio.createGain();
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, now);
-    oscillator.frequency.setValueAtTime(1174.66, now + 0.08);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.07, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
-    oscillator.connect(gain);
-    gain.connect(audio.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 0.3);
+    if (audio.state === 'suspended') {
+      void audio.resume().then(() => {
+        if (audio.state === 'running') {
+          tone(audio);
+        }
+      });
+      return;
+    }
+    if (audio.state !== 'running') {
+      return;
+    }
+    tone(audio);
   } catch {
     // Autoplay, a missing AudioContext, or a closed context — the badge still updates.
   }
+}
+
+function tone(audio: AudioContext): void {
+  const now = audio.currentTime;
+  const oscillator = audio.createOscillator();
+  const gain = audio.createGain();
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(880, now);
+  oscillator.frequency.setValueAtTime(1174.66, now + 0.08);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.07, now + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+  oscillator.connect(gain);
+  gain.connect(audio.destination);
+  oscillator.start(now);
+  oscillator.stop(now + 0.3);
 }

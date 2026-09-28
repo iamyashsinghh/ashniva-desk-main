@@ -67,6 +67,22 @@ export const NOTIFICATION_TYPE = {
   WORK_PLAN_RETURNED: 'WORK_PLAN_RETURNED',
   WORK_PLAN_DOUBT: 'WORK_PLAN_DOUBT',
   WORK_PLAN_ASSIGNED: 'WORK_PLAN_ASSIGNED',
+  /**
+   * A started work-plan point has run past its allotted estimate.
+   *
+   * Its own type rather than TASK_OVERDUE: that one is a calendar due-date nudge to the assignee.
+   * This one is the live countdown after Start, and it goes to the project manager and Super
+   * Admins so they see overrun while the person is still working.
+   */
+  WORK_PLAN_TIME_EXCEEDED: 'WORK_PLAN_TIME_EXCEEDED',
+  /**
+   * A started task has run past its estimate minutes (wall clock from Start).
+   *
+   * Separate from TASK_OVERDUE (calendar date) and from WORK_PLAN_TIME_EXCEEDED (phase points).
+   */
+  TASK_TIME_EXCEEDED: 'TASK_TIME_EXCEEDED',
+  /** Somebody named you in a task comment. */
+  TASK_COMMENT_MENTION: 'TASK_COMMENT_MENTION',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPE)[keyof typeof NOTIFICATION_TYPE];
@@ -106,6 +122,9 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   WORK_PLAN_RETURNED: 'A phase point was sent back',
   WORK_PLAN_DOUBT: 'A doubt on a phase point',
   WORK_PLAN_ASSIGNED: 'Work on a phase plan was assigned to me',
+  WORK_PLAN_TIME_EXCEEDED: 'A started phase point exceeded its allotted time',
+  TASK_TIME_EXCEEDED: 'A started task exceeded its estimate',
+  TASK_COMMENT_MENTION: 'Somebody mentioned me in a task comment',
 };
 
 /** Types grouped for the preferences screen. */
@@ -122,10 +141,13 @@ export const NOTIFICATION_TYPE_GROUPS: ReadonlyArray<{
       'TASK_REVIEW_REQUESTED',
       'TASK_REVIEW_REJECTED',
       'QA_PASSED',
+      'TASK_COMMENT_MENTION',
       'WORK_PLAN_SUBMITTED_FOR_TEST',
       'WORK_PLAN_RETURNED',
       'WORK_PLAN_DOUBT',
       'WORK_PLAN_ASSIGNED',
+      'WORK_PLAN_TIME_EXCEEDED',
+      'TASK_TIME_EXCEEDED',
     ],
   },
   {
@@ -158,6 +180,8 @@ export const NOTIFICATION_TYPE_GROUPS: ReadonlyArray<{
 
 export const NOTIFICATION_CHANNEL = {
   IN_APP: 'IN_APP',
+  /** Browser / device push (Web Push). Delivered even when the Ashniva tab is closed. */
+  PUSH: 'PUSH',
   EMAIL: 'EMAIL',
   WHATSAPP: 'WHATSAPP',
 } as const;
@@ -166,6 +190,7 @@ export type NotificationChannel = (typeof NOTIFICATION_CHANNEL)[keyof typeof NOT
 
 export const NOTIFICATION_CHANNEL_LABELS: Record<NotificationChannel, string> = {
   IN_APP: 'In app',
+  PUSH: 'Push notifications',
   // Named for what they are rather than for the phase that was going to deliver them: the
   // adapters exist, but no deployment sends on either channel and switching one on is a decision
   // that has not been made.
@@ -176,11 +201,11 @@ export const NOTIFICATION_CHANNEL_LABELS: Record<NotificationChannel, string> = 
 /**
  * Channels a person can switch on today.
  *
- * In-app only. Email and WhatsApp have working adapters behind them, so the day this list grows
- * is the day real mail starts reaching real people — which is why it is one list, in one place,
- * rather than a condition spread over two apps.
+ * In-app and push. Email and WhatsApp have working adapters behind them, so the day this list
+ * grows is the day real mail starts reaching real people — which is why it is one list, in one
+ * place, rather than a condition spread over two apps.
  */
-export const ACTIVE_NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ['IN_APP'];
+export const ACTIVE_NOTIFICATION_CHANNELS: readonly NotificationChannel[] = ['IN_APP', 'PUSH'];
 
 /** Urgent types that ignore quiet hours and rate limits. */
 export const URGENT_NOTIFICATION_TYPES: readonly NotificationType[] = [

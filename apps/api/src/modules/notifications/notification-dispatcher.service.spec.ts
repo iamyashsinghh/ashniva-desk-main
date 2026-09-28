@@ -92,7 +92,7 @@ function repositoryDouble(preferences: PreferenceRow[]) {
   return { repository, created, cleared, delivered, calls };
 }
 
-function channelDouble(key: 'EMAIL' | 'WHATSAPP'): NotificationChannel & { sent: unknown[] } {
+function channelDouble(key: 'EMAIL' | 'WHATSAPP' | 'PUSH'): NotificationChannel & { sent: unknown[] } {
   const sent: unknown[] = [];
   return {
     key,
@@ -159,8 +159,8 @@ describe('NotificationDispatcher channels', () => {
   });
 
   it('sends nothing outside the app on the settings the product ships', async () => {
-    // No stored preferences: `defaultChannelEnabled` answers IN_APP only. The email adapter is
-    // configured and would send if it were asked — it is not asked.
+    // No stored preferences: `defaultChannelEnabled` answers IN_APP and PUSH. Email/WhatsApp stay
+    // off; this fixture only wires those two adapters, so nothing leaves the deployment.
     const email = channelDouble('EMAIL');
     const whatsapp = channelDouble('WHATSAPP');
     const { dispatcher, created, emitted } = dispatcherWith([], [email, whatsapp]);

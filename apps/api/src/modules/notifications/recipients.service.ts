@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PermissionKey } from '@ashniva/types';
+import type { PermissionKey, RoleKey } from '@ashniva/types';
 
 import { TenantContextService } from '../../common/tenant/tenant-context.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -29,6 +29,16 @@ export class NotificationRecipientsService {
     );
   }
 
+  /**
+   * Active members whose role key (or the system template it was cloned from) matches.
+   *
+   * Prefer this over a broad permission when the product means "Super Admins" rather than
+   * "everyone who can read every task".
+   */
+  withRoleKey(organizationId: string, roleKey: RoleKey): Promise<Recipient[]> {
+    return this.tenantContext.runAsSystem(() => this.queryWithRoleKey(organizationId, roleKey));
+  }
+
   /** One person, if they are an active member of the organization. */
   member(organizationId: string, userId: string | null | undefined): Promise<Recipient[]> {
     return this.members(organizationId, [userId]);
@@ -49,6 +59,25 @@ export class NotificationRecipientsService {
         deletedAt: null,
         user: { deletedAt: null, status: 'ACTIVE' },
         role: { permissions: { some: { permission: { key: permission } } } },
+      },
+      select: { userId: true },
+    });
+    return rows.map((row) => ({ userId: row.userId, organizationId }));
+  }
+
+  private async queryWithRoleKey(
+    organizationId: string,
+    roleKey: RoleKey,
+  ): Promise<Recipient[]> {
+    const rows = await this.prisma.organizationMembership.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        user: { deletedAt: null, status: 'ACTIVE' },
+        role: {
+          deletedAt: null,
+          OR: [{ key: roleKey }, { templateKey: roleKey }],
+        },
       },
       select: { userId: true },
     });

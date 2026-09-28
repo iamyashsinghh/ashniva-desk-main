@@ -24,6 +24,7 @@ function message(over: Partial<MessageSummary> & { id: string }): MessageSummary
     createdAt: at('2026-09-13T09:00:00'),
     editedAt: null,
     deletedAt: null,
+    restrictedToUserIds: [],
     canEdit: false,
     canDelete: false,
     ...over,

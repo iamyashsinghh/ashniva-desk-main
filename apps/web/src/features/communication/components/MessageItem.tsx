@@ -130,6 +130,15 @@ export function MessageItem({
           </div>
         )}
 
+        {message.restrictedToUserIds.length > 0 ? (
+          <p
+            className="chat-message__private"
+            title="Only the sender, the people tagged, Super Admins and Project Managers can see this"
+          >
+            Private · to {privateAudienceLabel(message.restrictedToUserIds, viewerId, audience)}
+          </p>
+        ) : null}
+
         {error ? <Alert tone="danger">{error}</Alert> : null}
 
         {editing ? (
@@ -192,6 +201,18 @@ export function MessageItem({
       </div>
     </li>
   );
+}
+
+/** The tagged people by name, the viewer as "you", in the order they were tagged. */
+function privateAudienceLabel(
+  userIds: readonly string[],
+  viewerId: string,
+  audience: readonly ConversationAudienceMember[],
+): string {
+  const names = new Map(audience.map((person) => [person.id, person.name]));
+  return userIds
+    .map((userId) => (userId === viewerId ? 'you' : (names.get(userId) ?? 'somebody')))
+    .join(', ');
 }
 
 function Revisions({ revisions }: { revisions: readonly MessageRevisionSummary[] }) {

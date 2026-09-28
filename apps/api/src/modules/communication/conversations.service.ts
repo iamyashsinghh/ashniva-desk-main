@@ -33,7 +33,11 @@ import { ConversationMembersRepository } from './conversation-members.repository
 import { CommunicationRealtimeService } from './communication-realtime.service';
 import { ConversationAnchorService } from './conversation-anchor.service';
 import { anchorKeyFor, toConversationDetail, toConversationSummary } from './communication.mapper';
-import { ConversationsRepository, type ConversationRow } from './conversations.repository';
+import {
+  ConversationsRepository,
+  messageViewerOf,
+  type ConversationRow,
+} from './conversations.repository';
 import type { CreateConversationDto, ListConversationsQueryDto } from './dto/communication.dto';
 
 /**
@@ -136,8 +140,8 @@ export class ConversationsService {
     }
 
     const [unread, previews, abilities, roles] = await Promise.all([
-      this.conversations.unreadCounts(actor.userId, [row]),
-      this.conversations.previews([row.id]),
+      this.conversations.unreadCounts(messageViewerOf(actor), [row]),
+      this.conversations.previews([row.id], messageViewerOf(actor)),
       this.abilitiesFor(actor, row),
       this.rolesOf(row),
     ]);
@@ -177,8 +181,11 @@ export class ConversationsService {
     // a project empties its conversations out of the list without anything being deleted.
     const visible = await this.filterVisible(actor, rows, taskChatScope);
     const [unread, previews] = await Promise.all([
-      this.conversations.unreadCounts(actor.userId, visible),
-      this.conversations.previews(visible.map((row) => row.id)),
+      this.conversations.unreadCounts(messageViewerOf(actor), visible),
+      this.conversations.previews(
+        visible.map((row) => row.id),
+        messageViewerOf(actor),
+      ),
     ]);
 
     const summaries = visible.map((row) =>

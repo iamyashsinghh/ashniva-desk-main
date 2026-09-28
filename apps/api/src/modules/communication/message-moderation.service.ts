@@ -3,7 +3,9 @@ import {
   AUDIT_ACTION,
   AUDIT_ENTITY_TYPE,
   COMMUNICATION_ACTION,
+  taggedAudienceOf,
   type AuthenticatedUser,
+  type ConversationKind,
   type MessageRevisionSummary,
   type MessageSummary,
 } from '@ashniva/types';
@@ -15,7 +17,7 @@ import { ConversationAudienceService } from './conversation-audience.service';
 import { ConversationMentionsService } from './conversation-mentions.service';
 import { toMessageRevisionSummary, toMessageSummary } from './communication.mapper';
 import { abilitiesOf, authorshipOf } from './message-abilities';
-import { ConversationsRepository } from './conversations.repository';
+import { ConversationsRepository, messageViewerOf } from './conversations.repository';
 import { ConversationsService } from './conversations.service';
 import type { EditMessageDto } from './dto/communication.dto';
 
@@ -88,7 +90,12 @@ export class MessageModerationService {
       return toMessageSummary(message, abilitiesOf(resolver, message, actor.userId, now));
     }
 
-    const updated = await this.conversations.editMessage(message, body, actor.userId);
+    const updated = await this.conversations.editMessage(
+      message,
+      body,
+      actor.userId,
+      taggedAudienceOf(row.kind as ConversationKind, body, message.senderId),
+    );
     if (!updated) {
       // Somebody changed the row between the decision and the write — the sender's other tab, or
       // an inspector withdrawing it. Refusing is the honest answer: the caller's copy of the
@@ -111,8 +118,20 @@ export class MessageModerationService {
       },
     });
 
-    const audience = await this.audience.forSender(actor, row);
-    this.realtime.messageEdited(row, toMessageSummary(updated), audience);
+    const [before, after] = await Promise.all([
+      this.audience.forMessage(actor, row, message.restrictedToUserIds),
+      this.audience.forMessage(actor, row, updated.restrictedToUserIds),
+    ]);
+    this.realtime.messageEdited(row, toMessageSummary(updated), after);
+    // Somebody the edit untagged must not be pushed the new words; to them it is withdrawn.
+    const lostSight = before.filter((userId) => !after.includes(userId));
+    if (lostSight.length > 0) {
+      this.realtime.messageDeleted(
+        row,
+        toMessageSummary({ ...updated, deletedAt: updated.editedAt ?? now }),
+        lostSight,
+      );
+    }
     return toMessageSummary(updated, abilitiesOf(resolver, updated, actor.userId, now));
   }
 
@@ -157,7 +176,7 @@ export class MessageModerationService {
       },
     });
 
-    const audience = await this.audience.forSender(actor, row);
+    const audience = await this.audience.forMessage(actor, row, updated.restrictedToUserIds);
     this.realtime.messageDeleted(row, toMessageSummary(updated), audience);
     return toMessageSummary(updated, abilitiesOf(resolver, updated, actor.userId, now));
   }
@@ -180,7 +199,7 @@ export class MessageModerationService {
       taskId: row.taskId,
       ticketId: row.ticketId,
     });
-    const message = await this.conversations.messageById(row.id, messageId);
+    const message = await this.conversations.messageById(row.id, messageId, messageViewerOf(actor));
     if (!message) {
       throw new NotFoundException('Message not found');
     }
@@ -221,7 +240,8 @@ export class MessageModerationService {
       COMMUNICATION_ACTION.READ,
       context,
     );
-    const message = await this.conversations.messageById(row.id, messageId);
+    // A tagged message this caller may not see is as absent as one from another thread.
+    const message = await this.conversations.messageById(row.id, messageId, messageViewerOf(actor));
     if (!message) {
       throw new NotFoundException('Message not found');
     }

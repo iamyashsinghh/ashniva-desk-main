@@ -74,3 +74,30 @@ export class UpdateNotificationPreferencesDto {
   @IsTimezone()
   timezone?: string;
 }
+
+export class PushSubscriptionKeysDto {
+  @ApiProperty({ description: 'Browser p256dh key (base64url)' })
+  @Matches(/^[A-Za-z0-9_-]+$/, { message: 'p256dh must be base64url' })
+  p256dh!: string;
+
+  @ApiProperty({ description: 'Browser auth secret (base64url)' })
+  @Matches(/^[A-Za-z0-9_-]+$/, { message: 'auth must be base64url' })
+  auth!: string;
+}
+
+export class SubscribePushDto {
+  @ApiProperty({ description: 'Push service endpoint URL from PushManager.subscribe' })
+  @Matches(/^https:\/\//, { message: 'endpoint must be an https URL' })
+  endpoint!: string;
+
+  @ApiProperty({ type: PushSubscriptionKeysDto })
+  @ValidateNested()
+  @Type(() => PushSubscriptionKeysDto)
+  keys!: PushSubscriptionKeysDto;
+}
+
+export class UnsubscribePushDto {
+  @ApiProperty()
+  @Matches(/^https:\/\//, { message: 'endpoint must be an https URL' })
+  endpoint!: string;
+}

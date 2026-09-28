@@ -11,6 +11,8 @@ import {
   SaveWorkPlanAssignmentsDto,
   AddWorkPlanWorkDto,
   CombineWorkPlanTitlesDto,
+  WorkPlanExplainApplyDto,
+  WorkPlanExplainPreviewDto,
   WorkPlanNoteDto,
 } from './dto/work-plan.dto';
 import { WorkPlanService } from './work-plan.service';
@@ -58,6 +60,34 @@ export class WorkPlanController {
     @Body() dto: SaveWorkPlanAssignmentsDto,
   ): Promise<ProjectWorkPlan> {
     return this.plans.saveAssignments(actor, projectId, dto);
+  }
+
+  @Post('explain-preview')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({
+    summary:
+      'Ask AI to rewrite Summary steps for the developer. Preview only — nothing is saved until explain-apply.',
+  })
+  explainPreview(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: WorkPlanExplainPreviewDto,
+  ) {
+    return this.plans.explainPreview(actor, projectId, dto);
+  }
+
+  @Post('explain-apply')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({
+    summary:
+      'Apply a confirmed AI rewrite to topic/step wording. Minutes stay as set; Save assignments separately.',
+  })
+  explainApply(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: WorkPlanExplainApplyDto,
+  ): Promise<ProjectWorkPlan> {
+    return this.plans.explainApply(actor, projectId, dto);
   }
 
   @Post('parse')

@@ -28,7 +28,7 @@ export interface NotificationPreferenceEntry {
 }
 
 export interface NotificationPreferences {
-  /** One entry per (type, channel); missing entries mean "enabled" for IN_APP, disabled otherwise. */
+  /** One entry per (type, channel); missing entries mean "enabled" for IN_APP and PUSH. */
   entries: NotificationPreferenceEntry[];
   quietHoursEnabled: boolean;
   /** "22:00" */

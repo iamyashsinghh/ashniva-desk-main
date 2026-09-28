@@ -3,6 +3,7 @@ import {
   COMMUNICATION_ACTION,
   CONVERSATION_KIND,
   PERMISSIONS,
+  TAGGED_MESSAGE_READER_ROLE_KEYS,
   type AuthenticatedUser,
   type ConversationAudienceMember,
   type ProjectMemberRole,
@@ -42,6 +43,49 @@ export class ConversationAudienceService {
   async forSender(actor: AuthenticatedUser, row: ConversationRow): Promise<string[]> {
     const audience = await this.userIds(row);
     return audience.filter((userId) => userId !== actor.userId);
+  }
+
+  /**
+   * The audience of one message, without the person acting on it.
+   *
+   * An unrestricted message reaches the whole conversation. A tagged group message reaches only
+   * the people it tags and whoever in the conversation holds a tagged-message reader role — the
+   * sender's own copy comes back in the response, not over the socket.
+   */
+  async forMessage(
+    actor: AuthenticatedUser,
+    row: ConversationRow,
+    restrictedToUserIds: readonly string[],
+  ): Promise<string[]> {
+    const audience = await this.forSender(actor, row);
+    if (restrictedToUserIds.length === 0) {
+      return audience;
+    }
+    const tagged = new Set(restrictedToUserIds);
+    const readers = await this.taggedMessageReaders(row.organizationId, audience);
+    return audience.filter((userId) => tagged.has(userId) || readers.has(userId));
+  }
+
+  /** Of these people, the ones whose organization role reads every tagged message. */
+  private async taggedMessageReaders(
+    organizationId: string,
+    userIds: readonly string[],
+  ): Promise<Set<string>> {
+    if (userIds.length === 0) {
+      return new Set();
+    }
+    const keys = [...TAGGED_MESSAGE_READER_ROLE_KEYS];
+    const memberships = await this.prisma.organizationMembership.findMany({
+      where: {
+        organizationId,
+        userId: { in: [...userIds] },
+        deletedAt: null,
+        // A custom role reports the system template it was cloned from, as the actor does.
+        role: { OR: [{ templateKey: { in: keys } }, { templateKey: null, key: { in: keys } }] },
+      },
+      select: { userId: true },
+    });
+    return new Set(memberships.map((membership) => membership.userId));
   }
 
   /**

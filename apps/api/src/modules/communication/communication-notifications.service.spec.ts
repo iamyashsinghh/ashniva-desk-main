@@ -49,6 +49,7 @@ function message(body: string): MessageSummary {
     systemKind: null,
     attachments: [],
     createdAt: '2026-09-16T09:00:00.000Z',
+    restrictedToUserIds: [],
     editedAt: null,
     deletedAt: null,
     canEdit: true,

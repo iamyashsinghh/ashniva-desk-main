@@ -301,6 +301,21 @@ export const envSchema = z
     REAUTH_TTL_SECONDS: z.coerce.number().int().positive().default(300),
 
     /**
+     * VAPID key pair for browser Web Push.
+     *
+     * Optional: when either key is missing the PUSH channel stays off and in-app + Socket.IO
+     * still work. Generate once with `npx web-push generate-vapid-keys` and keep the private
+     * key secret — rotating it invalidates every stored subscription.
+     */
+    VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+    VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+    /**
+     * Contact URI embedded in VAPID claims (mailto: or https:). Push services may use it to
+     * reach the operator about abuse; it is not shown to end users.
+     */
+    VAPID_SUBJECT: z.string().min(1).default('mailto:ops@ashniva.local'),
+
+    /**
      * Which outbound message providers to register.
      *
      * `mock` captures messages in memory and reaches nothing, for tests and the local preview.
