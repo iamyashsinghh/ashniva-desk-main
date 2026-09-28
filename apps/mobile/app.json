@@ -10,11 +10,16 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ashniva.desk"
+      "bundleIdentifier": "com.ashniva.desk",
+      "icon": "./assets/icon.png"
     },
     "android": {
       "package": "com.ashniva.desk",
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f4f4f2"
+      }
     },
     "plugins": [
       "expo-secure-store",
@@ -28,6 +33,12 @@
     ],
     "extra": {
       "apiBaseUrl": "https://api.desk.ashniva.com/api/v1"
+    },
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f4f4f2"
     }
   }
 }

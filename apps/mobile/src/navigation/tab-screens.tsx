@@ -2,8 +2,11 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 
 import { useSession } from '../features/auth/SessionProvider';
+import { useCachedUnreadCount } from '../features/notifications/use-cached-unread';
 import { HomeScreen } from '../features/home/HomeScreen';
 import { NotificationsScreen } from '../features/notifications/NotificationsScreen';
+import { ChamferTile } from '../shared/components/glyph';
+import { useTheme } from '../shared/theme/ThemeProvider';
 import { InvoicesScreen } from '../features/portal/InvoicesScreen';
 import { UpdatesScreen } from '../features/portal/UpdatesScreen';
 import { ProfileScreen } from '../features/profile/ProfileScreen';
@@ -24,10 +27,24 @@ const Tabs = createBottomTabNavigator<TabParamList>();
 
 export function MainTabs() {
   const { user } = useSession();
+  const theme = useTheme();
+  const unread = useCachedUnreadCount();
   const tabs = user ? tabsFor(user) : [];
 
   return (
-    <Tabs.Navigator screenOptions={{ headerShown: true }}>
+    <Tabs.Navigator
+      screenOptions={{
+        headerShown: true,
+        headerShadowVisible: false,
+        headerStyle: { backgroundColor: theme.colors.background },
+        headerTitleStyle: { ...theme.typography.heading, color: theme.colors.text },
+        headerTitleAlign: 'left',
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.textFaint,
+        tabBarStyle: { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
+        tabBarBadgeStyle: { backgroundColor: theme.colors.danger, fontSize: 11 },
+      }}
+    >
       {tabs.map((tab) => (
         <Tabs.Screen
           key={tab.name}
@@ -36,7 +53,21 @@ export function MainTabs() {
             title: tab.label,
             tabBarAccessibilityLabel: tab.label,
             // A tab bar with five entries needs room for the labels at large text sizes.
-            tabBarLabelStyle: { fontSize: 11 },
+            tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+            // The brand's chamfered tile, filled for the tab you are on: the mark is the only
+            // picture the app carries, so the tabs speak its language rather than an icon set's.
+            tabBarIcon: ({ focused, color }) => (
+              <ChamferTile
+                label={tab.label.charAt(0)}
+                size={24}
+                background={focused ? theme.colors.primary : theme.colors.surfaceSunken}
+                color={focused ? theme.colors.primaryText : color}
+                cutColor={theme.colors.surface}
+              />
+            ),
+            ...(tab.name === 'Notifications' && unread > 0
+              ? { tabBarBadge: unread > 99 ? '99+' : unread }
+              : {}),
           }}
           component={SCREENS[tab.name]}
         />

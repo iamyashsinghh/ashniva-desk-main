@@ -2,6 +2,8 @@ import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useMemo } from 'react';
 
+import { useTheme } from '../shared/theme/ThemeProvider';
+
 import { ApprovalDetailScreen, ApprovalsScreen } from '../features/approvals/ApprovalsScreen';
 import { useSession } from '../features/auth/SessionProvider';
 import { canStartPersonalChat, canUseInternalChat } from '../features/chat/chat-access';
@@ -48,10 +50,21 @@ export function SignedInStack() {
   const tabs = useMemo(() => (user ? tabsFor(user).map((tab) => tab.name) : []), [user]);
   const openChat = useChatNavigation();
 
+  const theme = useTheme();
+
   useNotificationTaps(tabs);
 
   return (
-    <Stack.Navigator>
+    <Stack.Navigator
+      screenOptions={{
+        headerShadowVisible: false,
+        headerStyle: { backgroundColor: theme.colors.background },
+        headerTitleStyle: { ...theme.typography.heading, color: theme.colors.text },
+        headerTintColor: theme.colors.primary,
+        headerBackButtonDisplayMode: 'minimal',
+        contentStyle: { backgroundColor: theme.colors.background },
+      }}
+    >
       <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
       <Stack.Screen
         name="TaskDetail"
