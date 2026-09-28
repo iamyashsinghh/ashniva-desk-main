@@ -13,7 +13,9 @@ import { Linking, View } from 'react-native';
 import { apiRequest, errorMessage } from '../../shared/api/client';
 import { useApiMutation } from '../../shared/api/mutations';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Button, Card, Divider } from '../../shared/components/primitives';
+import { Banner } from '../../shared/components/feedback';
+import { Section } from '../../shared/components/layout';
+import { AppText, Button, Divider } from '../../shared/components/primitives';
 import { formatDateTime, formatDuration } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { useSession } from '../auth/SessionProvider';
@@ -58,15 +60,15 @@ export function ConversationCalls({ conversation }: { conversation: Conversation
 
   if (isScope) {
     return (
-      <Card>
+      <View style={{ alignItems: 'center', paddingVertical: theme.spacing.sm }}>
         {/* The API's own sentence for this refusal, not a paraphrase: `canCall` can still come
             back true for a scope conversation, and `POST /conversations/:id/calls` answers it
             with exactly this. A row of buttons that every one of them refuses would be worse
             than saying where calls come from. */}
-        <AppText size="xs" tone="faint">
+        <AppText size="xs" tone="faint" align="center">
           {COMMUNICATION_REFUSAL_LABELS[COMMUNICATION_REFUSAL.CALL_NEEDS_PROJECT]}
         </AppText>
-      </Card>
+      </View>
     );
   }
 
@@ -93,60 +95,74 @@ export function ConversationCalls({ conversation }: { conversation: Conversation
     }
   };
 
-  return (
-    <Card>
-      <AppText size="sm" tone="muted" weight="medium">
-        Calls
-      </AppText>
+  const entries = history.data ?? [];
 
+  return (
+    <Section
+      title="Calls"
+      count={entries.length > 0 ? entries.length : undefined}
+      style={{ marginTop: theme.spacing.sm }}
+    >
       {isDirect && conversation.counterpart ? (
         <Button
           label={`Call ${conversation.counterpart.name}`}
+          size="sm"
           loading={call.busy}
           accessibilityHint="Rings them through Ashniva IVR"
           onPress={() => void call.run({})}
+          style={{ alignSelf: 'flex-start' }}
         />
       ) : (
         <View style={{ gap: theme.spacing.sm }}>
-          <AppText size="xs" tone="faint">
+          <AppText size="xs" tone="muted">
             Who should be rung?
           </AppText>
-          {others.map((participant) => (
-            <Button
-              key={participant.id}
-              label={`Call ${participant.name}`}
-              variant="secondary"
-              loading={call.busy}
-              onPress={() => void call.run({ withUserId: participant.id })}
-            />
-          ))}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+            {others.map((participant) => (
+              <Button
+                key={participant.id}
+                label={`Call ${participant.name}`}
+                variant="secondary"
+                size="sm"
+                loading={call.busy}
+                onPress={() => void call.run({ withUserId: participant.id })}
+              />
+            ))}
+          </View>
         </View>
       )}
 
       {call.error ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {call.error}
-        </AppText>
+        </Banner>
       ) : null}
 
-      {(history.data ?? []).map((entry) => (
-        <View key={entry.id} style={{ gap: theme.spacing.xs }}>
+      {entries.map((entry) => (
+        <View key={entry.id} style={{ gap: theme.spacing.sm }}>
           <Divider />
-          <AppText size="sm">
-            {formatDateTime(entry.startedAt)} · {entry.status.toLowerCase()} ·{' '}
-            {formatDuration(entry.durationSeconds)}
-          </AppText>
-          <AppText size="xs" tone="faint">
-            {entry.initiatedBy ? `Started by ${entry.initiatedBy.name}` : 'Started by the system'}
-          </AppText>
-          {entry.hasRecording && entry.canPlayRecording ? (
-            <Button
-              label="Play the recording"
-              variant="secondary"
-              accessibilityHint="Opens the recording. Every playback is audited."
-              onPress={() => void play(entry.id)}
-            />
-          ) : null}
+          <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <AppText size="sm" weight="medium">
+                {formatDateTime(entry.startedAt)} · {entry.status.toLowerCase()} ·{' '}
+                {formatDuration(entry.durationSeconds)}
+              </AppText>
+              <AppText size="xs" tone="faint">
+                {entry.initiatedBy
+                  ? `Started by ${entry.initiatedBy.name}`
+                  : 'Started by the system'}
+              </AppText>
+            </View>
+            {entry.hasRecording && entry.canPlayRecording ? (
+              <Button
+                label="Play the recording"
+                variant="ghost"
+                size="sm"
+                accessibilityHint="Opens the recording. Every playback is audited."
+                onPress={() => void play(entry.id)}
+              />
+            ) : null}
+          </View>
           {entry.hasRecording && !entry.canPlayRecording ? (
             <AppText size="xs" tone="faint">
               Recorded. You are not permitted to play it.
@@ -156,10 +172,10 @@ export function ConversationCalls({ conversation }: { conversation: Conversation
       ))}
 
       {playError ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {playError}
-        </AppText>
+        </Banner>
       ) : null}
-    </Card>
+    </Section>
   );
 }

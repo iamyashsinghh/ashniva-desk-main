@@ -1,16 +1,21 @@
 import type { ConversationSummary } from '@ashniva/types';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, View, type ListRenderItemInfo } from 'react-native';
+import { FlatList, View, type ListRenderItemInfo } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { errorMessage } from '../../shared/api/client';
-import { Button, Input, Screen } from '../../shared/components/primitives';
+import { ListFooterLoader } from '../../shared/components/feedback';
+import { Button, Divider, Input, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { useConversationList } from './chat-api';
-import { ConversationRow } from './ConversationRow';
-import { CONVERSATION_FILTER, inboxFiltersFor, type ConversationFilter } from './conversation-filters';
+import { AVATAR_SIZE, ConversationRow } from './ConversationRow';
+import {
+  CONVERSATION_FILTER,
+  inboxFiltersFor,
+  type ConversationFilter,
+} from './conversation-filters';
 import { FilterChips } from './FilterChips';
 
 /**
@@ -42,7 +47,11 @@ export interface ConversationsScreenProps {
   personalChat?: boolean;
 }
 
-export function ConversationsScreen({ onOpen, onStart, personalChat = true }: ConversationsScreenProps) {
+export function ConversationsScreen({
+  onOpen,
+  onStart,
+  personalChat = true,
+}: ConversationsScreenProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
@@ -93,11 +102,12 @@ export function ConversationsScreen({ onOpen, onStart, personalChat = true }: Co
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         contentContainerStyle={{
-          gap: theme.spacing.sm,
-          padding: theme.spacing.lg,
           // The home indicator sits over the last row otherwise.
           paddingBottom: theme.spacing.lg + insets.bottom,
         }}
+        // Flat rows on the screen itself, split by a hairline that starts where the text does:
+        // an inbox is read by scanning names down one edge, and a card per row breaks that edge.
+        ItemSeparatorComponent={RowSeparator}
         keyboardShouldPersistTaps="handled"
         refreshing={list.isRefreshing}
         onRefresh={refresh}
@@ -112,20 +122,32 @@ export function ConversationsScreen({ onOpen, onStart, personalChat = true }: Co
         windowSize={7}
         removeClippedSubviews
         ListHeaderComponent={
-          <View style={{ gap: theme.spacing.sm }}>
-            {onStart ? (
-              <Button
-                label="New conversation"
-                accessibilityHint="Start a direct message or a group"
-                onPress={onStart}
-              />
-            ) : null}
-            <Input
-              accessibilityLabel="Search your conversations"
-              placeholder="Search conversations"
-              value={search}
-              onChangeText={setSearch}
-            />
+          <View
+            style={{
+              gap: theme.spacing.sm,
+              padding: theme.spacing.screen,
+              paddingBottom: theme.spacing.xs,
+            }}
+          >
+            <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
+              <View style={{ flex: 1 }}>
+                <Input
+                  accessibilityLabel="Search your conversations"
+                  placeholder="Search conversations"
+                  value={search}
+                  onChangeText={setSearch}
+                />
+              </View>
+              {onStart ? (
+                <Button
+                  label="New conversation"
+                  accessibilityHint="Start a direct message or a group"
+                  onPress={onStart}
+                  size="sm"
+                  icon="plus"
+                />
+              ) : null}
+            </View>
             <FilterChips
               value={filter}
               onChange={setFilter}
@@ -134,21 +156,23 @@ export function ConversationsScreen({ onOpen, onStart, personalChat = true }: Co
           </View>
         }
         ListEmptyComponent={
-          <EmptyList filter={filter} searching={search.trim().length > 0} personalChat={personalChat} />
+          <EmptyList
+            filter={filter}
+            searching={search.trim().length > 0}
+            personalChat={personalChat}
+          />
         }
         ListFooterComponent={
-          list.isLoadingMore ? (
-            <View style={{ paddingVertical: theme.spacing.lg }}>
-              <ActivityIndicator
-                accessibilityLabel="Loading more conversations"
-                color={theme.colors.primary}
-              />
-            </View>
-          ) : null
+          list.isLoadingMore ? <ListFooterLoader label="Loading more conversations" /> : null
         }
       />
     </Screen>
   );
+}
+
+function RowSeparator() {
+  const theme = useTheme();
+  return <Divider inset={theme.spacing.screen + AVATAR_SIZE + theme.spacing.md} />;
 }
 
 /**

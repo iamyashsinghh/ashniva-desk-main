@@ -54,14 +54,19 @@ export function MessageAttachments({ files }: { files: readonly FileSummary[] })
         ) : (
           <View
             key={file.id}
+            // Its own surface, so the name reads the same inside a brand-coloured bubble as in a
+            // plain one.
             style={{
+              backgroundColor: theme.colors.surfaceRaised,
               borderColor: theme.colors.border,
               borderRadius: theme.radius.sm,
               borderWidth: StyleSheet.hairlineWidth,
-              padding: theme.spacing.sm,
+              gap: 2,
+              paddingHorizontal: theme.spacing.md,
+              paddingVertical: theme.spacing.sm,
             }}
           >
-            <AppText size="sm" numberOfLines={1}>
+            <AppText size="sm" weight="medium" numberOfLines={1}>
               {file.name}
             </AppText>
             <AppText size="xs" tone="faint">

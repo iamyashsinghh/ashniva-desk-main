@@ -1,15 +1,13 @@
-import {
-  MAX_CONVERSATION_TITLE_LENGTH,
-  MAX_GROUP_MEMBERS,
-  type MessagingScopeContact,
-} from '@ashniva/types';
+import { MAX_GROUP_MEMBERS, type MessagingScopeContact } from '@ashniva/types';
 import { useState } from 'react';
 import { FlatList, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
-import { AppText, Button, Card, Field, Input, Screen } from '../../shared/components/primitives';
+import { Banner } from '../../shared/components/feedback';
+import { Divider, Input, Screen } from '../../shared/components/primitives';
 import { EmptyState, LoadingState } from '../../shared/components/states';
 import { useTheme } from '../../shared/theme/ThemeProvider';
+import { ContactRow, CONTACT_AVATAR, GroupDraft } from './NewConversationParts';
 import { useCreateGroup, useMessagingDirectory, useOpenDirectMessage } from './scope-api';
 
 /**
@@ -53,9 +51,17 @@ export function NewConversationScreen({ onOpened }: { onOpened: (id: string) => 
       <FlatList
         data={contacts}
         keyExtractor={(contact) => contact.id}
-        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.lg }}
+        contentContainerStyle={{ paddingBottom: theme.spacing.xl }}
+        keyboardShouldPersistTaps="handled"
+        ItemSeparatorComponent={ContactSeparator}
         ListHeaderComponent={
-          <View style={{ gap: theme.spacing.sm }}>
+          <View
+            style={{
+              gap: theme.spacing.md,
+              padding: theme.spacing.screen,
+              paddingBottom: theme.spacing.sm,
+            }}
+          >
             <GroupDraft
               title={groupTitle}
               chosen={chosen}
@@ -75,15 +81,17 @@ export function NewConversationScreen({ onOpened }: { onOpened: (id: string) => 
               onChangeText={setSearch}
             />
             {failure ? (
-              <AppText tone="danger" size="sm">
+              <Banner tone="danger" role="alert">
                 {failure}
-              </AppText>
+              </Banner>
             ) : null}
-            {directory.isLoading ? <LoadingState label="Loading the directory" /> : null}
+            {directory.isLoading ? (
+              <View style={{ minHeight: 96 }}>
+                <LoadingState label="Loading the directory" variant="spinner" />
+              </View>
+            ) : null}
             {directory.error && contacts.length === 0 ? (
-              <AppText tone="danger" size="sm">
-                {errorMessage(directory.error)}
-              </AppText>
+              <Banner tone="danger">{errorMessage(directory.error)}</Banner>
             ) : null}
           </View>
         }
@@ -110,105 +118,7 @@ export function NewConversationScreen({ onOpened }: { onOpened: (id: string) => 
   );
 }
 
-/**
- * The group being assembled, above the directory it is assembled from.
- *
- * Hidden until somebody has picked their first person: an empty group form at the top of a screen
- * whose ordinary use is "message one person" is in the way of the ordinary use.
- */
-function GroupDraft({
-  title,
-  chosen,
-  busy,
-  onTitle,
-  onRemove,
-  onCreate,
-}: {
-  title: string;
-  chosen: MessagingScopeContact[];
-  busy: boolean;
-  onTitle: (value: string) => void;
-  onRemove: (userId: string) => void;
-  onCreate: () => void;
-}) {
+function ContactSeparator() {
   const theme = useTheme();
-  if (chosen.length === 0) {
-    return null;
-  }
-  return (
-    <Card>
-      <Field label="New group" hint={`${chosen.length} chosen. At most ${MAX_GROUP_MEMBERS}.`}>
-        <Input
-          accessibilityLabel="Group name"
-          placeholder="What is this group for?"
-          value={title}
-          maxLength={MAX_CONVERSATION_TITLE_LENGTH}
-          onChangeText={onTitle}
-        />
-      </Field>
-      <View style={{ gap: theme.spacing.xs }}>
-        {chosen.map((contact) => (
-          <Button
-            key={contact.id}
-            label={`Remove ${contact.name}`}
-            variant="secondary"
-            onPress={() => onRemove(contact.id)}
-          />
-        ))}
-      </View>
-      <Button
-        label="Create the group"
-        loading={busy}
-        disabled={title.trim().length === 0}
-        accessibilityHint="Everybody named is checked against your reach by the API"
-        onPress={onCreate}
-      />
-    </Card>
-  );
-}
-
-function ContactRow({
-  contact,
-  chosen,
-  canAdd,
-  busy,
-  onMessage,
-  onAdd,
-}: {
-  contact: MessagingScopeContact;
-  chosen: boolean;
-  canAdd: boolean;
-  busy: boolean;
-  onMessage: () => void;
-  onAdd: () => void;
-}) {
-  return (
-    <Card>
-      <AppText weight="medium">{contact.name}</AppText>
-      <AppText size="xs" tone="faint">
-        {contact.reason}
-      </AppText>
-      <Button
-        label={
-          contact.conversationId
-            ? `Open the thread with ${contact.name}`
-            : `Message ${contact.name}`
-        }
-        loading={busy}
-        onPress={onMessage}
-      />
-      {chosen ? (
-        <AppText size="xs" tone="muted">
-          In the group you are building.
-        </AppText>
-      ) : (
-        <Button
-          label={`Add ${contact.name} to a group`}
-          variant="secondary"
-          disabled={!canAdd}
-          onPress={onAdd}
-        />
-      )}
-    </Card>
-  );
+  return <Divider inset={theme.spacing.screen + CONTACT_AVATAR + theme.spacing.md} />;
 }

@@ -39,36 +39,46 @@ export function MentionSuggestions({
     <View
       accessibilityLabel="People you can mention"
       style={{
-        backgroundColor: theme.colors.surface,
+        backgroundColor: theme.colors.surfaceRaised,
         borderColor: theme.colors.border,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        maxHeight: 240,
+        borderRadius: theme.radius.md,
+        borderWidth: StyleSheet.hairlineWidth,
+        marginBottom: theme.spacing.xs,
+        marginHorizontal: theme.spacing.sm,
+        maxHeight: 260,
+        overflow: 'hidden',
+        ...theme.shadow.raised,
       }}
     >
       <View
         style={{
           alignItems: 'center',
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderColor: theme.colors.border,
           flexDirection: 'row',
           justifyContent: 'space-between',
-          paddingHorizontal: theme.spacing.lg,
-          paddingTop: theme.spacing.sm,
+          paddingLeft: theme.spacing.md,
+          paddingRight: theme.spacing.xs,
         }}
       >
-        <AppText size="xs" tone="faint" weight="medium">
-          Mention somebody in this conversation
-        </AppText>
+        <View style={{ flex: 1 }}>
+          <AppText size="xs" tone="muted" weight="medium" numberOfLines={1}>
+            Mention somebody in this conversation
+          </AppText>
+        </View>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Dismiss the mention list"
           onPress={onDismiss}
-          hitSlop={12}
-          style={{
+          hitSlop={8}
+          style={({ pressed }) => ({
             justifyContent: 'center',
-            minHeight: TOUCH_TARGET,
-            paddingLeft: theme.spacing.md,
-          }}
+            minHeight: TOUCH_TARGET - 8,
+            opacity: pressed ? 0.6 : 1,
+            paddingHorizontal: theme.spacing.sm,
+          })}
         >
-          <AppText size="sm" weight="medium">
+          <AppText size="sm" weight="medium" tone="primary">
             Dismiss
           </AppText>
         </Pressable>
@@ -76,7 +86,7 @@ export function MentionSuggestions({
 
       <ScrollView keyboardShouldPersistTaps="always">
         {people.length === 0 ? (
-          <View style={{ padding: theme.spacing.lg }}>
+          <View style={{ padding: theme.spacing.md }}>
             <AppText size="sm" tone="muted">
               {isLoading ? 'Looking…' : 'Nobody here matches that.'}
             </AppText>
@@ -90,16 +100,16 @@ export function MentionSuggestions({
             onPress={() => onPick(person)}
             style={({ pressed }) => ({
               alignItems: 'center',
+              backgroundColor: pressed ? theme.colors.surfaceSunken : 'transparent',
               flexDirection: 'row',
               gap: theme.spacing.md,
               minHeight: TOUCH_TARGET,
-              opacity: pressed ? 0.7 : 1,
-              paddingHorizontal: theme.spacing.lg,
+              paddingHorizontal: theme.spacing.md,
               paddingVertical: theme.spacing.sm,
             })}
           >
             <Avatar name={person.name} size={32} />
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, gap: 1 }}>
               <AppText size="sm" weight="medium" numberOfLines={1}>
                 {person.name}
               </AppText>

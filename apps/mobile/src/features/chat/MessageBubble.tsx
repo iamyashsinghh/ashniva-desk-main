@@ -76,8 +76,8 @@ export const MessageBubble = memo(function MessageBubble({
 
   if (isSystem) {
     return (
-      <View style={{ alignItems: 'center', paddingVertical: theme.spacing.xs }}>
-        <AppText size="xs" tone="faint">
+      <View style={{ alignItems: 'center', paddingVertical: theme.spacing.sm }}>
+        <AppText size="xs" tone="faint" align="center">
           {message.body}
         </AppText>
       </View>
@@ -102,6 +102,10 @@ export const MessageBubble = memo(function MessageBubble({
     );
   }
 
+  // The corner nearest the sender's edge is tightened on the last line of a run, which is what
+  // ties a run of lines to its side of the screen without drawing a tail.
+  const tail = row.isRunEnd ? theme.radius.xs : theme.radius.lg;
+
   return (
     // Two wrappers rather than one, so that Edit sits *outside* the bubble. The bubble is a single
     // `accessible` element reading as one sentence, and a control inside one of those is a control
@@ -112,31 +116,36 @@ export const MessageBubble = memo(function MessageBubble({
         accessibilityLabel={accessibilityLabelFor(row, senderName)}
         style={{
           alignItems: isOwn ? 'flex-end' : 'flex-start',
+          gap: 2,
           paddingTop: row.isRunStart ? theme.spacing.sm : 2,
         }}
       >
+        {row.showSender && showSenderNames && !isOwn ? (
+          <View style={{ paddingHorizontal: theme.spacing.md }}>
+            <AppText size="xs" weight="medium" tone="muted">
+              {senderName}
+            </AppText>
+          </View>
+        ) : null}
         <View
           // Never the full width: a bubble that reaches both edges is a paragraph, and the reader
           // loses the left/right cue that says whose it is.
           style={{
             backgroundColor: isOwn ? theme.colors.primary : theme.colors.surface,
+            borderBottomLeftRadius: isOwn ? theme.radius.lg : tail,
+            borderBottomRightRadius: isOwn ? tail : theme.radius.lg,
             borderColor: theme.colors.border,
-            borderRadius: theme.radius.md,
-            borderWidth: StyleSheet.hairlineWidth,
+            borderRadius: theme.radius.lg,
+            // A surface bubble on a dark background needs an edge; in light mode colour does it.
+            borderWidth: !isOwn && theme.isDark ? StyleSheet.hairlineWidth : 0,
             gap: theme.spacing.xs,
-            maxWidth: '85%',
+            maxWidth: '82%',
             paddingHorizontal: theme.spacing.md,
             paddingVertical: theme.spacing.sm,
           }}
         >
-          {row.showSender && showSenderNames && !isOwn ? (
-            <AppText size="xs" weight="medium" tone="muted">
-              {senderName}
-            </AppText>
-          ) : null}
-
           {message.deletedAt ? (
-            <AppText size="sm" tone={isOwn ? 'inverse' : 'muted'}>
+            <AppText size="sm" tone={isOwn ? 'inverse' : 'muted'} style={{ fontStyle: 'italic' }}>
               This message was withdrawn.
             </AppText>
           ) : (
@@ -153,7 +162,15 @@ export const MessageBubble = memo(function MessageBubble({
             </>
           )}
 
-          <AppText size="xs" tone={isOwn ? 'inverse' : 'faint'}>
+          <AppText
+            size="xs"
+            tone={isOwn ? 'inverse' : 'muted'}
+            align="right"
+            tabular
+            // The brand's own foreground, softened: still the colour the tokens pair with the
+            // brand, so it stays legible on any tenant's colour.
+            style={isOwn ? { opacity: 0.8 } : undefined}
+          >
             {formatTime(message.createdAt) ?? ''}
             {message.editedAt ? ' · edited' : ''}
           </AppText>
@@ -165,16 +182,17 @@ export const MessageBubble = memo(function MessageBubble({
           accessibilityRole="button"
           accessibilityLabel="Edit this message"
           accessibilityHint="Rewrites what this message says. What it said before is kept."
-          hitSlop={8}
+          // Small to look at, full size to hit: the slop makes up the 44 points.
+          hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
           onPress={() => onEdit(message.id)}
           style={({ pressed }) => ({
             justifyContent: 'center',
-            minHeight: TOUCH_TARGET,
-            opacity: pressed ? 0.7 : 1,
-            paddingHorizontal: theme.spacing.xs,
+            minHeight: TOUCH_TARGET - 16,
+            opacity: pressed ? 0.6 : 1,
+            paddingHorizontal: theme.spacing.sm,
           })}
         >
-          <AppText size="xs" tone="muted">
+          <AppText size="xs" weight="medium" tone="primary">
             Edit
           </AppText>
         </Pressable>

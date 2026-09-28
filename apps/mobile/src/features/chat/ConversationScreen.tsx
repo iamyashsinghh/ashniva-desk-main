@@ -1,12 +1,7 @@
-import {
-  CONVERSATION_KIND,
-  CONVERSATION_KIND_LABELS,
-  PAIR_MEMBERSHIP_KINDS,
-  type ConversationDetail,
-} from '@ashniva/types';
+import { CONVERSATION_KIND, PAIR_MEMBERSHIP_KINDS, type ConversationDetail } from '@ashniva/types';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiRequest, errorMessage } from '../../shared/api/client';
@@ -16,10 +11,9 @@ import { ErrorState, LoadingState } from '../../shared/components/states';
 import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { useSession } from '../auth/SessionProvider';
-import { Avatar } from './Avatar';
 import { useThread } from './chat-api';
-import { conversationLabel } from './conversation-filters';
 import { ConversationCalls } from './ConversationCalls';
+import { ConversationHeader } from './ConversationHeader';
 import { MessageComposer } from './MessageComposer';
 import { MessageThread } from './MessageThread';
 
@@ -132,7 +126,7 @@ export function ConversationScreen({
         {thread.isLoading ? <LoadingState label="Loading messages" /> : null}
         {!thread.isLoading && thread.messages.length === 0 ? (
           <View style={{ flex: 1, justifyContent: 'center', padding: theme.spacing.xl }}>
-            <AppText tone="muted">
+            <AppText tone="muted" align="center">
               {thread.error
                 ? errorMessage(thread.error)
                 : 'Nothing said yet. The first message is yours.'}
@@ -165,65 +159,6 @@ export function ConversationScreen({
         </View>
       </KeyboardAvoidingView>
     </Screen>
-  );
-}
-
-/** The title bar: who or what this is, and the one place a group's own screen is reached from. */
-function ConversationHeader({
-  conversation,
-  onOpenGroup,
-}: {
-  conversation: ConversationDetail;
-  onOpenGroup?: () => void;
-}) {
-  const theme = useTheme();
-  const name = conversationLabel(conversation);
-
-  const content = (
-    <View
-      style={{
-        alignItems: 'center',
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.border,
-        flexDirection: 'row',
-        gap: theme.spacing.md,
-        minHeight: TOUCH_TARGET,
-        paddingHorizontal: theme.spacing.lg,
-        paddingVertical: theme.spacing.sm,
-      }}
-    >
-      <Avatar name={name} size={36} />
-      <View style={{ flex: 1 }}>
-        <AppText weight="bold" numberOfLines={1}>
-          {name}
-        </AppText>
-        <AppText size="xs" tone="faint" numberOfLines={1}>
-          {conversation.project ? `${conversation.project.code} · ` : ''}
-          {CONVERSATION_KIND_LABELS[conversation.kind]}
-          {onOpenGroup ? ` · ${conversation.participants.length} people` : ''}
-        </AppText>
-        {conversation.abilities.viaOversight ? (
-          <AppText size="xs" tone="danger">
-            You are reading this on oversight. Every view is recorded in the audit log.
-          </AppText>
-        ) : null}
-      </View>
-    </View>
-  );
-
-  if (!onOpenGroup) {
-    return content;
-  }
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${name}, group and members`}
-      accessibilityHint="Who is in this group, and what it is called"
-      onPress={onOpenGroup}
-      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-    >
-      {content}
-    </Pressable>
   );
 }
 

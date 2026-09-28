@@ -1,7 +1,8 @@
 import { dayHeading, type MessageSummary, type UserRef } from '@ashniva/types';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, View, type ListRenderItemInfo } from 'react-native';
+import { FlatList, View, type ListRenderItemInfo } from 'react-native';
 
+import { ListFooterLoader } from '../../shared/components/feedback';
 import { AppText } from '../../shared/components/primitives';
 import { formatDate } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -133,7 +134,10 @@ export function MessageThread({
       // The rows are memoised, and which one is being edited is not part of a row. Without this a
       // bubble would keep its old `isEditing` until something else about it changed.
       extraData={editingMessageId}
-      contentContainerStyle={{ padding: theme.spacing.lg }}
+      contentContainerStyle={{
+        paddingHorizontal: theme.spacing.screen,
+        paddingVertical: theme.spacing.md,
+      }}
       keyboardShouldPersistTaps="handled"
       // On an inverted list this is the top of the thread, which is where older history lives.
       onEndReachedThreshold={0.5}
@@ -151,14 +155,7 @@ export function MessageThread({
       // the last row, which is the top of the thread.
       ListHeaderComponent={bottomSlot}
       ListFooterComponent={
-        isLoadingEarlier ? (
-          <View style={{ paddingVertical: theme.spacing.lg }}>
-            <ActivityIndicator
-              accessibilityLabel="Loading earlier messages"
-              color={theme.colors.primary}
-            />
-          </View>
-        ) : null
+        isLoadingEarlier ? <ListFooterLoader label="Loading earlier messages" /> : null
       }
     />
   );
@@ -168,12 +165,21 @@ function DaySeparator({ day, startedAt }: { day: string; startedAt: string }) {
   const theme = useTheme();
   return (
     <View style={{ alignItems: 'center', paddingVertical: theme.spacing.md }}>
-      {/* Dated from the day's first message rather than from its `YYYY-MM-DD` key: a bare date
-          string parses as UTC midnight, which is the previous day west of Greenwich — the exact
-          off-by-one the grouping went to the trouble of avoiding. */}
-      <AppText size="xs" tone="faint" weight="medium">
-        {dayHeading(day) ?? formatDate(startedAt) ?? day}
-      </AppText>
+      <View
+        style={{
+          backgroundColor: theme.colors.surfaceSunken,
+          borderRadius: theme.radius.pill,
+          paddingHorizontal: theme.spacing.md,
+          paddingVertical: 3,
+        }}
+      >
+        {/* Dated from the day's first message rather than from its `YYYY-MM-DD` key: a bare date
+            string parses as UTC midnight, which is the previous day west of Greenwich — the exact
+            off-by-one the grouping went to the trouble of avoiding. */}
+        <AppText size="xs" tone="muted" weight="medium">
+          {dayHeading(day) ?? formatDate(startedAt) ?? day}
+        </AppText>
+      </View>
     </View>
   );
 }
@@ -189,11 +195,11 @@ function UnreadDivider({ count }: { count: number }) {
         alignItems: 'center',
         flexDirection: 'row',
         gap: theme.spacing.sm,
-        paddingVertical: theme.spacing.sm,
+        paddingVertical: theme.spacing.md,
       }}
     >
       <View style={{ backgroundColor: theme.colors.primary, flex: 1, height: 1 }} />
-      <AppText size="xs" weight="medium">
+      <AppText size="xs" weight="bold" tone="primary">
         {count} new {count === 1 ? 'message' : 'messages'}
       </AppText>
       <View style={{ backgroundColor: theme.colors.primary, flex: 1, height: 1 }} />

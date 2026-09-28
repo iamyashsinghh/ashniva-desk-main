@@ -2,7 +2,7 @@ import { CONVERSATION_KIND_LABELS, type ConversationSummary } from '@ashniva/typ
 import { memo } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { AppText, Card } from '../../shared/components/primitives';
+import { AppText } from '../../shared/components/primitives';
 import { formatSince } from '../../shared/format/format';
 import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -24,6 +24,9 @@ export interface ConversationRowProps {
   onOpen: (conversationId: string) => void;
 }
 
+/** The avatar's width, which the separator between rows is inset by so it lines up with the text. */
+export const AVATAR_SIZE = 44;
+
 export const ConversationRow = memo(function ConversationRow({
   row,
   mentioned,
@@ -39,28 +42,45 @@ export const ConversationRow = memo(function ConversationRow({
       accessibilityLabel={accessibilityLabelFor(name, row.unreadCount, mentioned)}
       accessibilityHint="Opens the conversation"
       onPress={() => onOpen(row.id)}
-      style={({ pressed }) => ({ minHeight: TOUCH_TARGET, opacity: pressed ? 0.7 : 1 })}
+      style={({ pressed }) => ({
+        backgroundColor: pressed ? theme.colors.surfaceSunken : theme.colors.background,
+        flexDirection: 'row',
+        gap: theme.spacing.md,
+        minHeight: TOUCH_TARGET,
+        paddingHorizontal: theme.spacing.screen,
+        paddingVertical: theme.spacing.md,
+      })}
     >
-      <Card style={unread ? { borderColor: theme.colors.primary } : undefined}>
-        <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
-          <Avatar name={name} />
-          <View style={{ flex: 1, gap: 2 }}>
-            <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
-              <View style={{ flex: 1 }}>
-                <AppText weight={unread ? 'bold' : 'medium'} numberOfLines={1}>
-                  {name}
-                </AppText>
-              </View>
-              <AppText size="xs" tone="faint">
-                {formatSince(row.lastMessageAt) ?? ''}
-              </AppText>
-            </View>
-            <AppText size="xs" tone="faint" numberOfLines={1}>
-              {row.project ? `${row.project.code} · ` : ''}
-              {CONVERSATION_KIND_LABELS[row.kind]}
+      <Avatar
+        name={name}
+        size={AVATAR_SIZE}
+        shape={row.kind === 'GROUP' ? 'group' : 'person'}
+        // The tile's cut corner shows the row behind it, which is the screen, not a card.
+        cutColor={theme.colors.background}
+      />
+      <View style={{ flex: 1, gap: 2 }}>
+        <View style={{ alignItems: 'baseline', flexDirection: 'row', gap: theme.spacing.sm }}>
+          <View style={{ flex: 1 }}>
+            <AppText weight={unread ? 'bold' : 'medium'} numberOfLines={1}>
+              {name}
             </AppText>
+          </View>
+          <AppText
+            size="xs"
+            tone={unread ? 'primary' : 'faint'}
+            weight={unread ? 'medium' : undefined}
+          >
+            {formatSince(row.lastMessageAt) ?? ''}
+          </AppText>
+        </View>
+        <AppText size="xs" tone="faint" numberOfLines={1}>
+          {row.project ? `${row.project.code} · ` : ''}
+          {CONVERSATION_KIND_LABELS[row.kind]}
+        </AppText>
+        <View style={{ alignItems: 'flex-start', flexDirection: 'row', gap: theme.spacing.sm }}>
+          <View style={{ flex: 1 }}>
             {row.lastMessagePreview ? (
-              <AppText size="sm" tone="muted" numberOfLines={2}>
+              <AppText size="sm" tone={unread ? 'default' : 'muted'} numberOfLines={2}>
                 {row.lastMessagePreview}
               </AppText>
             ) : (
@@ -68,16 +88,18 @@ export const ConversationRow = memo(function ConversationRow({
                 Nothing said yet.
               </AppText>
             )}
-            {/* The badges carry no label of their own: the row is one accessible element with
-                one sentence — `Pressable` collapses its children — so a screen reader hears the
-                count once rather than three times. */}
-            <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
+          </View>
+          {/* The badges carry no label of their own: the row is one accessible element with
+              one sentence — `Pressable` collapses its children — so a screen reader hears the
+              count once rather than three times. */}
+          {mentioned || unread ? (
+            <View style={{ alignItems: 'flex-end', gap: theme.spacing.xs }}>
               {mentioned ? <Badge label="@ you" prominent /> : null}
               {unread ? <Badge label={`${row.unreadCount} unread`} prominent={!mentioned} /> : null}
             </View>
-          </View>
+          ) : null}
         </View>
-      </Card>
+      </View>
     </Pressable>
   );
 });
@@ -99,14 +121,15 @@ function Badge({ label, prominent }: { label: string; prominent: boolean }) {
   return (
     <View
       style={{
-        alignSelf: 'flex-start',
+        alignSelf: 'flex-end',
         backgroundColor: prominent ? theme.colors.primary : theme.colors.pillBackground,
         borderRadius: theme.radius.pill,
+        minWidth: 22,
         paddingHorizontal: theme.spacing.sm,
         paddingVertical: 2,
       }}
     >
-      <AppText size="xs" weight="medium" tone={prominent ? 'inverse' : 'muted'}>
+      <AppText size="xs" weight="bold" tabular tone={prominent ? 'inverse' : 'muted'}>
         {label}
       </AppText>
     </View>

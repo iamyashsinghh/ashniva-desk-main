@@ -1,7 +1,8 @@
 import { type ConversationDetail, type CreateConversationInput } from '@ashniva/types';
 
 import { useApiMutation } from '../../shared/api/mutations';
-import { AppText, Button } from '../../shared/components/primitives';
+import { Banner } from '../../shared/components/feedback';
+import { Button } from '../../shared/components/primitives';
 
 /**
  * The way into a conversation from the thing it is about.
@@ -41,9 +42,9 @@ export function OpenConversationButton({
         onPress={() => void open.run()}
       />
       {open.error ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {open.error}
-        </AppText>
+        </Banner>
       ) : null}
     </>
   );

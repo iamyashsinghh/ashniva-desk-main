@@ -1,6 +1,12 @@
-import { type FileSummary } from '@ashniva/types';
+import {
+  COMMUNICATION_REFUSAL_LABELS,
+  MAX_MESSAGE_LENGTH,
+  type CommunicationRefusal,
+  type FileSummary,
+} from '@ashniva/types';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { Glyph } from '../../shared/components/glyph';
 import { AppText, Button } from '../../shared/components/primitives';
 import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -56,7 +62,9 @@ export function SendFailure({
           <Button
             label="Send without the mention"
             variant="secondary"
+            size="sm"
             onPress={onSendWithoutMentions}
+            style={{ alignSelf: 'flex-start' }}
           />
         </>
       ) : null}
@@ -74,25 +82,42 @@ export function AttachmentStrip({
 }) {
   const theme = useTheme();
   return (
-    <View style={{ gap: theme.spacing.xs }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs + 2 }}>
       {files.map((file) => (
         <View
           key={file.id}
-          style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}
+          style={{
+            alignItems: 'center',
+            backgroundColor: theme.colors.surfaceSunken,
+            borderRadius: theme.radius.pill,
+            flexDirection: 'row',
+            gap: theme.spacing.xs,
+            maxWidth: '100%',
+            paddingLeft: theme.spacing.md,
+            paddingRight: theme.spacing.xs,
+          }}
         >
-          <View style={{ flex: 1 }}>
-            <AppText size="xs" tone="muted" numberOfLines={1}>
+          <View style={{ flexShrink: 1 }}>
+            <AppText size="xs" weight="medium" numberOfLines={1}>
               {file.name}
             </AppText>
           </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Remove ${file.name}`}
-            hitSlop={12}
+            hitSlop={8}
             onPress={() => onRemove(file.id)}
-            style={{ justifyContent: 'center', minHeight: TOUCH_TARGET }}
+            style={({ pressed }) => ({
+              alignItems: 'center',
+              flexDirection: 'row',
+              gap: 4,
+              minHeight: TOUCH_TARGET - 12,
+              opacity: pressed ? 0.6 : 1,
+              paddingHorizontal: theme.spacing.xs + 2,
+            })}
           >
-            <AppText size="sm" tone="danger">
+            <Glyph name="close" color={theme.colors.danger} size={10} />
+            <AppText size="xs" tone="danger" weight="medium">
               Remove
             </AppText>
           </Pressable>
@@ -102,46 +127,47 @@ export function AttachmentStrip({
   );
 }
 
-/** A square action beside the field. Labelled for a screen reader; a glyph for everyone else. */
-export function IconAction({
-  label,
-  glyph,
-  disabled,
-  onPress,
+/** Why the last attach failed, or that the draft is too long to send: said above the bar. */
+export function ComposerNotices({
+  attachError,
+  length,
 }: {
-  label: string;
-  glyph: string;
-  disabled: boolean;
-  onPress: () => void;
+  attachError: string | null;
+  /** The draft's length, which is only mentioned once it is over the limit. */
+  length: number;
 }) {
-  const theme = useTheme();
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        alignItems: 'center',
-        borderColor: theme.colors.border,
-        borderRadius: theme.radius.sm,
-        borderWidth: StyleSheet.hairlineWidth,
-        height: TOUCH_TARGET,
-        justifyContent: 'center',
-        opacity: pressOpacity(disabled, pressed),
-        width: TOUCH_TARGET,
-      })}
-    >
-      <AppText size="lg">{glyph}</AppText>
-    </Pressable>
+    <>
+      {attachError ? (
+        <AppText tone="danger" size="sm">
+          {attachError}
+        </AppText>
+      ) : null}
+      {length > MAX_MESSAGE_LENGTH ? (
+        <AppText tone="danger" size="sm">
+          {length} of {MAX_MESSAGE_LENGTH} characters. Shorten it to send.
+        </AppText>
+      ) : null}
+    </>
   );
 }
 
-/** Two states rather than a nested ternary, as in `primitives.tsx`. */
-function pressOpacity(disabled: boolean, pressed: boolean): number {
-  if (disabled) {
-    return 0.5;
-  }
-  return pressed ? 0.7 : 1;
+/** In place of the composer when nobody may post: the API's own reason, in a quiet strip. */
+export function ComposerClosed({ reason }: { reason: CommunicationRefusal | null }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.border,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        paddingHorizontal: theme.spacing.screen,
+        paddingVertical: theme.spacing.md,
+      }}
+    >
+      <AppText size="sm" tone="muted" align="center">
+        {reason ? COMMUNICATION_REFUSAL_LABELS[reason] : 'You cannot post here.'}
+      </AppText>
+    </View>
+  );
 }

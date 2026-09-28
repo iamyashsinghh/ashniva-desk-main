@@ -1,5 +1,4 @@
 import {
-  COMMUNICATION_REFUSAL_LABELS,
   MAX_MESSAGE_ATTACHMENTS,
   MAX_MESSAGE_LENGTH,
   type CommunicationRefusal,
@@ -9,7 +8,6 @@ import {
 } from '@ashniva/types';
 import { useCallback, useRef, useState } from 'react';
 import {
-  StyleSheet,
   View,
   type NativeSyntheticEvent,
   type TextInputSelectionChangeEventData,
@@ -24,11 +22,10 @@ import {
   UNPARENTED,
   type PickedFile,
 } from '../../shared/attachments/attachments';
-import { AppText, Button, Input } from '../../shared/components/primitives';
-import { useTheme } from '../../shared/theme/ThemeProvider';
 import { conversationKeys, useMentionable } from './chat-api';
 import { newClientMessageId } from './client-message-id';
-import { AttachmentStrip, IconAction, SendFailure } from './ComposerControls';
+import { ComposerBar } from './ComposerBar';
+import { AttachmentStrip, ComposerClosed, ComposerNotices, SendFailure } from './ComposerControls';
 import {
   activeMention,
   insertMention,
@@ -69,7 +66,6 @@ export interface MessageComposerProps {
 }
 
 export function MessageComposer({ conversationId, canPost, reason, onSent }: MessageComposerProps) {
-  const theme = useTheme();
   const [draft, setDraft] = useState('');
   const [caret, setCaret] = useState(0);
   const [attachments, setAttachments] = useState<FileSummary[]>([]);
@@ -200,19 +196,7 @@ export function MessageComposer({ conversationId, canPost, reason, onSent }: Mes
   };
 
   if (!canPost) {
-    return (
-      <View
-        style={{
-          borderColor: theme.colors.border,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          padding: theme.spacing.lg,
-        }}
-      >
-        <AppText size="sm" tone="muted">
-          {reason ? COMMUNICATION_REFUSAL_LABELS[reason] : 'You cannot post here.'}
-        </AppText>
-      </View>
-    );
+    return <ComposerClosed reason={reason} />;
   }
 
   return (
@@ -226,13 +210,20 @@ export function MessageComposer({ conversationId, canPost, reason, onSent }: Mes
         />
       ) : null}
 
-      <View
-        style={{
-          borderColor: theme.colors.border,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          gap: theme.spacing.sm,
-          padding: theme.spacing.md,
+      <ComposerBar
+        attachDisabled={attaching || attachments.length >= MAX_MESSAGE_ATTACHMENTS}
+        onAttachPhoto={() => void pick(pickImage)}
+        onAttachFile={() => void pick(pickDocument)}
+        field={{
+          accessibilityLabel: 'Your message',
+          placeholder: 'Message',
+          value: draft,
+          onChangeText,
+          onSelectionChange,
         }}
+        sendBusy={send.busy}
+        sendDisabled={!canSend}
+        onSend={() => submit(body)}
       >
         {attachments.length > 0 ? (
           <AttachmentStrip
@@ -251,54 +242,8 @@ export function MessageComposer({ conversationId, canPost, reason, onSent }: Mes
           names={mentionNames}
           onSendWithoutMentions={sendWithMentionsAsPlainText}
         />
-        {attachError ? (
-          <AppText tone="danger" size="sm">
-            {attachError}
-          </AppText>
-        ) : null}
-        {tooLong ? (
-          <AppText tone="danger" size="sm">
-            {draft.length} of {MAX_MESSAGE_LENGTH} characters. Shorten it to send.
-          </AppText>
-        ) : null}
-
-        <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: theme.spacing.sm }}>
-          <IconAction
-            label="Attach a photo"
-            glyph="＋"
-            disabled={attaching || attachments.length >= MAX_MESSAGE_ATTACHMENTS}
-            onPress={() => void pick(pickImage)}
-          />
-          <IconAction
-            label="Attach a file"
-            glyph="📎"
-            disabled={attaching || attachments.length >= MAX_MESSAGE_ATTACHMENTS}
-            onPress={() => void pick(pickDocument)}
-          />
-          <View style={{ flex: 1 }}>
-            <Input
-              accessibilityLabel="Your message"
-              placeholder="Message"
-              multiline
-              value={draft}
-              onChangeText={onChangeText}
-              onSelectionChange={onSelectionChange}
-              // Grows with the text and then scrolls, so the keyboard is never pushed off and a
-              // long message never takes the whole screen.
-              style={{ maxHeight: 120, paddingTop: theme.spacing.sm, textAlignVertical: 'top' }}
-            />
-          </View>
-          <View style={{ minWidth: 88 }}>
-            <Button
-              label="Send"
-              loading={send.busy}
-              disabled={!canSend}
-              accessibilityHint="Sends the message to this conversation"
-              onPress={() => submit(body)}
-            />
-          </View>
-        </View>
-      </View>
+        <ComposerNotices attachError={attachError} length={draft.length} />
+      </ComposerBar>
     </View>
   );
 }

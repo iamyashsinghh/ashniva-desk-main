@@ -3,6 +3,7 @@ import { useEffect, useState, type MutableRefObject } from 'react';
 import { View } from 'react-native';
 
 import { useApiMutation } from '../../shared/api/mutations';
+import { Banner } from '../../shared/components/feedback';
 import { AppText, Button, Input } from '../../shared/components/primitives';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { conversationKeys } from './chat-api';
@@ -76,7 +77,17 @@ export function MessageEditor({
   const tooLong = draft.length > MAX_MESSAGE_LENGTH;
 
   return (
-    <View style={{ gap: theme.spacing.sm }}>
+    <View
+      style={{
+        backgroundColor: theme.colors.surface,
+        borderColor: theme.colors.primary,
+        borderRadius: theme.radius.lg,
+        borderWidth: 1,
+        gap: theme.spacing.sm,
+        marginVertical: theme.spacing.xs,
+        padding: theme.spacing.sm,
+      }}
+    >
       <Input
         accessibilityLabel="Edit this message"
         multiline
@@ -89,32 +100,30 @@ export function MessageEditor({
         style={{ maxHeight: 120, paddingTop: theme.spacing.sm, textAlignVertical: 'top' }}
       />
       {save.error ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {save.error}
-        </AppText>
+        </Banner>
       ) : null}
       {tooLong ? (
         <AppText tone="danger" size="sm">
           {draft.length} of {MAX_MESSAGE_LENGTH} characters. Shorten it to save.
         </AppText>
       ) : null}
-      <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
-        <View style={{ flex: 1 }}>
-          <Button
-            label="Save"
-            loading={save.busy}
-            disabled={body.length === 0 || tooLong}
-            accessibilityHint={
-              body.length === 0
-                ? 'A message cannot be emptied, and it cannot be withdrawn either'
-                : 'Replaces what this message says. What it said before is kept.'
-            }
-            onPress={() => void save.run({ body })}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Button label="Cancel" variant="secondary" onPress={onDone} />
-        </View>
+      <View style={{ flexDirection: 'row', gap: theme.spacing.sm, justifyContent: 'flex-end' }}>
+        <Button label="Cancel" variant="ghost" size="sm" onPress={onDone} />
+        <Button
+          label="Save"
+          size="sm"
+          icon="check"
+          loading={save.busy}
+          disabled={body.length === 0 || tooLong}
+          accessibilityHint={
+            body.length === 0
+              ? 'A message cannot be emptied, and it cannot be withdrawn either'
+              : 'Replaces what this message says. What it said before is kept.'
+          }
+          onPress={() => void save.run({ body })}
+        />
       </View>
     </View>
   );
