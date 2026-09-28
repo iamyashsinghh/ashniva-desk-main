@@ -9,8 +9,10 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useApiMutation } from '../../shared/api/mutations';
+import { Banner } from '../../shared/components/feedback';
+import { Section } from '../../shared/components/layout';
 import { Segmented, type SegmentOption } from '../../shared/components/navigation-list';
-import { AppText, Button, Card, Field, Input } from '../../shared/components/primitives';
+import { AppText, Button, Field, Input } from '../../shared/components/primitives';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 
 /**
@@ -82,14 +84,10 @@ export function QaResultForm({
     (!failed || failureDescription.trim().length >= 3);
 
   return (
-    <Card>
-      <AppText size="sm" tone="muted" weight="medium">
-        Record the result
-      </AppText>
-
+    <Section title="Record the result">
       <Segmented options={RESULTS} value={result} onChange={setResult} label="Pass or fail" />
 
-      <Field label="What you tested" hint="The steps you took">
+      <Field label="What you tested" required hint="The steps you took">
         <Input
           accessibilityLabel="What you tested"
           multiline
@@ -100,7 +98,7 @@ export function QaResultForm({
         />
       </Field>
 
-      <Field label="What happened" hint="What the system actually did">
+      <Field label="What happened" required hint="What the system actually did">
         <Input
           accessibilityLabel="What happened"
           multiline
@@ -113,7 +111,7 @@ export function QaResultForm({
 
       {failed ? (
         <View style={{ gap: theme.spacing.md }}>
-          <Field label="What is wrong" hint="The developer reads this first">
+          <Field label="What is wrong" required hint="The developer reads this first">
             <Input
               accessibilityLabel="What is wrong"
               multiline
@@ -135,23 +133,26 @@ export function QaResultForm({
       ) : null}
 
       {record.error ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {record.error}
-        </AppText>
+        </Banner>
       ) : null}
 
-      <Button
-        label={failed ? 'Record the failure' : 'Record the pass'}
-        loading={record.busy}
-        disabled={!valid}
-        onPress={() => void record.run()}
-      />
-      {!valid ? (
-        <AppText size="xs" tone="faint">
-          Say what you tested and what happened
-          {failed ? ', and what is wrong' : ''}.
-        </AppText>
-      ) : null}
-    </Card>
+      <View style={{ gap: theme.spacing.sm }}>
+        <Button
+          label={failed ? 'Record the failure' : 'Record the pass'}
+          variant={failed ? 'danger' : 'primary'}
+          loading={record.busy}
+          disabled={!valid}
+          onPress={() => void record.run()}
+        />
+        {!valid ? (
+          <AppText size="xs" tone="faint">
+            Say what you tested and what happened
+            {failed ? ', and what is wrong' : ''}.
+          </AppText>
+        ) : null}
+      </View>
+    </Section>
   );
 }

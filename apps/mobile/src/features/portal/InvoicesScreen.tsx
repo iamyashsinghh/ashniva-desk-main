@@ -1,11 +1,13 @@
 import { INVOICE_STATUS_LABELS, type PortalInvoiceSummary } from '@ashniva/types';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl } from 'react-native';
 
-import { AppText, Card, Pill, Screen } from '../../shared/components/primitives';
-import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
 import { usePagedResource } from '../../shared/api/queries';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
+import { ListFooterLoader } from '../../shared/components/feedback';
+import { PressableCard } from '../../shared/components/layout';
+import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
+import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
 import { useTheme } from '../../shared/theme/ThemeProvider';
+import { invoiceDate } from './invoice-dates';
 import { invoiceTone } from './invoice-display';
 
 /**
@@ -45,7 +47,7 @@ export function InvoicesScreen({ onOpen }: { onOpen: (invoiceId: string) => void
       <FlatList
         data={list.items}
         keyExtractor={(invoice) => invoice.id}
-        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.lg }}
+        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.screen }}
         refreshControl={
           <RefreshControl
             refreshing={list.isRefreshing}
@@ -58,29 +60,28 @@ export function InvoicesScreen({ onOpen }: { onOpen: (invoiceId: string) => void
         ListEmptyComponent={
           <EmptyState title="No invoices" description="Issued invoices will appear here." />
         }
-        ListFooterComponent={list.isLoadingMore ? <LoadingState label="Loading more" /> : undefined}
+        ListFooterComponent={list.isLoadingMore ? <ListFooterLoader /> : undefined}
         renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
+          <PressableCard
             accessibilityLabel={`Invoice ${item.numberLabel}, ${item.currency} ${item.total}`}
             accessibilityHint="Opens the invoice"
             onPress={() => onOpen(item.id)}
-            style={({ pressed }) => ({ minHeight: TOUCH_TARGET, opacity: pressed ? 0.7 : 1 })}
+            highlight={item.isOverdue}
           >
-            <Card>
-              <AppText weight="medium">{item.numberLabel}</AppText>
-              <AppText size="xs" tone="faint">
-                Issued {item.issueDate} · due {item.dueDate}
-              </AppText>
-              <AppText size="lg" weight="bold">
-                {item.currency} {item.total}
-              </AppText>
-              <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
-                <Pill label={INVOICE_STATUS_LABELS[item.status]} tone={invoiceTone(item.status)} />
-                {item.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
-              </View>
-            </Card>
-          </Pressable>
+            <AppText size="xs" tone="faint" numberOfLines={1}>
+              {item.numberLabel}
+            </AppText>
+            <AppText variant="heading" weight="bold" tabular>
+              {item.currency} {item.total}
+            </AppText>
+            <PillRow>
+              <Pill label={INVOICE_STATUS_LABELS[item.status]} tone={invoiceTone(item.status)} />
+              {item.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
+            </PillRow>
+            <AppText size="xs" tone="muted">
+              Issued {invoiceDate(item.issueDate)} · due {invoiceDate(item.dueDate)}
+            </AppText>
+          </PressableCard>
         )}
       />
     </Screen>

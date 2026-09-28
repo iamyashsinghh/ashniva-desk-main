@@ -12,7 +12,9 @@ import { RefreshControl, ScrollView, Switch, View } from 'react-native';
 import { errorMessage } from '../../shared/api/client';
 import { useApiMutation } from '../../shared/api/mutations';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Card, Divider, Screen } from '../../shared/components/primitives';
+import { Banner } from '../../shared/components/feedback';
+import { Section } from '../../shared/components/layout';
+import { AppText, Divider, Screen } from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
 import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -106,7 +108,11 @@ export function NotificationPreferencesScreen() {
   return (
     <Screen>
       <ScrollView
-        contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
+        contentContainerStyle={{
+          gap: theme.spacing.md,
+          padding: theme.spacing.screen,
+          paddingBottom: theme.spacing.xxl,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={query.isRefetching}
@@ -116,56 +122,57 @@ export function NotificationPreferencesScreen() {
         }
       >
         {save.error ? (
-          <Card>
-            <AppText size="sm" tone="danger">
-              {save.error}
-            </AppText>
-          </Card>
+          <Banner tone="danger" role="alert">
+            {save.error}
+          </Banner>
         ) : null}
 
-        <Card>
-          <SwitchRow
-            label="Quiet hours"
-            value={quietHoursEnabled}
-            disabled={save.busy}
-            onChange={(next) => void setQuietHours(next)}
-          />
-          {quietHoursEnabled ? (
-            <AppText size="sm" tone="muted">
-              Notifications raised between {preferences.quietHoursStart} and{' '}
-              {preferences.quietHoursEnd} ({preferences.timezone}) wait until afterwards rather than
-              being dropped. Five kinds do not wait at all: an SLA breach, a ticket escalated to
-              you, a ticket with nobody to route it to, and a support call ringing or missed. Those
-              reach you at any hour.
+        <Section>
+          <View style={{ gap: theme.spacing.xs }}>
+            <SwitchRow
+              label="Quiet hours"
+              value={quietHoursEnabled}
+              disabled={save.busy}
+              onChange={(next) => void setQuietHours(next)}
+            />
+            {quietHoursEnabled ? (
+              <AppText size="sm" tone="muted">
+                Notifications raised between {preferences.quietHoursStart} and{' '}
+                {preferences.quietHoursEnd} ({preferences.timezone}) wait until afterwards rather
+                than being dropped. Five kinds do not wait at all: an SLA breach, a ticket escalated
+                to you, a ticket with nobody to route it to, and a support call ringing or missed.
+                Those reach you at any hour.
+              </AppText>
+            ) : (
+              <AppText size="sm" tone="muted">
+                Off — you can be notified at any hour.
+              </AppText>
+            )}
+            <AppText size="xs" tone="faint">
+              The window itself is set on the web, along with its timezone.
             </AppText>
-          ) : (
-            <AppText size="sm" tone="muted">
-              Off — you can be notified at any hour.
-            </AppText>
-          )}
-          <AppText size="xs" tone="faint">
-            The window itself is set on the web, along with its timezone.
-          </AppText>
-        </Card>
+          </View>
+        </Section>
 
         {NOTIFICATION_TYPE_GROUPS.map((group) => (
-          <Card key={group.label}>
-            <AppText weight="medium">{group.label}</AppText>
-            {group.types.map((type) => (
-              <View key={type} style={{ gap: theme.spacing.xs }}>
-                <Divider />
-                <SwitchRow
-                  label={NOTIFICATION_TYPE_LABELS[type]}
-                  value={local[type] ?? isEnabled(preferences.entries, type)}
-                  disabled={save.busy}
-                  onChange={(next) => void setType(type, next)}
-                />
-              </View>
-            ))}
-          </Card>
+          <Section key={group.label} title={group.label}>
+            <View>
+              {group.types.map((type, index) => (
+                <View key={type}>
+                  {index > 0 ? <Divider /> : null}
+                  <SwitchRow
+                    label={NOTIFICATION_TYPE_LABELS[type]}
+                    value={local[type] ?? isEnabled(preferences.entries, type)}
+                    disabled={save.busy}
+                    onChange={(next) => void setType(type, next)}
+                  />
+                </View>
+              ))}
+            </View>
+          </Section>
         ))}
 
-        <AppText size="xs" tone="faint">
+        <AppText size="xs" tone="faint" align="center">
           These settings apply to every device you use.
         </AppText>
       </ScrollView>
@@ -191,16 +198,18 @@ function SwitchRow({
         alignItems: 'center',
         flexDirection: 'row',
         gap: theme.spacing.md,
-        minHeight: TOUCH_TARGET,
+        minHeight: TOUCH_TARGET + 4,
+        paddingVertical: theme.spacing.xs,
       }}
     >
       <View style={{ flex: 1 }}>
-        <AppText size="sm">{label}</AppText>
+        <AppText>{label}</AppText>
       </View>
       <Switch
         accessibilityLabel={label}
         disabled={disabled}
         onValueChange={onChange}
+        trackColor={{ true: theme.colors.primary, false: theme.colors.borderStrong }}
         value={value}
       />
     </View>

@@ -4,11 +4,23 @@ import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View } from
 import { errorMessage } from '../../shared/api/client';
 import { useApiMutation } from '../../shared/api/mutations';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Button, Card, Divider, Pill, Screen } from '../../shared/components/primitives';
+import { Expandable } from '../../shared/components/Expandable';
+import { Banner } from '../../shared/components/feedback';
+import { Hero, Section, useStackKeyboardOffset } from '../../shared/components/layout';
+import {
+  AppText,
+  Button,
+  Divider,
+  Pill,
+  PillRow,
+  Screen,
+} from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDateTime } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
+import { humanise } from './QaQueueCounts';
 import { QaResultForm } from './QaResultForm';
+import { QaStagingLink } from './QaStagingLink';
 import {
   assignmentStatusLabel,
   assignmentStatusTone,
@@ -25,6 +37,7 @@ import {
  */
 export function QaAssignmentScreen({ assignmentId }: { assignmentId: string }) {
   const theme = useTheme();
+  const keyboardOffset = useStackKeyboardOffset();
   const query = useResource<TestingAssignmentDetail>(
     ['qa', 'assignments', assignmentId],
     `/qa/assignments/${assignmentId}`,
@@ -64,10 +77,15 @@ export function QaAssignmentScreen({ assignmentId }: { assignmentId: string }) {
     <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={keyboardOffset}
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
+          contentContainerStyle={{
+            gap: theme.spacing.md,
+            padding: theme.spacing.screen,
+            paddingBottom: theme.spacing.xxl,
+          }}
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
@@ -77,67 +95,67 @@ export function QaAssignmentScreen({ assignmentId }: { assignmentId: string }) {
             />
           }
         >
-          <Card>
-            <AppText size="xs" tone="faint">
-              {assignment.projectName} · {assignment.kind} · {assignment.environment.toLowerCase()}
-            </AppText>
-            <AppText size="lg" weight="bold">
-              {assignment.subjectLabel}
-            </AppText>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+          <Hero
+            overline={`${assignment.projectName} · ${humanise(assignment.kind)} · ${assignment.environment.toLowerCase()}`}
+            title={assignment.subjectLabel}
+          >
+            <PillRow>
               <Pill
                 label={assignmentStatusLabel(assignment.status)}
                 tone={assignmentStatusTone(assignment.status)}
               />
               {assignment.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
-            </View>
+            </PillRow>
             <AppText size="xs" tone="muted">
               Assigned by {assignment.assignedByName}
               {assignment.dueAt ? ` · due ${formatDateTime(assignment.dueAt)}` : ''}
             </AppText>
-          </Card>
+          </Hero>
+
+          {/* Starting is why somebody opened a pending assignment, so it comes before the reading. */}
+          {canStart(assignment.status) ? (
+            <View style={{ gap: theme.spacing.sm }}>
+              <Button
+                label="Start testing"
+                loading={start.busy}
+                accessibilityHint="Marks the assignment as in progress"
+                onPress={() => void start.run()}
+              />
+              {start.error ? (
+                <Banner tone="danger" role="alert">
+                  {start.error}
+                </Banner>
+              ) : null}
+            </View>
+          ) : null}
 
           {assignment.whatToTest ? (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                What to test
-              </AppText>
+            <Section title="What to test">
               <AppText>{assignment.whatToTest}</AppText>
-            </Card>
+            </Section>
           ) : null}
 
           {assignment.acceptanceCriteria ? (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                What counts as passing
-              </AppText>
+            <Section title="What counts as passing">
               <AppText>{assignment.acceptanceCriteria}</AppText>
-            </Card>
+            </Section>
           ) : null}
 
           {assignment.whatDeveloped || assignment.developerNotes ? (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                From the developer
-              </AppText>
+            <Section title="From the developer">
               {assignment.whatDeveloped ? <AppText>{assignment.whatDeveloped}</AppText> : null}
+              {assignment.whatDeveloped && assignment.developerNotes ? <Divider /> : null}
               {assignment.developerNotes ? (
-                <>
-                  <Divider />
-                  <AppText size="sm">{assignment.developerNotes}</AppText>
-                </>
+                <AppText size="sm">{assignment.developerNotes}</AppText>
               ) : null}
-            </Card>
+            </Section>
           ) : null}
 
           {assignment.stagingUrl || assignment.testAccount ? (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                Where and as whom
-              </AppText>
-              {assignment.stagingUrl ? <AppText size="sm">{assignment.stagingUrl}</AppText> : null}
+            <Section title="Where and as whom">
+              {assignment.stagingUrl ? <QaStagingLink url={assignment.stagingUrl} /> : null}
               {assignment.testAccount ? (
-                <>
+                <View style={{ gap: theme.spacing.xs }}>
                   <AppText size="sm">
                     {assignment.testAccount.label} · {assignment.testAccount.username}
                   </AppText>
@@ -145,16 +163,13 @@ export function QaAssignmentScreen({ assignmentId }: { assignmentId: string }) {
                     The password is revealed on the web app, against a grant, and the reveal is
                     audited.
                   </AppText>
-                </>
+                </View>
               ) : null}
-            </Card>
+            </Section>
           ) : null}
 
           {assignment.clarificationQuestion ? (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                Your question
-              </AppText>
+            <Section title="Your question">
               <AppText size="sm">{assignment.clarificationQuestion}</AppText>
               {assignment.clarificationAnswer ? (
                 <>
@@ -166,48 +181,31 @@ export function QaAssignmentScreen({ assignmentId }: { assignmentId: string }) {
                   Not answered yet.
                 </AppText>
               )}
-            </Card>
+            </Section>
           ) : null}
 
           {assignment.results.length > 0 ? (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                Results so far ({assignment.results.length})
-              </AppText>
-              {assignment.results.map((row) => (
-                <View key={row.id} style={{ gap: theme.spacing.xs }}>
-                  <Divider />
-                  <AppText size="xs" tone="faint">
-                    {formatDateTime(row.createdAt)} · {row.recordedByName}
-                  </AppText>
-                  <AppText
-                    size="sm"
-                    weight="medium"
-                    tone={row.outcome === 'FAIL' ? 'danger' : 'default'}
-                  >
-                    {row.outcome === 'FAIL' ? 'Failed' : 'Passed'}
-                    {row.severity ? ` · ${row.severity.toLowerCase()}` : ''}
-                  </AppText>
-                  <AppText size="sm">{row.actualResult}</AppText>
-                </View>
-              ))}
-            </Card>
-          ) : null}
-
-          {canStart(assignment.status) ? (
-            <>
-              <Button
-                label="Start testing"
-                loading={start.busy}
-                accessibilityHint="Marks the assignment as in progress"
-                onPress={() => void start.run()}
-              />
-              {start.error ? (
-                <AppText tone="danger" size="sm">
-                  {start.error}
-                </AppText>
-              ) : null}
-            </>
+            <Section title={`Results so far (${assignment.results.length})`}>
+              <Expandable items={assignment.results} initial={5} noun="results">
+                {(row, index) => (
+                  <View key={row.id} style={{ gap: theme.spacing.xs }}>
+                    {index > 0 ? <Divider /> : null}
+                    <AppText size="xs" tone="faint">
+                      {formatDateTime(row.createdAt)} · {row.recordedByName}
+                    </AppText>
+                    <AppText
+                      size="sm"
+                      weight="medium"
+                      tone={row.outcome === 'FAIL' ? 'danger' : 'success'}
+                    >
+                      {row.outcome === 'FAIL' ? 'Failed' : 'Passed'}
+                      {row.severity ? ` · ${row.severity.toLowerCase()}` : ''}
+                    </AppText>
+                    <AppText size="sm">{row.actualResult}</AppText>
+                  </View>
+                )}
+              </Expandable>
+            </Section>
           ) : null}
 
           {canRecordResult(assignment.status) ? (

@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 
+import { Avatar } from '../../shared/components/Avatar';
+import { ListRow } from '../../shared/components/data-display';
+import { Banner } from '../../shared/components/feedback';
+import { SectionHeader } from '../../shared/components/layout';
 import { AppText, Button, Card, Divider, Screen } from '../../shared/components/primitives';
 import {
   currentPushPermission,
@@ -58,84 +62,55 @@ export function ProfileScreen({ onOpenPreferences }: { onOpenPreferences: () => 
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}>
-        <Card>
-          <AppText size="lg" weight="bold">
-            {user.name}
-          </AppText>
-          <AppText tone="muted">{user.email}</AppText>
-          <Divider />
-          <AppText size="sm" tone="muted">
-            {user.roleName}
-            {user.isCustomRole ? ' (custom role)' : ''}
-          </AppText>
-          <AppText size="sm" tone="muted">
-            {user.organization.name}
-          </AppText>
-        </Card>
+      <ScrollView
+        contentContainerStyle={{
+          gap: theme.spacing.md,
+          padding: theme.spacing.screen,
+          paddingBottom: theme.spacing.xxl,
+        }}
+      >
+        <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.md }}>
+          <Avatar name={user.name} size={56} />
+          <View style={{ flex: 1, gap: 2 }}>
+            <AppText variant="title">{user.name}</AppText>
+            <AppText tone="muted">{user.email}</AppText>
+            <AppText size="sm" tone="muted">
+              {user.roleName}
+              {user.isCustomRole ? ' (custom role)' : ''} · {user.organization.name}
+            </AppText>
+          </View>
+        </View>
 
-        <Card>
-          <AppText weight="medium">Notifications on this device</AppText>
-          {permission === 'granted' ? (
-            <AppText size="sm" tone="muted">
-              This device is allowed to show alerts. Sending them to a phone is not built yet, and
-              e-mail is not switched on for this deployment — your notifications are in the app.
-            </AppText>
-          ) : null}
-          {permission === 'denied' ? (
-            <AppText size="sm" tone="muted">
-              Turned off. To change it, allow notifications for Ashniva Desk in your device settings
-              — the app cannot ask again.
-            </AppText>
-          ) : null}
-          {permission === 'unavailable' ? (
-            <AppText size="sm" tone="muted">
-              This device cannot receive push notifications.
-            </AppText>
-          ) : null}
-          {permission === 'undetermined' ? (
-            <>
-              <AppText size="sm" tone="muted">
-                Allow alerts now so this device is ready when pushed notifications arrive.
-              </AppText>
-              <Button
-                label="Turn on notifications"
-                loading={busy}
-                onPress={() => void enablePush()}
-              />
-            </>
-          ) : null}
-        </Card>
+        {secureStorage === false ? (
+          <Banner tone="danger" title="This device cannot store your session securely">
+            You will be asked to sign in again each time you open the app. On Android this usually
+            means the device has no screen lock set.
+          </Banner>
+        ) : null}
 
-        <Card>
-          <AppText weight="medium">Which notifications you get</AppText>
-          <AppText size="sm" tone="muted">
-            Your channels and quiet hours apply to every device you are signed in on.
-          </AppText>
-          <Button
-            label="Notification settings"
-            variant="secondary"
+        <Card style={{ gap: 0 }}>
+          <SectionHeader title="Which notifications you get" />
+          <ListRow
+            title="Notification settings"
+            subtitle="Your channels and quiet hours apply to every device you are signed in on."
             onPress={onOpenPreferences}
             accessibilityHint="Choose what you are told about, and when"
           />
+          <Divider />
+          <ListRow title="Notifications on this device" subtitle={PUSH_STATUS[permission]} />
+          {permission === 'undetermined' ? (
+            <Button
+              label="Turn on notifications"
+              loading={busy}
+              onPress={() => void enablePush()}
+            />
+          ) : null}
         </Card>
-
-        {secureStorage === false ? (
-          <Card>
-            <AppText weight="medium" tone="danger">
-              This device cannot store your session securely
-            </AppText>
-            <AppText size="sm" tone="muted">
-              You will be asked to sign in again each time you open the app. On Android this usually
-              means the device has no screen lock set.
-            </AppText>
-          </Card>
-        ) : null}
 
         <View style={{ marginTop: theme.spacing.lg }}>
           <Button
             label="Sign out"
-            variant="danger"
+            variant="dangerGhost"
             loading={signingOut}
             accessibilityHint="Ends your session on this device"
             onPress={() => {
@@ -148,3 +123,13 @@ export function ProfileScreen({ onOpenPreferences }: { onOpenPreferences: () => 
     </Screen>
   );
 }
+
+/** What the platform has said about alerts on this device, in words. */
+const PUSH_STATUS: Record<PushPermission, string> = {
+  granted:
+    'This device is allowed to show alerts. Sending them to a phone is not built yet, and e-mail is not switched on for this deployment — your notifications are in the app.',
+  denied:
+    'Turned off. To change it, allow notifications for Ashniva Desk in your device settings — the app cannot ask again.',
+  unavailable: 'This device cannot receive push notifications.',
+  undetermined: 'Allow alerts now so this device is ready when pushed notifications arrive.',
+};

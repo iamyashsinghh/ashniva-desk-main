@@ -3,7 +3,8 @@ import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Card, Divider, Pill, Screen } from '../../shared/components/primitives';
+import { Hero, Section } from '../../shared/components/layout';
+import { AppText, Divider, Pill, Screen } from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDate } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -47,7 +48,11 @@ export function ReleaseNoteScreen({ releaseId }: { releaseId: string }) {
   return (
     <Screen>
       <ScrollView
-        contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
+        contentContainerStyle={{
+          gap: theme.spacing.md,
+          padding: theme.spacing.screen,
+          paddingBottom: theme.spacing.xxl,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={query.isRefetching}
@@ -56,33 +61,29 @@ export function ReleaseNoteScreen({ releaseId }: { releaseId: string }) {
           />
         }
       >
-        <Card>
-          <AppText size="lg" weight="bold">
-            Version {release.version}
-          </AppText>
-          <AppText size="xs" tone="faint">
+        <Hero title={`Version ${release.version}`}>
+          <AppText size="xs" tone="muted">
             Released {formatDate(release.releaseDate)}
           </AppText>
           {release.summary ? <AppText>{release.summary}</AppText> : null}
-        </Card>
+        </Hero>
 
-        <Card>
-          <AppText size="sm" tone="muted" weight="medium">
-            What changed ({release.items.length})
-          </AppText>
+        <Section title={`What changed (${release.items.length})`}>
           {release.items.length === 0 ? (
             <AppText tone="muted">Your team did not list the individual changes.</AppText>
           ) : (
             release.items.map((item, index) => (
-              <View key={`${item.kind}-${index}`} style={{ gap: theme.spacing.xs }}>
-                <Divider />
-                {/* The word carries the meaning; the pill is never the only thing saying it. */}
-                <Pill label={RELEASE_NOTE_ITEM_KIND_LABELS[item.kind] ?? item.kind} />
-                <AppText size="sm">{item.label}</AppText>
+              <View key={`${item.kind}-${index}`} style={{ gap: theme.spacing.sm }}>
+                {index > 0 ? <Divider /> : null}
+                <View style={{ gap: theme.spacing.xs }}>
+                  {/* The word carries the meaning; the pill is never the only thing saying it. */}
+                  <Pill label={RELEASE_NOTE_ITEM_KIND_LABELS[item.kind] ?? item.kind} />
+                  <AppText size="sm">{item.label}</AppText>
+                </View>
               </View>
             ))
           )}
-        </Card>
+        </Section>
       </ScrollView>
     </Screen>
   );

@@ -4,6 +4,7 @@ import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
+import { Glyph } from '../../shared/components/glyph';
 import { Segmented } from '../../shared/components/navigation-list';
 import { AppText, Card, Divider, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
@@ -52,9 +53,20 @@ export function MyTimeScreen({ onOpenTask }: { onOpenTask: (taskId: string) => v
   const refresh = () => void query.refetch();
 
   const header = (
-    <View style={{ gap: theme.spacing.sm, padding: theme.spacing.lg, paddingBottom: 0 }}>
+    <View
+      style={{
+        gap: theme.spacing.md,
+        padding: theme.spacing.screen,
+        paddingBottom: theme.spacing.xs,
+      }}
+    >
       <Segmented options={TIME_RANGES} value={range} onChange={setRange} label="Which days" />
-      <AppText size="sm" tone="muted">
+      {/*
+        The headline is the whole sentence in one text node rather than a big bare figure beside
+        it: a lone "2 h" would read as the same thing as a day's total, and a screen reader would
+        hear a number with nothing to say what it counts.
+      */}
+      <AppText variant="heading" tabular>
         {formatMinutes(totalMinutes(entries))} logged
         {range === 'week' ? ' over the last seven days' : ' today'}
       </AppText>
@@ -89,7 +101,11 @@ export function MyTimeScreen({ onOpenTask }: { onOpenTask: (taskId: string) => v
       <FlatList
         data={days}
         keyExtractor={(day) => day.date}
-        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.lg }}
+        contentContainerStyle={{
+          gap: theme.spacing.md,
+          padding: theme.spacing.screen,
+          paddingTop: theme.spacing.sm,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={query.isRefetching}
@@ -108,34 +124,52 @@ export function MyTimeScreen({ onOpenTask }: { onOpenTask: (taskId: string) => v
           />
         }
         renderItem={({ item }) => (
-          <Card>
-            <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
+          <Card style={{ gap: 0, paddingVertical: theme.spacing.md }}>
+            <View
+              style={{
+                alignItems: 'baseline',
+                flexDirection: 'row',
+                gap: theme.spacing.sm,
+                paddingBottom: theme.spacing.sm,
+              }}
+            >
               <View style={{ flex: 1 }}>
-                <AppText weight="medium">{formatDate(item.date) ?? item.date}</AppText>
+                <AppText variant="label" tone="muted" uppercase>
+                  {formatDate(item.date) ?? item.date}
+                </AppText>
               </View>
-              <AppText tone="muted">{formatMinutes(item.minutes)}</AppText>
+              <AppText weight="bold" tabular>
+                {formatMinutes(item.minutes)}
+              </AppText>
             </View>
             {item.entries.map((entry) => (
-              <Pressable
-                key={entry.id}
-                accessibilityRole="button"
-                accessibilityLabel={`${entry.task.key} ${formatMinutes(entry.minutes)}`}
-                accessibilityHint="Opens the task"
-                onPress={() => onOpenTask(entry.task.id)}
-                style={({ pressed }) => ({
-                  gap: theme.spacing.xs,
-                  minHeight: TOUCH_TARGET,
-                  opacity: pressed ? 0.7 : 1,
-                })}
-              >
+              <View key={entry.id}>
                 <Divider />
-                <AppText size="xs" tone="faint">
-                  {entry.task.key} · {entry.project.name} · {formatMinutes(entry.minutes)}
-                </AppText>
-                <AppText size="sm" numberOfLines={3}>
-                  {entry.summary}
-                </AppText>
-              </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${entry.task.key} ${formatMinutes(entry.minutes)}`}
+                  accessibilityHint="Opens the task"
+                  onPress={() => onOpenTask(entry.task.id)}
+                  style={({ pressed }) => ({
+                    alignItems: 'center',
+                    flexDirection: 'row',
+                    gap: theme.spacing.md,
+                    minHeight: TOUCH_TARGET,
+                    opacity: pressed ? 0.6 : 1,
+                    paddingVertical: theme.spacing.sm,
+                  })}
+                >
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <AppText size="xs" tone="faint" numberOfLines={1}>
+                      {entry.task.key} · {entry.project.name} · {formatMinutes(entry.minutes)}
+                    </AppText>
+                    <AppText size="sm" numberOfLines={3}>
+                      {entry.summary}
+                    </AppText>
+                  </View>
+                  <Glyph name="chevron-right" color={theme.colors.textFaint} size={12} />
+                </Pressable>
+              </View>
             ))}
           </Card>
         )}

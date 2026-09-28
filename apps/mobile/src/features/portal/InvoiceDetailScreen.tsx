@@ -3,9 +3,12 @@ import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Card, Divider, Pill, Screen } from '../../shared/components/primitives';
+import { KeyValueRow, StatTile, TileGrid } from '../../shared/components/data-display';
+import { Hero, Section } from '../../shared/components/layout';
+import { AppText, Card, Divider, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
 import { useTheme } from '../../shared/theme/ThemeProvider';
+import { invoiceDate } from './invoice-dates';
 import { invoiceTone } from './invoice-display';
 
 /**
@@ -56,10 +59,16 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
       : ([['Rounding', invoice.roundingAdjustment]] as [string, string][])),
   ];
 
+  const paid = !isZero(invoice.amountPaid);
+
   return (
     <Screen>
       <ScrollView
-        contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
+        contentContainerStyle={{
+          gap: theme.spacing.md,
+          padding: theme.spacing.screen,
+          paddingBottom: theme.spacing.xxl,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={query.isRefetching}
@@ -68,83 +77,74 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
           />
         }
       >
-        <Card>
-          <AppText size="lg" weight="bold">
-            {invoice.numberLabel}
-          </AppText>
-          <AppText size="xs" tone="faint">
-            Issued {invoice.issueDate} · due {invoice.dueDate}
-          </AppText>
-          <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
+        <Hero title={invoice.numberLabel}>
+          <PillRow>
             <Pill
               label={INVOICE_STATUS_LABELS[invoice.status]}
               tone={invoiceTone(invoice.status)}
             />
             {invoice.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
             {invoice.reverseCharge ? <Pill label="Reverse charge" tone="warning" /> : null}
-          </View>
-        </Card>
-
-        <Card>
-          <AppText size="sm" tone="muted" weight="medium">
-            Lines ({invoice.lineItems.length})
+          </PillRow>
+          <AppText size="xs" tone="muted">
+            Issued {invoiceDate(invoice.issueDate)} · due {invoiceDate(invoice.dueDate)}
           </AppText>
-          {invoice.lineItems.map((line) => (
-            <View key={line.id} style={{ gap: theme.spacing.xs }}>
-              <Divider />
-              <AppText size="sm">{line.description}</AppText>
-              <AppText size="xs" tone="faint">
-                {line.quantity} {line.unit} × {line.unitPrice} · {line.taxRate}% GST
-              </AppText>
-              <AppText weight="medium">{line.lineTotal}</AppText>
+        </Hero>
+
+        {/* The figure somebody opened the invoice to find, before the arithmetic behind it. */}
+        <TileGrid>
+          <StatTile label="Total" value={`${invoice.currency} ${invoice.total}`} />
+          {paid ? (
+            <StatTile
+              label="Balance due"
+              value={invoice.balanceDue}
+              tone={invoice.isOverdue ? 'danger' : 'default'}
+            />
+          ) : null}
+        </TileGrid>
+
+        <Section title={`Lines (${invoice.lineItems.length})`}>
+          {invoice.lineItems.map((line, index) => (
+            <View key={line.id} style={{ gap: theme.spacing.sm }}>
+              {index > 0 ? <Divider /> : null}
+              <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <AppText size="sm">{line.description}</AppText>
+                  <AppText size="xs" tone="faint">
+                    {line.quantity} {line.unit} × {line.unitPrice} · {line.taxRate}% GST
+                  </AppText>
+                </View>
+                <AppText weight="medium" align="right" tabular>
+                  {line.lineTotal}
+                </AppText>
+              </View>
             </View>
           ))}
-        </Card>
+        </Section>
 
-        <Card>
+        <Card style={{ gap: theme.spacing.xs }}>
           {rows.map(([label, value]) => (
-            <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <AppText size="sm" tone="muted">
-                {label}
-              </AppText>
-              <AppText size="sm">{value}</AppText>
-            </View>
+            <KeyValueRow key={label} label={label} value={value} />
           ))}
           <Divider />
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <AppText weight="bold">Total</AppText>
-            <AppText weight="bold">
-              {invoice.currency} {invoice.total}
-            </AppText>
-          </View>
-          {isZero(invoice.amountPaid) ? null : (
+          <KeyValueRow label="Total" value={`${invoice.currency} ${invoice.total}`} emphasis />
+          {paid ? (
             <>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <AppText size="sm" tone="muted">
-                  Paid
-                </AppText>
-                <AppText size="sm">{invoice.amountPaid}</AppText>
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <AppText weight="bold">Balance due</AppText>
-                <AppText weight="bold">{invoice.balanceDue}</AppText>
-              </View>
+              <KeyValueRow label="Paid" value={invoice.amountPaid} />
+              <KeyValueRow label="Balance due" value={invoice.balanceDue} emphasis />
             </>
-          )}
+          ) : null}
           {invoice.amountInWords ? (
-            <AppText size="xs" tone="faint">
+            <AppText size="xs" tone="muted">
               {invoice.amountInWords}
             </AppText>
           ) : null}
         </Card>
 
         {invoice.notes ? (
-          <Card>
-            <AppText size="sm" tone="muted" weight="medium">
-              Notes
-            </AppText>
+          <Section title="Notes">
             <AppText size="sm">{invoice.notes}</AppText>
-          </Card>
+          </Section>
         ) : null}
       </ScrollView>
     </Screen>

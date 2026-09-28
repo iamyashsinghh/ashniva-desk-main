@@ -1,14 +1,16 @@
 import type { PortalAiSummary, PortalReleaseNoteSummary } from '@ashniva/types';
 import { useState } from 'react';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { usePagedResource, type PagedResult } from '../../shared/api/queries';
+import { ListFooterLoader } from '../../shared/components/feedback';
+import { PressableCard } from '../../shared/components/layout';
 import { Segmented, type SegmentOption } from '../../shared/components/navigation-list';
-import { AppText, Card, Screen } from '../../shared/components/primitives';
+import { AppText, Button, Card, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDate } from '../../shared/format/format';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
+import { animateLayout } from '../../shared/theme/motion';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 
 /**
@@ -49,7 +51,7 @@ export function UpdatesScreen({ onOpenRelease }: { onOpenRelease: (releaseId: st
   );
 
   const header = (
-    <View style={{ padding: theme.spacing.lg, paddingBottom: 0 }}>
+    <View style={{ padding: theme.spacing.screen, paddingBottom: theme.spacing.xs }}>
       <Segmented options={SECTIONS} value={section} onChange={setSection} label="What to show" />
     </View>
   );
@@ -63,15 +65,7 @@ export function UpdatesScreen({ onOpenRelease }: { onOpenRelease: (releaseId: st
           loadingLabel="Loading progress summaries"
           emptyTitle="Nothing published yet"
           emptyBody="Progress summaries appear here once your team publishes them."
-          renderItem={(summary) => (
-            <Card>
-              <AppText weight="medium">{summary.title}</AppText>
-              <AppText size="xs" tone="faint">
-                {formatDate(summary.periodStart)} – {formatDate(summary.periodEnd)}
-              </AppText>
-              <AppText size="sm">{summary.content}</AppText>
-            </Card>
-          )}
+          renderItem={(summary) => <SummaryCard summary={summary} />}
         />
       ) : (
         <UpdatesList
@@ -80,27 +74,61 @@ export function UpdatesScreen({ onOpenRelease }: { onOpenRelease: (releaseId: st
           emptyTitle="Nothing released yet"
           emptyBody="Releases your team publishes appear here, with what changed in each."
           renderItem={(release) => (
-            <Pressable
-              accessibilityRole="button"
+            <PressableCard
               accessibilityLabel={`Version ${release.version}`}
               accessibilityHint="Opens what changed in this release"
               onPress={() => onOpenRelease(release.id)}
-              style={({ pressed }) => ({ minHeight: TOUCH_TARGET, opacity: pressed ? 0.7 : 1 })}
             >
-              <Card>
-                <AppText weight="medium">Version {release.version}</AppText>
-                <AppText size="xs" tone="faint">
-                  Released {formatDate(release.releaseDate)}
-                </AppText>
-                <AppText size="sm" tone="muted">
-                  See what changed
-                </AppText>
-              </Card>
-            </Pressable>
+              <AppText size="xs" tone="faint" numberOfLines={1}>
+                Released {formatDate(release.releaseDate)}
+              </AppText>
+              <AppText weight="medium">Version {release.version}</AppText>
+              <AppText size="sm" tone="primary">
+                See what changed
+              </AppText>
+            </PressableCard>
           )}
         />
       )}
     </Screen>
+  );
+}
+
+/** Past this many characters a summary folds, so one long week does not bury the rest. */
+const FOLD_AFTER = 320;
+
+/**
+ * One progress summary: its period as an overline, then the title and what the team wrote.
+ *
+ * The fold is only over text already on the device — "Show more" reveals, it does not fetch.
+ */
+function SummaryCard({ summary }: { summary: PortalAiSummary }) {
+  const theme = useTheme();
+  const long = summary.content.length > FOLD_AFTER;
+  const [open, setOpen] = useState(false);
+  return (
+    <Card style={{ gap: theme.spacing.xs + 2 }}>
+      <AppText size="xs" tone="faint" numberOfLines={1}>
+        {formatDate(summary.periodStart)} – {formatDate(summary.periodEnd)}
+      </AppText>
+      <AppText weight="medium">{summary.title}</AppText>
+      <AppText size="sm" numberOfLines={long && !open ? 6 : undefined}>
+        {summary.content}
+      </AppText>
+      {long ? (
+        <View style={{ alignItems: 'flex-start' }}>
+          <Button
+            label={open ? 'Show less' : 'Show more'}
+            variant="ghost"
+            size="sm"
+            onPress={() => {
+              animateLayout();
+              setOpen((value) => !value);
+            }}
+          />
+        </View>
+      ) : null}
+    </Card>
   );
 }
 
@@ -144,7 +172,11 @@ function UpdatesList<T extends { id: string }>({
     <FlatList
       data={list.items}
       keyExtractor={(item) => item.id}
-      contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.lg }}
+      contentContainerStyle={{
+        gap: theme.spacing.sm,
+        padding: theme.spacing.screen,
+        paddingTop: theme.spacing.sm,
+      }}
       refreshControl={
         <RefreshControl
           refreshing={list.isRefreshing}
@@ -155,7 +187,7 @@ function UpdatesList<T extends { id: string }>({
       onEndReached={list.loadMore}
       onEndReachedThreshold={0.4}
       ListEmptyComponent={<EmptyState title={emptyTitle} description={emptyBody} />}
-      ListFooterComponent={list.isLoadingMore ? <LoadingState label="Loading more" /> : undefined}
+      ListFooterComponent={list.isLoadingMore ? <ListFooterLoader /> : undefined}
       renderItem={({ item }) => renderItem(item)}
     />
   );
