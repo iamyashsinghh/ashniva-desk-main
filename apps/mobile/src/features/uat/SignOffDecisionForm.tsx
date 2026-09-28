@@ -1,9 +1,13 @@
 import { PERMISSIONS, UAT_DECISION, type UatDecision, type UatRequestDetail } from '@ashniva/types';
 import { useState } from 'react';
+import { View } from 'react-native';
 
 import { useApiMutation } from '../../shared/api/mutations';
 import { Segmented, type SegmentOption } from '../../shared/components/navigation-list';
-import { AppText, Button, Card, Field, Input } from '../../shared/components/primitives';
+import { Banner } from '../../shared/components/feedback';
+import { Section } from '../../shared/components/layout';
+import { AppText, Button, Field, Input } from '../../shared/components/primitives';
+import { useTheme } from '../../shared/theme/ThemeProvider';
 import { usePermission } from '../auth/SessionProvider';
 
 /**
@@ -49,15 +53,12 @@ export function SignOffDecisionForm({
 
   if (!mayDecide) {
     return (
-      <Card>
-        <AppText size="sm" tone="muted" weight="medium">
-          Your answer
-        </AppText>
-        <AppText tone="muted">
+      <Section title="Your answer">
+        <AppText size="sm" tone="muted">
           Somebody with sign-off rights at your organization has to answer this one. You can still
           ask a question below.
         </AppText>
-      </Card>
+      </Section>
     );
   }
 
@@ -67,11 +68,7 @@ export function SignOffDecisionForm({
   const valid = !changesWanted || note.trim().length >= 3;
 
   return (
-    <Card>
-      <AppText size="sm" tone="muted" weight="medium">
-        Your answer
-      </AppText>
-
+    <Section title="Your answer">
       <Segmented
         options={DECISIONS}
         value={decision}
@@ -86,21 +83,22 @@ export function SignOffDecisionForm({
             ? 'Required. This is what your team works from.'
             : 'Optional. Your team sees this with your approval.'
         }
+        required={changesWanted}
       >
         <Input
           accessibilityLabel={changesWanted ? 'What is wrong with it' : 'Anything to add'}
           multiline
           numberOfLines={3}
           onChangeText={setNote}
-          style={{ minHeight: 80, textAlignVertical: 'top' }}
+          style={{ minHeight: 88, textAlignVertical: 'top' }}
           value={note}
         />
       </Field>
 
       {decide.error ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {decide.error}
-        </AppText>
+        </Banner>
       ) : null}
 
       <Button
@@ -111,11 +109,11 @@ export function SignOffDecisionForm({
         onPress={() => void decide.run()}
       />
       {!valid ? (
-        <AppText size="xs" tone="faint">
+        <AppText size="xs" tone="faint" align="center">
           Say what is wrong before sending this.
         </AppText>
       ) : null}
-    </Card>
+    </Section>
   );
 }
 
@@ -127,6 +125,7 @@ export function SignOffQuestionForm({
   requestId: string;
   onAsked: () => void;
 }) {
+  const theme = useTheme();
   const [body, setBody] = useState('');
 
   const ask = useApiMutation<void, unknown>({
@@ -139,8 +138,9 @@ export function SignOffQuestionForm({
     },
   });
 
+  // Drawn inside the Questions section, under the thread it adds to, so no card of its own.
   return (
-    <Card>
+    <View style={{ gap: theme.spacing.md }}>
       <Field label="Ask your team something" hint="They answer here, not by email.">
         <Input
           accessibilityLabel="Your question"
@@ -152,9 +152,9 @@ export function SignOffQuestionForm({
         />
       </Field>
       {ask.error ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {ask.error}
-        </AppText>
+        </Banner>
       ) : null}
       <Button
         label="Send the question"
@@ -163,6 +163,6 @@ export function SignOffQuestionForm({
         disabled={body.trim().length < 2}
         onPress={() => void ask.run()}
       />
-    </Card>
+    </View>
   );
 }

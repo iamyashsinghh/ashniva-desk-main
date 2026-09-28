@@ -3,7 +3,9 @@ import { useState } from 'react';
 
 import { useApiMutation } from '../../shared/api/mutations';
 import { Segmented, type SegmentOption } from '../../shared/components/navigation-list';
-import { AppText, Button, Card, Field, Input } from '../../shared/components/primitives';
+import { Banner } from '../../shared/components/feedback';
+import { Section } from '../../shared/components/layout';
+import { AppText, Button, Field, Input } from '../../shared/components/primitives';
 
 /**
  * The client's answer.
@@ -73,11 +75,7 @@ export function ApprovalDecisionForm({
   const valid = !commentRequired || comment.trim().length >= 3;
 
   return (
-    <Card>
-      <AppText size="sm" tone="muted" weight="medium">
-        Your decision
-      </AppText>
-
+    <Section title="Your decision">
       <Segmented
         options={DECISIONS}
         value={decision}
@@ -85,35 +83,36 @@ export function ApprovalDecisionForm({
         label="What you want to do"
       />
 
-      <Field label={prompt.label} hint={prompt.hint}>
+      <Field label={prompt.label} hint={prompt.hint} required={commentRequired}>
         <Input
           accessibilityLabel={prompt.label}
           multiline
           numberOfLines={3}
           onChangeText={setComment}
-          style={{ minHeight: 80, textAlignVertical: 'top' }}
+          style={{ minHeight: 88, textAlignVertical: 'top' }}
           value={comment}
         />
       </Field>
 
       {decide.error ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {decide.error}
-        </AppText>
+        </Banner>
       ) : null}
 
       <Button
         label={prompt.button}
+        variant={decision === APPROVAL_ACTION.REJECT ? 'danger' : 'primary'}
         loading={decide.busy}
         disabled={!valid}
         accessibilityHint="Sends your answer to your team. This cannot be taken back from here."
         onPress={() => void decide.run({ decision })}
       />
       {!valid ? (
-        <AppText size="xs" tone="faint">
+        <AppText size="xs" tone="faint" align="center">
           Say what you want changed before sending this.
         </AppText>
       ) : null}
-    </Card>
+    </Section>
   );
 }

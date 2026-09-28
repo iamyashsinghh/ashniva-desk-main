@@ -11,7 +11,17 @@ import {
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Button, Card, Divider, Pill, Screen } from '../../shared/components/primitives';
+import { Expandable } from '../../shared/components/Expandable';
+import { Banner } from '../../shared/components/feedback';
+import { Hero, Section, useStackKeyboardOffset } from '../../shared/components/layout';
+import {
+  AppText,
+  Button,
+  Divider,
+  Pill,
+  PillRow,
+  Screen,
+} from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDateTime, formatSince } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -31,6 +41,7 @@ import { isAwaitingDecision, uatStatusLabel, uatStatusTone } from './uat-display
  */
 export function SignOffScreen({ requestId }: { requestId: string }) {
   const theme = useTheme();
+  const keyboardOffset = useStackKeyboardOffset();
   const [openError, setOpenError] = useState<string | null>(null);
   const query = useResource<UatRequestDetail>(
     ['portal', 'uat', requestId],
@@ -71,10 +82,15 @@ export function SignOffScreen({ requestId }: { requestId: string }) {
     <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={keyboardOffset}
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
+          contentContainerStyle={{
+            gap: theme.spacing.md,
+            padding: theme.spacing.screen,
+            paddingBottom: theme.spacing.xxl,
+          }}
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
@@ -84,90 +100,87 @@ export function SignOffScreen({ requestId }: { requestId: string }) {
             />
           }
         >
-          <Card>
-            <AppText size="xs" tone="faint">
-              Asked {formatSince(request.createdAt)}
-              {request.releaseVersion ? ` · version ${request.releaseVersion}` : ''}
-            </AppText>
-            <AppText size="lg" weight="bold">
-              What changed
-            </AppText>
+          <Hero
+            overline={`Asked ${formatSince(request.createdAt) ?? ''}${request.releaseVersion ? ` · version ${request.releaseVersion}` : ''}`}
+            title="What changed"
+          >
             <AppText>{request.summaryPlain}</AppText>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+            <PillRow>
               <Pill label={uatStatusLabel(request.status)} tone={uatStatusTone(request.status)} />
-            </View>
-          </Card>
+            </PillRow>
+          </Hero>
 
           {request.checklist.length > 0 ? (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                What to check ({request.checklist.length})
-              </AppText>
+            <Section title={`What to check (${request.checklist.length})`}>
               {request.checklist.map((item, index) => (
-                <AppText key={item} size="sm">
-                  {index + 1}. {item}
-                </AppText>
+                <View key={item} style={{ gap: theme.spacing.sm }}>
+                  {index > 0 ? <Divider /> : null}
+                  {/*
+                    One text node, so the step reads as one sentence to a screen reader; the
+                    number is only styled apart from the words.
+                  */}
+                  <AppText size="sm">
+                    <AppText size="sm" tone="primary" weight="bold" tabular>
+                      {`${index + 1}.`}
+                    </AppText>
+                    {` ${item}`}
+                  </AppText>
+                </View>
               ))}
-            </Card>
+            </Section>
           ) : null}
 
           {request.previewUrl ? (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                Try it yourself
-              </AppText>
+            <Section title="Try it yourself">
               <Button
                 label="Open the preview"
-                variant="secondary"
                 accessibilityHint="Opens the link your team sent, in your browser"
                 onPress={() => void open(request.previewUrl ?? '')}
               />
               {openError ? (
-                <AppText tone="danger" size="sm">
+                <Banner tone="danger" role="alert">
                   {openError}
-                </AppText>
+                </Banner>
               ) : null}
-            </Card>
+            </Section>
           ) : null}
 
           {isAwaitingDecision(request.status) ? (
             <SignOffDecisionForm requestId={request.id} onDecided={refresh} />
           ) : (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                Your answer
-              </AppText>
+            <Section title="Your answer">
               <AppText size="sm">
                 {uatStatusLabel(request.status)}
                 {request.decidedByName ? ` · ${request.decidedByName}` : ''}
                 {request.decidedAt ? ` · ${formatDateTime(request.decidedAt)}` : ''}
               </AppText>
               {request.note ? <AppText>{request.note}</AppText> : null}
-            </Card>
+            </Section>
           )}
 
-          <Card>
-            <AppText size="sm" tone="muted" weight="medium">
-              Questions ({request.comments.length})
-            </AppText>
+          <Section title={`Questions (${request.comments.length})`}>
             {request.comments.length === 0 ? (
-              <AppText tone="muted">Nothing asked yet.</AppText>
+              <AppText size="sm" tone="muted">
+                Nothing asked yet.
+              </AppText>
             ) : (
-              request.comments.map((comment) => (
-                <View key={comment.id} style={{ gap: theme.spacing.xs }}>
-                  <Divider />
-                  <AppText size="xs" tone="faint">
-                    {comment.authorName}
-                    {comment.fromClient ? ' · your organization' : ''} ·{' '}
-                    {formatSince(comment.createdAt)}
-                  </AppText>
-                  <AppText size="sm">{comment.body}</AppText>
-                </View>
-              ))
+              <Expandable items={request.comments} initial={5} noun="questions">
+                {(comment, index) => (
+                  <View key={comment.id} style={{ gap: 2 }}>
+                    {index > 0 ? <Divider /> : null}
+                    <AppText size="xs" tone="faint">
+                      {comment.authorName}
+                      {comment.fromClient ? ' · your organization' : ''} ·{' '}
+                      {formatSince(comment.createdAt)}
+                    </AppText>
+                    <AppText size="sm">{comment.body}</AppText>
+                  </View>
+                )}
+              </Expandable>
             )}
-          </Card>
-
-          <SignOffQuestionForm requestId={request.id} onAsked={refresh} />
+            <Divider />
+            <SignOffQuestionForm requestId={request.id} onAsked={refresh} />
+          </Section>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>

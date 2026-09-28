@@ -1,14 +1,15 @@
 import { APPROVAL_LIST_VIEW, type ApprovalListView, type ApprovalSummary } from '@ashniva/types';
 import { useState } from 'react';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { usePagedResource } from '../../shared/api/queries';
+import { ListFooterLoader } from '../../shared/components/feedback';
+import { PressableCard } from '../../shared/components/layout';
 import { Segmented } from '../../shared/components/navigation-list';
-import { AppText, Card, Pill, Screen } from '../../shared/components/primitives';
+import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDate } from '../../shared/format/format';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import {
   PHONE_APPROVAL_VIEWS,
@@ -36,7 +37,7 @@ export function InternalApprovalsScreen({ onOpen }: { onOpen: (approvalId: strin
   });
 
   const header = (
-    <View style={{ padding: theme.spacing.lg, paddingBottom: 0 }}>
+    <View style={{ padding: theme.spacing.screen, paddingBottom: theme.spacing.xs }}>
       <Segmented
         options={PHONE_APPROVAL_VIEWS}
         value={view}
@@ -74,7 +75,11 @@ export function InternalApprovalsScreen({ onOpen }: { onOpen: (approvalId: strin
       <FlatList
         data={list.items}
         keyExtractor={(approval) => approval.id}
-        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.lg }}
+        contentContainerStyle={{
+          gap: theme.spacing.sm,
+          padding: theme.spacing.screen,
+          paddingTop: theme.spacing.sm,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={list.isRefreshing}
@@ -85,33 +90,29 @@ export function InternalApprovalsScreen({ onOpen }: { onOpen: (approvalId: strin
         onEndReached={list.loadMore}
         onEndReachedThreshold={0.4}
         ListEmptyComponent={<EmptyState title={EMPTY[view].title} description={EMPTY[view].body} />}
-        ListFooterComponent={list.isLoadingMore ? <LoadingState label="Loading more" /> : undefined}
+        ListFooterComponent={list.isLoadingMore ? <ListFooterLoader /> : undefined}
         renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
+          <PressableCard
             accessibilityLabel={item.title}
             accessibilityHint="Opens the approval request"
             onPress={() => onOpen(item.id)}
-            style={({ pressed }) => ({ minHeight: TOUCH_TARGET, opacity: pressed ? 0.7 : 1 })}
           >
-            <Card>
-              <AppText size="xs" tone="faint">
-                {item.clientOrganization.name} · {subjectLine(item.subject)}
+            <AppText size="xs" tone="faint" numberOfLines={1}>
+              {item.clientOrganization.name} · {subjectLine(item.subject)}
+            </AppText>
+            <AppText weight="medium" numberOfLines={2}>
+              {item.title}
+            </AppText>
+            <PillRow>
+              <Pill label={approvalStatusLabel(item.status)} tone={approvalTone(item.status)} />
+              {item.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
+            </PillRow>
+            {item.dueDate ? (
+              <AppText size="xs" tone="muted">
+                Due {formatDate(item.dueDate)}
               </AppText>
-              <AppText weight="medium" numberOfLines={2}>
-                {item.title}
-              </AppText>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
-                <Pill label={approvalStatusLabel(item.status)} tone={approvalTone(item.status)} />
-                {item.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
-              </View>
-              {item.dueDate ? (
-                <AppText size="xs" tone="muted">
-                  Due {formatDate(item.dueDate)}
-                </AppText>
-              ) : null}
-            </Card>
-          </Pressable>
+            ) : null}
+          </PressableCard>
         )}
       />
     </Screen>

@@ -1,12 +1,12 @@
 import { APPROVAL_STATUS, type PortalApprovalSummary } from '@ashniva/types';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Card, Pill, Screen } from '../../shared/components/primitives';
+import { PressableCard } from '../../shared/components/layout';
+import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDate } from '../../shared/format/format';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { approvalStatusLabel, approvalTone, subjectLine } from './approval-display';
 
@@ -52,7 +52,7 @@ export function ClientApprovalsScreen({ onOpen }: { onOpen: (approvalId: string)
       <FlatList
         data={approvals}
         keyExtractor={(approval) => approval.id}
-        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.lg }}
+        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.screen }}
         refreshControl={
           <RefreshControl
             refreshing={query.isRefetching}
@@ -66,37 +66,37 @@ export function ClientApprovalsScreen({ onOpen }: { onOpen: (approvalId: string)
             description="When your team asks you to sign something off, it appears here."
           />
         }
-        renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={item.title}
-            accessibilityHint="Opens the request"
-            onPress={() => onOpen(item.id)}
-            style={({ pressed }) => ({ minHeight: TOUCH_TARGET, opacity: pressed ? 0.7 : 1 })}
-          >
-            <Card>
-              <AppText size="xs" tone="faint">
+        renderItem={({ item }) => {
+          // A published request is the one only this client can move; the brand edge says so
+          // before the pill is read.
+          const waiting = item.status === APPROVAL_STATUS.PUBLISHED;
+          return (
+            <PressableCard
+              accessibilityLabel={item.title}
+              accessibilityHint="Opens the request"
+              highlight={waiting}
+              onPress={() => onOpen(item.id)}
+            >
+              <AppText size="xs" tone="faint" numberOfLines={1}>
                 {subjectLine(item.subject)}
                 {item.project ? ` · ${item.project.name}` : ''}
               </AppText>
               <AppText weight="medium" numberOfLines={2}>
                 {item.title}
               </AppText>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+              <PillRow>
                 <Pill label={approvalStatusLabel(item.status)} tone={approvalTone(item.status)} />
-                {item.status === APPROVAL_STATUS.PUBLISHED ? (
-                  <Pill label="Waiting for you" tone="warning" />
-                ) : null}
+                {waiting ? <Pill label="Waiting for you" tone="warning" /> : null}
                 {item.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
-              </View>
+              </PillRow>
               {item.dueDate ? (
                 <AppText size="xs" tone="muted">
                   Asked for by {formatDate(item.dueDate)}
                 </AppText>
               ) : null}
-            </Card>
-          </Pressable>
-        )}
+            </PressableCard>
+          );
+        }}
       />
     </Screen>
   );

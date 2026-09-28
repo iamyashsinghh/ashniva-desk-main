@@ -1,7 +1,9 @@
 import type { ApprovalHistoryEntry, FileSummary } from '@ashniva/types';
 import { View } from 'react-native';
 
-import { AppText, Card, Divider } from '../../shared/components/primitives';
+import { formatBytes } from '../../shared/attachments/attachments';
+import { Section } from '../../shared/components/layout';
+import { AppText, Divider } from '../../shared/components/primitives';
 import { formatDateTime } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { approvalStatusLabel } from './approval-display';
@@ -16,19 +18,24 @@ import { approvalStatusLabel } from './approval-display';
  */
 
 export function ApprovalHistoryCard({ history }: { history: readonly ApprovalHistoryEntry[] }) {
-  const theme = useTheme();
-
+  // The trail is folded: it is secondary to what is being asked and what can be done, and it is
+  // already on the device, so opening it is one tap and no request. An empty trail has nothing to
+  // fold, so its one sentence stays in view.
   return (
-    <Card>
-      <AppText size="sm" tone="muted" weight="medium">
-        History
-      </AppText>
+    <Section
+      title="History"
+      count={history.length > 0 ? history.length : undefined}
+      collapsible={history.length > 0}
+      initiallyOpen={false}
+    >
       {history.length === 0 ? (
-        <AppText tone="muted">Nothing has happened to this request yet.</AppText>
+        <AppText size="sm" tone="muted">
+          Nothing has happened to this request yet.
+        </AppText>
       ) : (
-        history.map((entry) => (
-          <View key={entry.id} style={{ gap: theme.spacing.xs }}>
-            <Divider />
+        history.map((entry, index) => (
+          <View key={entry.id} style={{ gap: 2 }}>
+            {index > 0 ? <Divider /> : null}
             <AppText size="xs" tone="faint">
               {entry.actor.name} · {formatDateTime(entry.createdAt)}
             </AppText>
@@ -39,7 +46,7 @@ export function ApprovalHistoryCard({ history }: { history: readonly ApprovalHis
           </View>
         ))
       )}
-    </Card>
+    </Section>
   );
 }
 
@@ -58,19 +65,18 @@ export function ApprovalFilesCard({ files }: { files: readonly FileSummary[] }) 
   }
 
   return (
-    <Card>
-      <AppText size="sm" tone="muted" weight="medium">
-        Attached ({files.length})
-      </AppText>
-      {files.map((file) => (
+    <Section title={`Attached (${files.length})`}>
+      {files.map((file, index) => (
         <View key={file.id} style={{ gap: theme.spacing.xs }}>
-          <Divider />
-          <AppText size="sm">{file.name}</AppText>
+          {index > 0 ? <Divider /> : null}
+          <AppText size="sm" weight="medium" numberOfLines={2}>
+            {file.name}
+          </AppText>
           <AppText size="xs" tone="faint">
-            {Math.max(1, Math.round(file.sizeBytes / 1024))} KB · open it on the web app
+            {formatBytes(file.sizeBytes)} · open it on the web app
           </AppText>
         </View>
       ))}
-    </Card>
+    </Section>
   );
 }

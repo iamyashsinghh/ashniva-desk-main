@@ -1,12 +1,12 @@
 import { type UatRequestSummary } from '@ashniva/types';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Card, Pill, Screen } from '../../shared/components/primitives';
+import { PressableCard } from '../../shared/components/layout';
+import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
 import { formatSince } from '../../shared/format/format';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { isAwaitingDecision, uatStatusLabel, uatStatusTone } from './uat-display';
 
@@ -53,7 +53,7 @@ export function SignOffsScreen({ onOpen }: { onOpen: (requestId: string) => void
       <FlatList
         data={requests}
         keyExtractor={(request) => request.id}
-        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.lg }}
+        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.screen }}
         refreshControl={
           <RefreshControl
             refreshing={query.isRefetching}
@@ -68,28 +68,25 @@ export function SignOffsScreen({ onOpen }: { onOpen: (requestId: string) => void
           />
         }
         renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
+          <PressableCard
             accessibilityLabel={item.summaryPlain}
             accessibilityHint="Opens the sign-off"
+            highlight={isAwaitingDecision(item.status)}
             onPress={() => onOpen(item.id)}
-            style={({ pressed }) => ({ minHeight: TOUCH_TARGET, opacity: pressed ? 0.7 : 1 })}
           >
-            <Card>
-              <AppText size="xs" tone="faint">
-                Asked {formatSince(item.createdAt)}
-              </AppText>
-              <AppText weight="medium" numberOfLines={3}>
-                {item.summaryPlain}
-              </AppText>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
-                <Pill label={uatStatusLabel(item.status)} tone={uatStatusTone(item.status)} />
-                {isAwaitingDecision(item.status) && item.checklist.length > 0 ? (
-                  <Pill label={`${item.checklist.length} things to check`} />
-                ) : null}
-              </View>
-            </Card>
-          </Pressable>
+            <AppText size="xs" tone="faint" numberOfLines={1}>
+              Asked {formatSince(item.createdAt)}
+            </AppText>
+            <AppText weight="medium" numberOfLines={3}>
+              {item.summaryPlain}
+            </AppText>
+            <PillRow>
+              <Pill label={uatStatusLabel(item.status)} tone={uatStatusTone(item.status)} />
+              {isAwaitingDecision(item.status) && item.checklist.length > 0 ? (
+                <Pill label={`${item.checklist.length} things to check`} />
+              ) : null}
+            </PillRow>
+          </PressableCard>
         )}
       />
     </Screen>

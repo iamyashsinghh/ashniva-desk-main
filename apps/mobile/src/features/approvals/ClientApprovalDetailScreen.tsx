@@ -1,9 +1,10 @@
 import { APPROVAL_STATUS, type PortalApprovalDetail } from '@ashniva/types';
-import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Card, Pill, Screen } from '../../shared/components/primitives';
+import { Hero, Section, useStackKeyboardOffset } from '../../shared/components/layout';
+import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDate, formatDateTime } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -24,6 +25,7 @@ import { ApprovalFilesCard, ApprovalHistoryCard } from './ApprovalHistoryCard';
  */
 export function ClientApprovalDetailScreen({ approvalId }: { approvalId: string }) {
   const theme = useTheme();
+  const keyboardOffset = useStackKeyboardOffset();
   const query = useResource<PortalApprovalDetail>(
     ['portal', 'approvals', approvalId],
     `/portal/approvals/${approvalId}`,
@@ -56,10 +58,15 @@ export function ClientApprovalDetailScreen({ approvalId }: { approvalId: string 
     <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={keyboardOffset}
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
+          contentContainerStyle={{
+            gap: theme.spacing.md,
+            padding: theme.spacing.screen,
+            paddingBottom: theme.spacing.xxl,
+          }}
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
@@ -69,65 +76,53 @@ export function ClientApprovalDetailScreen({ approvalId }: { approvalId: string 
             />
           }
         >
-          <Card>
-            <AppText size="xs" tone="faint">
-              {subjectLine(approval.subject)}
-              {approval.project ? ` · ${approval.project.name}` : ''}
-            </AppText>
-            <AppText size="lg" weight="bold">
-              {approval.title}
-            </AppText>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+          <Hero
+            overline={`${subjectLine(approval.subject)}${approval.project ? ` · ${approval.project.name}` : ''}`}
+            title={approval.title}
+          >
+            <PillRow>
               <Pill
                 label={approvalStatusLabel(approval.status)}
                 tone={approvalTone(approval.status)}
               />
               {waiting ? <Pill label="Waiting for you" tone="warning" /> : null}
               {approval.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
-            </View>
+            </PillRow>
             {approval.dueDate ? (
               <AppText size="sm" tone="muted">
                 Asked for by {formatDate(approval.dueDate)}
               </AppText>
             ) : null}
-          </Card>
+          </Hero>
 
-          <Card>
-            <AppText size="sm" tone="muted" weight="medium">
-              What you are being asked to approve
-            </AppText>
+          <Section title="What you are being asked to approve">
             <AppText>{approval.summary}</AppText>
-          </Card>
+          </Section>
 
           {approval.decidedBy ? (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                Your answer
-              </AppText>
+            <Section title="Your answer">
               <AppText size="sm">
                 {approvalStatusLabel(approval.status)} by {approval.decidedBy.name}
                 {approval.decidedAt ? ` · ${formatDateTime(approval.decidedAt)}` : ''}
               </AppText>
               {approval.decisionComment ? <AppText>{approval.decisionComment}</AppText> : null}
-            </Card>
+            </Section>
           ) : null}
 
-          <ApprovalFilesCard files={approval.files} />
-
+          {/* The decision is why a client opens this, so it sits above the files and the trail. */}
           {approval.canDecide ? (
             <ApprovalDecisionForm approvalId={approval.id} onDecided={refresh} />
           ) : (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                Your decision
-              </AppText>
-              <AppText tone="muted">
+            <Section title="Your decision">
+              <AppText size="sm" tone="muted">
                 {waiting
                   ? 'Somebody with approval rights at your organization has to answer this one.'
                   : 'This request has already been answered.'}
               </AppText>
-            </Card>
+            </Section>
           )}
+
+          <ApprovalFilesCard files={approval.files} />
 
           <ApprovalHistoryCard history={approval.history} />
         </ScrollView>
