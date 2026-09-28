@@ -13,7 +13,9 @@ import {
   useAccessTokenForImages,
   type PickedFile,
 } from '../../shared/attachments/attachments';
-import { AppText, Button, Card, Divider } from '../../shared/components/primitives';
+import { Banner } from '../../shared/components/feedback';
+import { Grow, Section } from '../../shared/components/layout';
+import { AppText, Button } from '../../shared/components/primitives';
 import { mobileEnv } from '../../config/env';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 
@@ -46,10 +48,11 @@ export function TaskAttachments({
 }) {
   const theme = useTheme();
   const token = useAccessTokenForImages();
-  const [busy, setBusy] = useState(false);
+  // Which of the two buttons started the upload, so only that one spins; both stay disabled.
+  const [busy, setBusy] = useState<'photo' | 'file' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const attach = async (pick: () => Promise<PickedFile | null>) => {
+  const attach = async (kind: 'photo' | 'file', pick: () => Promise<PickedFile | null>) => {
     setError(null);
     try {
       // Null and a throw are different answers and are treated differently. Null is the person
@@ -60,74 +63,96 @@ export function TaskAttachments({
       if (!file) {
         return;
       }
-      setBusy(true);
+      setBusy(kind);
       await uploadAttachment(file, { taskId }, VISIBILITY.INTERNAL);
       onUploaded();
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
   return (
-    <Card>
-      <AppText size="sm" tone="muted" weight="medium">
-        Attachments ({files.length})
-      </AppText>
-
-      {files.length === 0 ? <AppText tone="muted">Nothing attached.</AppText> : null}
+    <Section title={`Attachments (${files.length})`}>
+      {files.length === 0 ? (
+        <AppText size="sm" tone="muted">
+          Nothing attached.
+        </AppText>
+      ) : null}
 
       {files.map((file) => (
-        <View key={file.id} style={{ gap: theme.spacing.xs }}>
-          <Divider />
-          <AppText size="sm" weight="medium" numberOfLines={1}>
-            {file.name}
-          </AppText>
-          <AppText size="xs" tone="faint">
-            {formatBytes(file.sizeBytes)} · {file.uploadedBy.name}
-            {file.visibility === VISIBILITY.CLIENT ? ' · the client sees this' : ''}
-          </AppText>
+        <View
+          key={file.id}
+          style={{
+            backgroundColor: theme.colors.surfaceSunken,
+            borderRadius: theme.radius.md,
+            gap: theme.spacing.sm,
+            overflow: 'hidden',
+          }}
+        >
           {isViewableImage(file) ? (
             <Image
               accessibilityLabel={file.name}
               source={attachmentImageSource(file, mobileEnv.apiBaseUrl, token)}
-              resizeMode="contain"
-              style={{
-                backgroundColor: theme.colors.surfaceRaised,
-                borderRadius: theme.radius.sm,
-                height: 200,
-                width: '100%',
-              }}
+              resizeMode="cover"
+              style={{ backgroundColor: theme.colors.surfaceRaised, height: 180, width: '100%' }}
             />
-          ) : (
-            <AppText size="xs" tone="faint">
-              Open this one on the web app.
+          ) : null}
+          <View
+            style={{
+              gap: 2,
+              paddingBottom: theme.spacing.md,
+              paddingHorizontal: theme.spacing.md,
+              paddingTop: isViewableImage(file) ? 0 : theme.spacing.md,
+            }}
+          >
+            <AppText size="sm" weight="medium" numberOfLines={1}>
+              {file.name}
             </AppText>
-          )}
+            <AppText size="xs" tone="faint">
+              {formatBytes(file.sizeBytes)} · {file.uploadedBy.name}
+              {file.visibility === VISIBILITY.CLIENT ? ' · the client sees this' : ''}
+            </AppText>
+            {isViewableImage(file) ? null : (
+              <AppText size="xs" tone="muted">
+                Open this one on the web app.
+              </AppText>
+            )}
+          </View>
         </View>
       ))}
 
       {error ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {error}
-        </AppText>
+        </Banner>
       ) : null}
 
-      <Button
-        label="Attach a photo"
-        variant="secondary"
-        loading={busy}
-        accessibilityHint="Adds a picture from your library as an internal attachment"
-        onPress={() => void attach(pickImage)}
-      />
-      <Button
-        label="Attach a file"
-        variant="secondary"
-        loading={busy}
-        accessibilityHint="Adds a document as an internal attachment"
-        onPress={() => void attach(pickDocument)}
-      />
-    </Card>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+        <Grow>
+          <Button
+            label="Attach a photo"
+            variant="secondary"
+            icon="plus"
+            loading={busy === 'photo'}
+            disabled={busy !== null}
+            accessibilityHint="Adds a picture from your library as an internal attachment"
+            onPress={() => void attach('photo', pickImage)}
+          />
+        </Grow>
+        <Grow>
+          <Button
+            label="Attach a file"
+            variant="secondary"
+            icon="plus"
+            loading={busy === 'file'}
+            disabled={busy !== null}
+            accessibilityHint="Adds a document as an internal attachment"
+            onPress={() => void attach('file', pickDocument)}
+          />
+        </Grow>
+      </View>
+    </Section>
   );
 }

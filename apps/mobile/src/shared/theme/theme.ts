@@ -1,6 +1,6 @@
 // The tokens subpath, not the package root: the root re-exports web React components whose CSS
 // imports Metro cannot bundle. `@ashniva/ui/tokens` is plain TypeScript with no runtime deps.
-import { neutralColors, priorityColors } from '@ashniva/ui/tokens';
+import { darkPriorityColors, neutralColors, priorityColors } from '@ashniva/ui/tokens';
 import { Platform, type TextStyle, type ViewStyle } from 'react-native';
 
 /**
@@ -197,6 +197,8 @@ export interface Theme {
   fontSize: typeof fontSize;
   typography: typeof typography;
   shadow: typeof shadow;
+  /** Priority colours for this scheme: CRITICAL, HIGH, MEDIUM, LOW. */
+  priority: Record<keyof typeof priorityColors, string>;
   isDark: boolean;
 }
 
@@ -216,6 +218,7 @@ export function themeFor(scheme: 'light' | 'dark', brandPrimary?: string | null)
     fontSize,
     typography,
     shadow,
+    priority: scheme === 'dark' ? darkPriorityColors : priorityColors,
     isDark: scheme === 'dark',
   };
 }

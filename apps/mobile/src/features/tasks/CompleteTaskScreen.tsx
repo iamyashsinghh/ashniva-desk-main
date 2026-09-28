@@ -2,7 +2,15 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Switch, View } from 'react-native';
 
 import { useApiMutation } from '../../shared/api/mutations';
-import { AppText, Button, Card, Field, Input, Screen } from '../../shared/components/primitives';
+import { Banner } from '../../shared/components/feedback';
+import {
+  Grow,
+  Section,
+  StickyActionBar,
+  useStackKeyboardOffset,
+} from '../../shared/components/layout';
+import { AppText, Button, Field, Input, Screen } from '../../shared/components/primitives';
+import { animateLayout } from '../../shared/theme/motion';
 import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 
@@ -18,6 +26,7 @@ import { useTheme } from '../../shared/theme/ThemeProvider';
  */
 export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone: () => void }) {
   const theme = useTheme();
+  const keyboardOffset = useStackKeyboardOffset();
   const [summary, setSummary] = useState('');
   const [minutes, setMinutes] = useState('');
   const [proofUrl, setProofUrl] = useState('');
@@ -49,26 +58,27 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
     <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={keyboardOffset}
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
+          contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.screen }}
           keyboardShouldPersistTaps="handled"
         >
-          <Card>
-            <Field label="What did you complete?" hint="A reviewer reads this first">
+          <Section title="The work">
+            <Field label="What did you complete?" required hint="A reviewer reads this first">
               <Input
                 accessibilityLabel="What you completed"
                 multiline
                 numberOfLines={4}
                 onChangeText={setSummary}
                 placeholder="Fixed the redirect after SSO sign-in"
-                style={{ minHeight: 96, textAlignVertical: 'top' }}
+                style={{ minHeight: 104 }}
                 value={summary}
               />
             </Field>
 
-            <Field label="Time spent (minutes)" hint="Between 1 and 1440">
+            <Field label="Time spent (minutes)" required hint="Between 1 and 1440">
               <Input
                 accessibilityLabel="Time spent in minutes"
                 inputMode="numeric"
@@ -76,11 +86,12 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
                 onChangeText={setMinutes}
                 placeholder="90"
                 value={minutes}
+                invalid={minutes.length > 0 && !validMinutes}
               />
             </Field>
-          </Card>
+          </Section>
 
-          <Card>
+          <Section title="Evidence · optional">
             <Field label="Link to the result" hint="A staging URL or a document. Optional.">
               <Input
                 accessibilityLabel="Link to the result"
@@ -102,9 +113,9 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
                 value={gitRef}
               />
             </Field>
-          </Card>
+          </Section>
 
-          <Card>
+          <Section title="Client">
             <View
               style={{
                 alignItems: 'center',
@@ -113,17 +124,21 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
                 minHeight: TOUCH_TARGET,
               }}
             >
-              <Switch
-                accessibilityLabel="Tell the client about this"
-                onValueChange={setClientVisible}
-                value={clientVisible}
-              />
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, gap: 2 }}>
                 <AppText weight="medium">Tell the client about this</AppText>
                 <AppText size="xs" tone="muted">
                   Creates a client update for someone to publish. Off by default.
                 </AppText>
               </View>
+              <Switch
+                accessibilityLabel="Tell the client about this"
+                onValueChange={(value) => {
+                  animateLayout();
+                  setClientVisible(value);
+                }}
+                trackColor={{ true: theme.colors.primary, false: theme.colors.borderStrong }}
+                value={clientVisible}
+              />
             </View>
 
             {clientVisible ? (
@@ -136,32 +151,40 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
                   multiline
                   numberOfLines={3}
                   onChangeText={setClientSummary}
-                  style={{ minHeight: 72, textAlignVertical: 'top' }}
+                  style={{ minHeight: 80 }}
                   value={clientSummary}
                 />
               </Field>
             ) : null}
-          </Card>
+          </Section>
 
           {submit.error ? (
-            <AppText tone="danger" size="sm">
+            <Banner tone="danger" role="alert">
               {submit.error}
-            </AppText>
-          ) : null}
-
-          <Button
-            label="Send for review"
-            loading={submit.busy}
-            disabled={!valid}
-            accessibilityHint="Submits the task for someone to review"
-            onPress={() => void submit.run()}
-          />
-          {!valid ? (
-            <AppText size="xs" tone="faint">
-              Describe what you completed and how many minutes it took.
-            </AppText>
+            </Banner>
           ) : null}
         </ScrollView>
+
+        <StickyActionBar
+          note={
+            !valid ? (
+              <AppText size="xs" tone="faint">
+                Describe what you completed and how many minutes it took.
+              </AppText>
+            ) : null
+          }
+        >
+          <Grow>
+            <Button
+              label="Send for review"
+              icon="arrow-up"
+              loading={submit.busy}
+              disabled={!valid}
+              accessibilityHint="Submits the task for someone to review"
+              onPress={() => void submit.run()}
+            />
+          </Grow>
+        </StickyActionBar>
       </KeyboardAvoidingView>
     </Screen>
   );

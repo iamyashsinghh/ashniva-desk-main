@@ -1,13 +1,14 @@
 import { TASK_LIST_VIEW, TASK_STATUS_LABELS, type TaskSummary } from '@ashniva/types';
 import { useState } from 'react';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl, View } from 'react-native';
 
 import { usePagedResource } from '../../shared/api/queries';
 import { Segmented, type SegmentOption } from '../../shared/components/navigation-list';
-import { AppText, Card, Pill, Screen } from '../../shared/components/primitives';
+import { ListFooterLoader } from '../../shared/components/feedback';
+import { PressableCard } from '../../shared/components/layout';
+import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDateTime } from '../../shared/format/format';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { taskTone } from './task-display';
 import { TaskTimingPill } from './TaskTimingPill';
@@ -47,7 +48,7 @@ export function TasksScreen({ onOpen }: { onOpen: (taskId: string) => void }) {
   const list = usePagedResource<TaskSummary>(['tasks', view], '/tasks', { view, limit: 20 });
 
   const header = (
-    <View style={{ padding: theme.spacing.lg, paddingBottom: 0 }}>
+    <View style={{ padding: theme.spacing.screen, paddingBottom: theme.spacing.xs }}>
       <Segmented options={VIEWS} value={view} onChange={setView} label="Which tasks to show" />
     </View>
   );
@@ -80,7 +81,11 @@ export function TasksScreen({ onOpen }: { onOpen: (taskId: string) => void }) {
       <FlatList
         data={list.items}
         keyExtractor={(task) => task.id}
-        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.lg }}
+        contentContainerStyle={{
+          gap: theme.spacing.sm,
+          padding: theme.spacing.screen,
+          paddingTop: theme.spacing.sm,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={list.isRefreshing}
@@ -91,39 +96,57 @@ export function TasksScreen({ onOpen }: { onOpen: (taskId: string) => void }) {
         onEndReached={list.loadMore}
         onEndReachedThreshold={0.4}
         ListEmptyComponent={<EmptyState {...EMPTY[view]} />}
-        ListFooterComponent={list.isLoadingMore ? <LoadingState label="Loading more" /> : undefined}
+        ListFooterComponent={list.isLoadingMore ? <ListFooterLoader /> : undefined}
         renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
+          <PressableCard
             accessibilityLabel={`${item.key} ${item.title}`}
             accessibilityHint="Opens the task"
             onPress={() => onOpen(item.id)}
-            style={({ pressed }) => ({ minHeight: TOUCH_TARGET, opacity: pressed ? 0.7 : 1 })}
           >
-            <Card>
-              <AppText size="xs" tone="faint">
-                {item.key}
+            <View
+              style={{
+                flexDirection: 'row',
+                gap: theme.spacing.sm,
+                justifyContent: 'space-between',
+              }}
+            >
+              <AppText size="xs" tone="faint" numberOfLines={1}>
+                {item.key} · {item.project.name}
               </AppText>
-              <AppText weight="medium" numberOfLines={2}>
-                {item.title}
+              <View
+                style={{
+                  backgroundColor: theme.priority[item.priority],
+                  borderRadius: 4,
+                  height: 8,
+                  marginTop: 4,
+                  width: 8,
+                }}
+              />
+            </View>
+            <AppText weight="medium" numberOfLines={2}>
+              {item.title}
+            </AppText>
+            <PillRow>
+              <Pill label={TASK_STATUS_LABELS[item.status]} tone={taskTone(item.status)} />
+              {/*
+                On time or late, from the server's own verdict. `isOverdue` below is a different
+                question — it compares the calendar due *date* and is what the list views filter
+                on — so both are shown rather than one standing in for the other.
+              */}
+              <TaskTimingPill timing={item.timing} />
+              {item.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
+            </PillRow>
+            {item.isUpcoming && item.scheduledStartAt ? (
+              <AppText size="xs" tone="muted">
+                Starts {formatDateTime(item.scheduledStartAt)}
               </AppText>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
-                <Pill label={TASK_STATUS_LABELS[item.status]} tone={taskTone(item.status)} />
-                {/*
-                  On time or late, from the server's own verdict. `isOverdue` below is a different
-                  question — it compares the calendar due *date* and is what the list views filter
-                  on — so both are shown rather than one standing in for the other.
-                */}
-                <TaskTimingPill timing={item.timing} />
-                {item.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
-              </View>
-              {item.isUpcoming && item.scheduledStartAt ? (
-                <AppText size="xs" tone="muted">
-                  Starts {formatDateTime(item.scheduledStartAt)}
-                </AppText>
-              ) : null}
-            </Card>
-          </Pressable>
+            ) : null}
+            {!item.isUpcoming && item.dueAt ? (
+              <AppText size="xs" tone="muted">
+                Due {formatDateTime(item.dueAt)}
+              </AppText>
+            ) : null}
+          </PressableCard>
         )}
       />
     </Screen>

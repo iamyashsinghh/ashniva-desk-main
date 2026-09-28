@@ -1,8 +1,16 @@
 import { useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { animateLayout } from '../theme/motion';
+import { TOUCH_TARGET } from '../theme/theme';
 import { useTheme } from '../theme/ThemeProvider';
 import { Glyph } from './glyph';
 import { AppText, cardStyle } from './primitives';
@@ -228,4 +236,13 @@ export function Hero({
       {children}
     </View>
   );
+}
+
+/**
+ * How far a `KeyboardAvoidingView` under a stack header has to lift its content on iOS: the
+ * status bar plus the header. Android resizes the window itself.
+ */
+export function useStackKeyboardOffset(): number {
+  const insets = useSafeAreaInsets();
+  return Platform.OS === 'ios' ? insets.top + TOUCH_TARGET : 0;
 }

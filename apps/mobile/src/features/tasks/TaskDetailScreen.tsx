@@ -9,7 +9,12 @@ import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Card, Divider, Pill, Screen } from '../../shared/components/primitives';
+import { Avatar } from '../../shared/components/Avatar';
+import { KeyValueRow, ProgressBar } from '../../shared/components/data-display';
+import { Expandable } from '../../shared/components/Expandable';
+import { Banner } from '../../shared/components/feedback';
+import { Hero, Section, SectionHeader } from '../../shared/components/layout';
+import { AppText, Card, Divider, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDateTime, formatMinutes } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -67,11 +72,18 @@ export function TaskDetailScreen({
 
   const scheduledStart = formatDateTime(task.scheduledStartAt);
   const due = formatDateTime(task.dueAt);
+  const effortPercent = task.estimateMinutes
+    ? Math.round((task.loggedMinutes / task.estimateMinutes) * 100)
+    : null;
 
   return (
     <Screen>
       <ScrollView
-        contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
+        contentContainerStyle={{
+          gap: theme.spacing.md,
+          padding: theme.spacing.screen,
+          paddingBottom: theme.spacing.xxl,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={query.isRefetching}
@@ -80,14 +92,8 @@ export function TaskDetailScreen({
           />
         }
       >
-        <Card>
-          <AppText size="xs" tone="faint">
-            {task.key} · {task.project.code}
-          </AppText>
-          <AppText size="lg" weight="bold">
-            {task.title}
-          </AppText>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+        <Hero overline={`${task.key} · ${task.project.code}`} title={task.title}>
+          <PillRow>
             <Pill label={TASK_STATUS_LABELS[task.status]} tone={taskTone(task.status)} />
             {/*
               The same verdict the list row shows, so opening a task never changes the answer.
@@ -98,21 +104,18 @@ export function TaskDetailScreen({
             {task.isUpcoming ? <Pill label="Starts later" tone="info" /> : null}
             {task.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
             {task.clientVisible ? <Pill label="Client sees this" tone="info" /> : null}
-          </View>
-        </Card>
+          </PillRow>
+        </Hero>
 
         {scheduledStart || due ? (
-          <Card>
-            <AppText size="sm" tone="muted" weight="medium">
-              When
-            </AppText>
+          <Card style={{ gap: theme.spacing.xs }}>
             {scheduledStart ? (
-              <AppText size="sm">
-                Starts {scheduledStart}
-                {task.isUpcoming ? ' — not yet workable' : ''}
-              </AppText>
+              <KeyValueRow
+                label="Starts"
+                value={`${scheduledStart}${task.isUpcoming ? ' — not yet workable' : ''}`}
+              />
             ) : null}
-            {due ? <AppText size="sm">Due {due}</AppText> : null}
+            {due ? <KeyValueRow label="Due" value={due} /> : null}
             {/*
               How late, in words, from the server's `delayMinutes`. One interpolated string rather
               than two children so a screen reader reads it as a sentence. The minutes are
@@ -120,49 +123,59 @@ export function TaskDetailScreen({
               native.
             */}
             {task.timing.delayMinutes !== null ? (
-              <AppText size="sm" tone="danger">
+              <AppText size="sm" tone="danger" weight="medium">
                 {`${formatMinutes(task.timing.delayMinutes)} past the expected time`}
               </AppText>
             ) : null}
           </Card>
         ) : null}
 
-        {task.description ? (
-          <Card>
-            <AppText size="sm" tone="muted" weight="medium">
-              Description
-            </AppText>
-            <AppText>{task.description}</AppText>
-          </Card>
-        ) : null}
-
-        {task.acceptanceCriteria ? (
-          <Card>
-            <AppText size="sm" tone="muted" weight="medium">
-              What counts as done
-            </AppText>
-            <AppText>{task.acceptanceCriteria}</AppText>
-          </Card>
-        ) : null}
-
         {task.blockedReason ? (
-          <Card>
-            <AppText tone="danger" weight="medium">
-              Blocked
-            </AppText>
-            <AppText>{task.blockedReason}</AppText>
-          </Card>
+          <Banner tone="danger" title="Blocked">
+            {task.blockedReason}
+          </Banner>
         ) : null}
 
-        <Card>
-          <AppText size="sm" tone="muted" weight="medium">
-            Effort
-          </AppText>
-          <AppText>
-            {formatMinutes(task.loggedMinutes)}
-            {task.estimateMinutes ? ` of ${formatMinutes(task.estimateMinutes)} estimated` : ''}
-          </AppText>
-        </Card>
+        {/* What can be done comes before what has been done: it is why somebody opened this. */}
+        <TaskActions task={task} onSubmit={() => onComplete(task.id)} onChanged={refresh} />
+
+        {task.description || task.acceptanceCriteria ? (
+          <Section>
+            {task.description ? (
+              <View style={{ gap: theme.spacing.xs }}>
+                <SectionHeader title="Description" />
+                <AppText>{task.description}</AppText>
+              </View>
+            ) : null}
+            {task.description && task.acceptanceCriteria ? <Divider /> : null}
+            {task.acceptanceCriteria ? (
+              <View style={{ gap: theme.spacing.xs }}>
+                <SectionHeader title="What counts as done" />
+                <AppText>{task.acceptanceCriteria}</AppText>
+              </View>
+            ) : null}
+          </Section>
+        ) : null}
+
+        <Section title="Effort">
+          <View style={{ alignItems: 'baseline', flexDirection: 'row', gap: theme.spacing.xs }}>
+            <AppText variant="heading" tabular>
+              {formatMinutes(task.loggedMinutes)}
+            </AppText>
+            {task.estimateMinutes ? (
+              <AppText size="sm" tone="muted">
+                {` of ${formatMinutes(task.estimateMinutes)} estimated`}
+              </AppText>
+            ) : null}
+          </View>
+          {effortPercent !== null ? (
+            <ProgressBar
+              percent={effortPercent}
+              tone={effortPercent > 100 ? 'danger' : 'primary'}
+              label="Time logged against the estimate"
+            />
+          ) : null}
+        </Section>
 
         <TaskWorkLog
           taskId={task.id}
@@ -174,51 +187,52 @@ export function TaskDetailScreen({
         <TaskAttachments taskId={task.id} files={task.files} onUploaded={refresh} />
 
         {task.comments.length > 0 ? (
-          <Card>
-            <AppText size="sm" tone="muted" weight="medium">
-              Comments
-            </AppText>
-            {task.comments.slice(0, 5).map((comment) => (
-              <View key={comment.id} style={{ gap: theme.spacing.xs }}>
-                <Divider />
-                <AppText size="xs" tone="faint">
-                  {comment.author.name}
-                  {comment.visibility === VISIBILITY.INTERNAL
-                    ? ' · internal'
-                    : ' · the client sees this'}
-                </AppText>
-                <AppText size="sm">{comment.body}</AppText>
-              </View>
-            ))}
-          </Card>
+          <Section title="Comments" count={task.comments.length}>
+            <Expandable items={task.comments} initial={5} noun="comments">
+              {(comment, index) => (
+                <View key={comment.id} style={{ gap: theme.spacing.xs }}>
+                  {index > 0 ? <Divider /> : null}
+                  <View
+                    style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}
+                  >
+                    <Avatar name={comment.author.name} size={24} />
+                    <AppText size="xs" tone="faint">
+                      {comment.author.name}
+                      {comment.visibility === VISIBILITY.INTERNAL
+                        ? ' · internal'
+                        : ' · the client sees this'}
+                    </AppText>
+                  </View>
+                  <AppText size="sm">{comment.body}</AppText>
+                </View>
+              )}
+            </Expandable>
+          </Section>
         ) : null}
 
         {task.history.length > 0 ? (
-          <Card>
-            <AppText size="sm" tone="muted" weight="medium">
-              History
-            </AppText>
-            {task.history.slice(0, 10).map((entry) => (
-              <View key={entry.id} style={{ gap: theme.spacing.xs }}>
-                <Divider />
-                <AppText size="xs" tone="faint">
-                  {formatDateTime(entry.createdAt)} · {entry.changedBy.name}
-                </AppText>
-                <AppText size="sm">
-                  {entry.fromStatus ? `${TASK_STATUS_LABELS[entry.fromStatus]} → ` : ''}
-                  {TASK_STATUS_LABELS[entry.toStatus]}
-                </AppText>
-                {entry.note ? (
-                  <AppText size="xs" tone="muted">
-                    {entry.note}
+          <Section title="History" count={task.history.length} collapsible initiallyOpen={false}>
+            <Expandable items={task.history} initial={10} noun="changes">
+              {(entry, index) => (
+                <View key={entry.id} style={{ gap: 2 }}>
+                  {index > 0 ? <Divider /> : null}
+                  <AppText size="xs" tone="faint">
+                    {formatDateTime(entry.createdAt)} · {entry.changedBy.name}
                   </AppText>
-                ) : null}
-              </View>
-            ))}
-          </Card>
+                  <AppText size="sm">
+                    {entry.fromStatus ? `${TASK_STATUS_LABELS[entry.fromStatus]} → ` : ''}
+                    {TASK_STATUS_LABELS[entry.toStatus]}
+                  </AppText>
+                  {entry.note ? (
+                    <AppText size="xs" tone="muted">
+                      {entry.note}
+                    </AppText>
+                  ) : null}
+                </View>
+              )}
+            </Expandable>
+          </Section>
         ) : null}
-
-        <TaskActions task={task} onSubmit={() => onComplete(task.id)} onChanged={refresh} />
 
         {onOpenChat ? (
           <OpenConversationButton
