@@ -1,10 +1,17 @@
 import { PRIORITY, TICKET_TYPE, type Priority, type TicketType } from '@ashniva/types';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 
 import { apiRequest, errorMessage } from '../../shared/api/client';
-import { AppText, Button, Card, Field, Input, Screen } from '../../shared/components/primitives';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
+import { ChipGroup } from '../../shared/components/chips';
+import { Banner } from '../../shared/components/feedback';
+import {
+  Grow,
+  Section,
+  StickyActionBar,
+  useStackKeyboardOffset,
+} from '../../shared/components/layout';
+import { AppText, Button, Field, Input, Screen } from '../../shared/components/primitives';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 
 const TYPES: TicketType[] = Object.values(TICKET_TYPE);
@@ -14,11 +21,12 @@ const PRIORITIES: Priority[] = Object.values(PRIORITY);
  * Raising a ticket.
  *
  * Type and priority are chip rows rather than dropdowns. A native picker on a phone is a modal
- * wheel that hides the rest of the form; four chips are visible, tappable at 44 points, and read
+ * wheel that hides the rest of the form; four chips are visible, easy to tap, and read
  * out one at a time by a screen reader.
  */
 export function RaiseTicketScreen({ onRaised }: { onRaised: (ticketId: string) => void }) {
   const theme = useTheme();
+  const keyboardOffset = useStackKeyboardOffset();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [impact, setImpact] = useState('');
@@ -55,14 +63,15 @@ export function RaiseTicketScreen({ onRaised }: { onRaised: (ticketId: string) =
     <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={keyboardOffset}
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
+          contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.screen }}
           keyboardShouldPersistTaps="handled"
         >
-          <Card>
-            <Field label="What is the problem?" hint="One line">
+          <Section title="The problem">
+            <Field label="What is the problem?" required hint="One line">
               <Input
                 accessibilityLabel="Ticket title"
                 onChangeText={setTitle}
@@ -71,7 +80,11 @@ export function RaiseTicketScreen({ onRaised }: { onRaised: (ticketId: string) =
               />
             </Field>
 
-            <Field label="Tell us more" hint="What you did, what happened, what you expected">
+            <Field
+              label="Tell us more"
+              required
+              hint="What you did, what happened, what you expected"
+            >
               <Input
                 accessibilityLabel="Description"
                 multiline
@@ -95,98 +108,53 @@ export function RaiseTicketScreen({ onRaised }: { onRaised: (ticketId: string) =
                 value={impact}
               />
             </Field>
-          </Card>
+          </Section>
 
-          <Card>
-            <ChipRow
+          <Section title="Details">
+            <ChipGroup
               label="Kind"
               options={TYPES}
               selected={type}
               onSelect={(value) => setType(value)}
+              labelFor={humanise}
             />
-            <ChipRow
+            <ChipGroup
               label="How urgent"
               options={PRIORITIES}
               selected={priority}
               onSelect={(value) => setPriority(value)}
+              labelFor={humanise}
             />
-          </Card>
+          </Section>
 
           {error ? (
-            <AppText tone="danger" size="sm">
+            <Banner tone="danger" role="alert">
               {error}
-            </AppText>
-          ) : null}
-
-          <Button
-            label="Raise the ticket"
-            loading={busy}
-            disabled={!valid}
-            accessibilityHint="Creates the ticket and opens it"
-            onPress={() => void submit()}
-          />
-          {!valid ? (
-            <AppText size="xs" tone="faint">
-              A short title and a few sentences of detail are needed.
-            </AppText>
+            </Banner>
           ) : null}
         </ScrollView>
+
+        <StickyActionBar
+          note={
+            !valid ? (
+              <AppText size="xs" tone="faint">
+                A short title and a few sentences of detail are needed.
+              </AppText>
+            ) : null
+          }
+        >
+          <Grow>
+            <Button
+              label="Raise the ticket"
+              loading={busy}
+              disabled={!valid}
+              accessibilityHint="Creates the ticket and opens it"
+              onPress={() => void submit()}
+            />
+          </Grow>
+        </StickyActionBar>
       </KeyboardAvoidingView>
     </Screen>
-  );
-}
-
-function ChipRow<T extends string>({
-  label,
-  options,
-  selected,
-  onSelect,
-}: {
-  label: string;
-  options: T[];
-  selected: T;
-  onSelect: (value: T) => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View style={{ gap: theme.spacing.sm }}>
-      <AppText size="sm" tone="muted" weight="medium">
-        {label}
-      </AppText>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
-        {options.map((option) => {
-          const active = option === selected;
-          return (
-            <Pressable
-              key={option}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={humanise(option)}
-              onPress={() => onSelect(option)}
-              style={{
-                backgroundColor: active ? theme.colors.primary : theme.colors.surfaceRaised,
-                borderColor: theme.colors.border,
-                borderRadius: theme.radius.pill,
-                borderWidth: 1,
-                justifyContent: 'center',
-                minHeight: TOUCH_TARGET,
-                paddingHorizontal: theme.spacing.lg,
-              }}
-            >
-              <Text
-                style={{
-                  color: active ? theme.colors.primaryText : theme.colors.text,
-                  fontSize: theme.fontSize.sm,
-                  fontWeight: '600',
-                }}
-              >
-                {humanise(option)}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
   );
 }
 

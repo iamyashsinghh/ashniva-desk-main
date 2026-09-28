@@ -10,7 +10,10 @@ import { Linking, View } from 'react-native';
 import { apiRequest, errorMessage } from '../../shared/api/client';
 import { useApiMutation } from '../../shared/api/mutations';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Button, Card, Divider } from '../../shared/components/primitives';
+import { Banner } from '../../shared/components/feedback';
+import { Glyph } from '../../shared/components/glyph';
+import { Section } from '../../shared/components/layout';
+import { AppText, Button, Divider } from '../../shared/components/primitives';
 import { formatDateTime, formatDuration } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { usePermission } from '../auth/SessionProvider';
@@ -74,11 +77,7 @@ export function TicketCalls({ ticketId }: { ticketId: string }) {
   };
 
   return (
-    <Card>
-      <AppText size="sm" tone="muted" weight="medium">
-        Calls
-      </AppText>
-
+    <Section title="Calls" count={calls.length > 0 ? calls.length : undefined}>
       {answer?.enabled ? (
         <Button
           label="Call about this ticket"
@@ -93,28 +92,34 @@ export function TicketCalls({ ticketId }: { ticketId: string }) {
         </AppText>
       ) : null}
       {call.error ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {call.error}
-        </AppText>
+        </Banner>
       ) : null}
 
-      {calls.map((entry) => (
+      {calls.map((entry, index) => (
         <View key={entry.id} style={{ gap: theme.spacing.xs }}>
-          <Divider />
-          <AppText size="sm">
-            {formatDateTime(entry.requestedAt)} · {entry.status.toLowerCase()} ·{' '}
-            {formatDuration(entry.durationSeconds)}
-          </AppText>
+          {index > 0 || answer ? <Divider /> : null}
+          <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
+            <Glyph name="clock" size={12} color={theme.colors.textFaint} strokeWidth={1.5} />
+            <AppText size="sm" tabular style={{ flex: 1 }}>
+              {formatDateTime(entry.requestedAt)} · {entry.status.toLowerCase()} ·{' '}
+              {formatDuration(entry.durationSeconds)}
+            </AppText>
+          </View>
           <AppText size="xs" tone="faint">
             {entry.connectedTo ? `Taken by ${entry.connectedTo.name}` : 'Nobody answered'}
           </AppText>
           {entry.hasRecording && entry.canPlayRecording ? (
-            <Button
-              label="Play the recording"
-              variant="secondary"
-              accessibilityHint="Opens the recording. Every playback is audited."
-              onPress={() => void play(entry.id)}
-            />
+            <View style={{ alignItems: 'flex-start' }}>
+              <Button
+                label="Play the recording"
+                variant="secondary"
+                size="sm"
+                accessibilityHint="Opens the recording. Every playback is audited."
+                onPress={() => void play(entry.id)}
+              />
+            </View>
           ) : null}
           {entry.hasRecording && !entry.canPlayRecording ? (
             <AppText size="xs" tone="faint">
@@ -125,10 +130,10 @@ export function TicketCalls({ ticketId }: { ticketId: string }) {
       ))}
 
       {playError ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {playError}
-        </AppText>
+        </Banner>
       ) : null}
-    </Card>
+    </Section>
   );
 }

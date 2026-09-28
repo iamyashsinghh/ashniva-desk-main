@@ -1,5 +1,6 @@
 import {
   CONVERSATION_KIND,
+  PRIORITY_LABELS,
   TICKET_ACTION,
   TICKET_STATUS_LABELS,
   VISIBILITY,
@@ -13,20 +14,18 @@ import { errorMessage } from '../../shared/api/client';
 import { useApiMutation } from '../../shared/api/mutations';
 import { useResource } from '../../shared/api/queries';
 import {
-  AppText,
-  Button,
-  Card,
-  Divider,
-  Field,
-  Input,
-  Pill,
-  Screen,
-} from '../../shared/components/primitives';
+  Hero,
+  Section,
+  SectionHeader,
+  useStackKeyboardOffset,
+} from '../../shared/components/layout';
+import { AppText, Divider, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { OpenConversationButton } from '../chat/OpenConversationButton';
 import { TicketActions } from './TicketActions';
 import { TicketCalls } from './TicketCalls';
+import { TicketConversation, TicketReplyComposer } from './TicketConversation';
 import { ticketCan, ticketTone } from './ticket-display';
 
 /**
@@ -47,6 +46,7 @@ export function TicketDetailScreen({
   onOpenChat: ((conversationId: string) => void) | null;
 }) {
   const theme = useTheme();
+  const keyboardOffset = useStackKeyboardOffset();
   const [reply, setReply] = useState('');
   const query = useResource<TicketDetail>(['tickets', ticketId], `/tickets/${ticketId}`);
   const ticket = query.data ?? null;
@@ -85,10 +85,15 @@ export function TicketDetailScreen({
     <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={keyboardOffset}
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.lg }}
+          contentContainerStyle={{
+            gap: theme.spacing.md,
+            padding: theme.spacing.screen,
+            paddingBottom: theme.spacing.xxl,
+          }}
           keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
@@ -98,104 +103,66 @@ export function TicketDetailScreen({
             />
           }
         >
-          <Card>
-            <AppText size="xs" tone="faint">
-              {ticket.key} · {ticket.priority} · raised by {ticket.requester.name}
-            </AppText>
-            <AppText size="lg" weight="bold">
-              {ticket.title}
-            </AppText>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+          <Hero
+            overline={`${ticket.key} · ${PRIORITY_LABELS[ticket.priority]} · raised by ${ticket.requester.name}`}
+            title={ticket.title}
+          >
+            <PillRow>
               <Pill label={TICKET_STATUS_LABELS[ticket.status]} tone={ticketTone(ticket.status)} />
               {ticket.sla?.overall === 'BREACHED' ? (
                 <Pill label="SLA breached" tone="danger" />
               ) : null}
-            </View>
-          </Card>
+            </PillRow>
+          </Hero>
 
-          <Card>
-            <AppText size="sm" tone="muted" weight="medium">
-              What was reported
-            </AppText>
+          <Section title="What was reported">
             <AppText>{ticket.description}</AppText>
             {ticket.impact ? (
               <>
                 <Divider />
-                <AppText size="sm" tone="muted" weight="medium">
-                  Impact
-                </AppText>
-                <AppText>{ticket.impact}</AppText>
+                <View style={{ gap: theme.spacing.xs }}>
+                  <SectionHeader title="Impact" />
+                  <AppText>{ticket.impact}</AppText>
+                </View>
               </>
             ) : null}
-          </Card>
+          </Section>
 
           {ticket.resolution ? (
-            <Card>
-              <AppText size="sm" tone="muted" weight="medium">
-                How it was resolved
-              </AppText>
+            <Section title="How it was resolved">
               <AppText>{ticket.resolution}</AppText>
-            </Card>
+            </Section>
           ) : null}
 
-          <Card>
-            <AppText size="sm" tone="muted" weight="medium">
-              Conversation ({ticket.comments.length})
-            </AppText>
-            {ticket.comments.length === 0 ? (
-              <AppText tone="muted">Nothing yet.</AppText>
-            ) : (
-              ticket.comments.map((comment) => (
-                <View key={comment.id} style={{ gap: theme.spacing.xs }}>
-                  <Divider />
-                  <AppText size="xs" tone="faint">
-                    {comment.author.name}
-                    {comment.visibility === VISIBILITY.INTERNAL ? ' · internal note' : ''}
-                  </AppText>
-                  <AppText size="sm">{comment.body}</AppText>
-                </View>
-              ))
-            )}
-          </Card>
+          {/* What can be done comes before the thread: it is why somebody opened this. */}
+          <TicketActions ticket={ticket} onChanged={refresh} />
+
+          <TicketConversation comments={ticket.comments} />
 
           {canReply ? (
-            <Card>
-              <Field label="Reply" hint="The client reads this.">
-                <Input
-                  accessibilityLabel="Your reply"
-                  multiline
-                  numberOfLines={3}
-                  onChangeText={setReply}
-                  style={{ minHeight: 80, textAlignVertical: 'top' }}
-                  value={reply}
-                />
-              </Field>
-              {send.error ? (
-                <AppText tone="danger" size="sm">
-                  {send.error}
-                </AppText>
-              ) : null}
-              <Button
-                label="Send reply"
-                loading={send.busy}
-                disabled={reply.trim().length < 2}
-                accessibilityHint="Posts your reply where the client can read it"
-                onPress={() => void send.run({ body: reply.trim() })}
-              />
-            </Card>
+            <TicketReplyComposer
+              value={reply}
+              onChange={setReply}
+              busy={send.busy}
+              error={send.error}
+              onSend={() => void send.run({ body: reply.trim() })}
+            />
           ) : null}
-
-          <TicketActions ticket={ticket} onChanged={refresh} />
 
           <TicketCalls ticketId={ticket.id} />
 
           {onOpenChat ? (
-            <OpenConversationButton
-              anchor={{ kind: CONVERSATION_KIND.TICKET, ticketId: ticket.id }}
-              label="Internal discussion"
-              hint="Opens the internal conversation about this ticket. The client never sees it."
-              onOpened={onOpenChat}
-            />
+            <Section title="Team only">
+              <AppText size="xs" tone="muted">
+                A conversation for the team. Nothing in it reaches the client.
+              </AppText>
+              <OpenConversationButton
+                anchor={{ kind: CONVERSATION_KIND.TICKET, ticketId: ticket.id }}
+                label="Internal discussion"
+                hint="Opens the internal conversation about this ticket. The client never sees it."
+                onOpened={onOpenChat}
+              />
+            </Section>
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>

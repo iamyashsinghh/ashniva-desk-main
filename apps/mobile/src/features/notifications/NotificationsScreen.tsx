@@ -1,12 +1,14 @@
 import type { NotificationSummary } from '@ashniva/types';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl, View } from 'react-native';
 
 import { useQueryClient } from '@tanstack/react-query';
 
 import { apiRequest, errorMessage } from '../../shared/api/client';
-import { AppText, Button, Card, Screen } from '../../shared/components/primitives';
+import { ListFooterLoader } from '../../shared/components/feedback';
+import { PressableCard, SectionHeader } from '../../shared/components/layout';
+import { AppText, Button, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
+import { formatSince } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { useInbox } from './notifications-api';
 
@@ -75,10 +77,21 @@ export function NotificationsScreen({ onOpenLink }: { onOpenLink: (link: string)
   return (
     <Screen>
       {unread > 0 ? (
-        <View style={{ padding: theme.spacing.lg, paddingBottom: 0 }}>
+        <View
+          style={{
+            alignItems: 'center',
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            paddingHorizontal: theme.spacing.screen,
+            paddingTop: theme.spacing.md,
+          }}
+        >
+          <SectionHeader title="Unread" count={unread} />
           <Button
             label={`Mark all ${unread} as read`}
-            variant="secondary"
+            variant="ghost"
+            size="sm"
+            icon="check"
             onPress={() => void markAll()}
           />
         </View>
@@ -87,7 +100,11 @@ export function NotificationsScreen({ onOpenLink }: { onOpenLink: (link: string)
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.lg }}
+        contentContainerStyle={{
+          gap: theme.spacing.sm,
+          padding: theme.spacing.screen,
+          paddingTop: unread > 0 ? theme.spacing.sm : theme.spacing.screen,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={inbox.isRefreshing}
@@ -101,30 +118,47 @@ export function NotificationsScreen({ onOpenLink }: { onOpenLink: (link: string)
           <EmptyState title="Nothing waiting" description="You are up to date." />
         }
         ListFooterComponent={
-          inbox.isLoadingMore ? <LoadingState label="Loading older notifications" /> : undefined
+          inbox.isLoadingMore ? <ListFooterLoader label="Loading older notifications" /> : undefined
         }
         renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
+          <PressableCard
             accessibilityLabel={item.title}
             accessibilityHint={item.link ? 'Opens the related screen' : 'Marks it read'}
             onPress={() => void open(item)}
-            style={({ pressed }) => ({ minHeight: TOUCH_TARGET, opacity: pressed ? 0.7 : 1 })}
+            highlight={!item.readAt}
+            chevron={Boolean(item.link)}
           >
-            <Card style={item.readAt ? undefined : { borderColor: theme.colors.primary }}>
-              <AppText weight={item.readAt ? 'regular' : 'medium'}>{item.title}</AppText>
-              {item.body ? (
-                <AppText size="sm" tone="muted" numberOfLines={3}>
-                  {item.body}
-                </AppText>
-              ) : null}
+            <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
+              {item.readAt ? null : (
+                <View
+                  style={{
+                    backgroundColor: theme.colors.primary,
+                    borderRadius: 4,
+                    height: 8,
+                    width: 8,
+                  }}
+                />
+              )}
+              <AppText weight={item.readAt ? 'regular' : 'medium'} style={{ flex: 1 }}>
+                {item.title}
+              </AppText>
+            </View>
+            {item.body ? (
+              <AppText size="sm" tone="muted" numberOfLines={3}>
+                {item.body}
+              </AppText>
+            ) : null}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+              <AppText size="xs" tone="faint">
+                {formatSince(item.createdAt)}
+              </AppText>
               {item.groupedCount > 1 ? (
                 <AppText size="xs" tone="faint">
                   and {item.groupedCount - 1} more like this
                 </AppText>
               ) : null}
-            </Card>
-          </Pressable>
+            </View>
+          </PressableCard>
         )}
       />
     </Screen>

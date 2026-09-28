@@ -1,12 +1,18 @@
 import type { ProjectSummary } from '@ashniva/types';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl, View } from 'react-native';
 
 import { useResource } from '../../shared/api/queries';
-import { AppText, Card, Pill, Screen } from '../../shared/components/primitives';
+import { ProgressBar } from '../../shared/components/data-display';
+import { PressableCard } from '../../shared/components/layout';
+import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { projectHealthLabel, projectHealthTone, projectStatusLabel } from './project-display';
+import {
+  projectHealthLabel,
+  projectHealthTone,
+  projectStatusLabel,
+  projectStatusTone,
+} from './project-display';
 
 /**
  * The projects you can see.
@@ -48,7 +54,7 @@ export function ProjectsScreen({ onOpen }: { onOpen: (projectId: string) => void
       <FlatList
         data={projects}
         keyExtractor={(project) => project.id}
-        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.lg }}
+        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.screen }}
         refreshControl={
           <RefreshControl
             refreshing={query.isRefetching}
@@ -60,34 +66,30 @@ export function ProjectsScreen({ onOpen }: { onOpen: (projectId: string) => void
           <EmptyState title="No projects" description="Projects you are on will appear here." />
         }
         renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
+          <PressableCard
             accessibilityLabel={`${item.code} ${item.name}`}
             accessibilityHint="Opens the project"
             onPress={() => onOpen(item.id)}
-            style={({ pressed }) => ({ minHeight: TOUCH_TARGET, opacity: pressed ? 0.7 : 1 })}
           >
-            <Card>
-              <AppText size="xs" tone="faint">
-                {item.code}
-                {item.clientOrganization ? ` · ${item.clientOrganization.name}` : ''}
-              </AppText>
-              <AppText weight="medium" numberOfLines={2}>
-                {item.name}
-              </AppText>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
-                <Pill label={projectStatusLabel(item.status)} />
-                <Pill
-                  label={projectHealthLabel(item.health)}
-                  tone={projectHealthTone(item.health)}
-                />
-              </View>
-              <AppText size="sm" tone="muted">
+            <AppText size="xs" tone="faint" numberOfLines={1}>
+              {item.code}
+              {item.clientOrganization ? ` · ${item.clientOrganization.name}` : ''}
+            </AppText>
+            <AppText weight="medium" numberOfLines={2}>
+              {item.name}
+            </AppText>
+            <PillRow>
+              <Pill label={projectStatusLabel(item.status)} tone={projectStatusTone(item.status)} />
+              <Pill label={projectHealthLabel(item.health)} tone={projectHealthTone(item.health)} />
+            </PillRow>
+            <View style={{ gap: theme.spacing.xs }}>
+              <ProgressBar percent={item.progressPercent} />
+              <AppText size="xs" tone="muted" tabular>
                 {item.progressPercent}% done · {item.taskCounts.open} open ·{' '}
                 {item.taskCounts.overdue} overdue
               </AppText>
-            </Card>
-          </Pressable>
+            </View>
+          </PressableCard>
         )}
       />
     </Screen>

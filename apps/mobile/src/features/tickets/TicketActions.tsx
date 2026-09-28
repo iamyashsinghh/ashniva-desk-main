@@ -1,8 +1,13 @@
 import { TICKET_ACTION, type TicketDetail } from '@ashniva/types';
 import { useState } from 'react';
+import { View } from 'react-native';
 
 import { useApiMutation } from '../../shared/api/mutations';
-import { AppText, Button, Card, Field, Input } from '../../shared/components/primitives';
+import { Banner } from '../../shared/components/feedback';
+import { Grow, Section } from '../../shared/components/layout';
+import { Button, Field, Input } from '../../shared/components/primitives';
+import { animateLayout } from '../../shared/theme/motion';
+import { useTheme } from '../../shared/theme/ThemeProvider';
 import { ticketCan } from './ticket-display';
 
 /**
@@ -26,6 +31,7 @@ export function TicketActions({
   ticket: TicketDetail;
   onChanged: () => void;
 }) {
+  const theme = useTheme();
   const [resolveOpen, setResolveOpen] = useState(false);
   const [resolution, setResolution] = useState('');
 
@@ -61,57 +67,80 @@ export function TicketActions({
   }
 
   return (
-    <Card>
-      <AppText size="sm" tone="muted" weight="medium">
-        Actions
-      </AppText>
-
-      {canStart ? (
-        <Button
-          label="Start working on it"
-          loading={start.busy}
-          accessibilityHint="Takes the ticket and marks it in progress"
-          onPress={() => void start.run()}
-        />
+    <Section title="Actions">
+      {canStart || canResume ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+          {canStart ? (
+            <Grow>
+              <Button
+                label="Start working on it"
+                loading={start.busy}
+                accessibilityHint="Takes the ticket and marks it in progress"
+                onPress={() => void start.run()}
+              />
+            </Grow>
+          ) : null}
+          {canResume ? (
+            <Grow>
+              <Button
+                label="Back in progress"
+                variant="secondary"
+                loading={resume.busy}
+                accessibilityHint="The client has answered and work can continue"
+                onPress={() => void resume.run()}
+              />
+            </Grow>
+          ) : null}
+        </View>
       ) : null}
 
-      {canResume ? (
-        <Button
-          label="Back in progress"
-          variant="secondary"
-          loading={resume.busy}
-          accessibilityHint="The client has answered and work can continue"
-          onPress={() => void resume.run()}
-        />
-      ) : null}
-
-      {canWait ? (
-        <Button
-          label="Waiting for the client"
-          variant="secondary"
-          loading={waitClient.busy}
-          accessibilityHint="Pauses the ticket until the client comes back"
-          onPress={() => void waitClient.run()}
-        />
-      ) : null}
-
-      {canResolve && !resolveOpen ? (
-        <Button
-          label="Resolve"
-          variant="secondary"
-          accessibilityHint="Closes the ticket with an explanation the client reads"
-          onPress={() => setResolveOpen(true)}
-        />
+      {(canWait || canResolve) && !resolveOpen ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+          {canWait ? (
+            <Grow>
+              <Button
+                label="Waiting for the client"
+                variant="secondary"
+                loading={waitClient.busy}
+                accessibilityHint="Pauses the ticket until the client comes back"
+                onPress={() => void waitClient.run()}
+              />
+            </Grow>
+          ) : null}
+          {canResolve ? (
+            <Grow>
+              <Button
+                label="Resolve"
+                variant="secondary"
+                icon="check"
+                accessibilityHint="Closes the ticket with an explanation the client reads"
+                onPress={() => {
+                  animateLayout();
+                  setResolveOpen(true);
+                }}
+              />
+            </Grow>
+          ) : null}
+        </View>
       ) : null}
 
       {canResolve && resolveOpen ? (
-        <>
+        <View
+          style={{
+            backgroundColor: theme.colors.surfaceSunken,
+            borderRadius: theme.radius.md,
+            gap: theme.spacing.md,
+            padding: theme.spacing.md,
+          }}
+        >
           <Field
             label="What was done"
+            required
             hint="The client reads this. Plain language, no internal detail."
           >
             <Input
               accessibilityLabel="What was done"
+              autoFocus
               multiline
               numberOfLines={3}
               onChangeText={setResolution}
@@ -119,21 +148,34 @@ export function TicketActions({
               value={resolution}
             />
           </Field>
-          <Button
-            label="Resolve the ticket"
-            loading={resolve.busy}
-            disabled={resolution.trim().length < 3}
-            onPress={() => void resolve.run({ resolution: resolution.trim() })}
-          />
-          <Button label="Cancel" variant="secondary" onPress={() => setResolveOpen(false)} />
-        </>
+          <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
+            <Grow>
+              <Button
+                label="Cancel"
+                variant="ghost"
+                onPress={() => {
+                  animateLayout();
+                  setResolveOpen(false);
+                }}
+              />
+            </Grow>
+            <Grow>
+              <Button
+                label="Resolve the ticket"
+                loading={resolve.busy}
+                disabled={resolution.trim().length < 3}
+                onPress={() => void resolve.run({ resolution: resolution.trim() })}
+              />
+            </Grow>
+          </View>
+        </View>
       ) : null}
 
       {failure ? (
-        <AppText tone="danger" size="sm">
+        <Banner tone="danger" role="alert">
           {failure}
-        </AppText>
+        </Banner>
       ) : null}
-    </Card>
+    </Section>
   );
 }

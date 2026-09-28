@@ -41,7 +41,7 @@ export function Chip({
         flexDirection: 'row',
         gap: 6,
         justifyContent: 'center',
-        minHeight: TOUCH_TARGET - 4,
+        minHeight: TOUCH_TARGET,
         opacity: pressed ? 0.8 : 1,
         paddingHorizontal: theme.spacing.md + 2,
       })}
