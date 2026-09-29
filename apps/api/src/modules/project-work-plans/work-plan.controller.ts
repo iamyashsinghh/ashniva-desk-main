@@ -1,6 +1,11 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PERMISSIONS, type AuthenticatedUser, type ProjectWorkPlan } from '@ashniva/types';
+import {
+  PERMISSIONS,
+  type AddedWorkPlanTopic,
+  type AuthenticatedUser,
+  type ProjectWorkPlan,
+} from '@ashniva/types';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
@@ -10,6 +15,7 @@ import {
   AssignWorkPlanDto,
   SaveWorkPlanAssignmentsDto,
   AddWorkPlanWorkDto,
+  AddWorkPlanTopicDto,
   CombineWorkPlanTitlesDto,
   WorkPlanExplainApplyDto,
   WorkPlanExplainPreviewDto,
@@ -113,6 +119,20 @@ export class WorkPlanController {
     @Body() dto: AddWorkPlanWorkDto,
   ): Promise<ProjectWorkPlan> {
     return this.plans.addWork(actor, projectId, dto);
+  }
+
+  @Post('topics')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({
+    summary:
+      'Add one topic exactly as given — phase, title, steps and developer, no AI placement. Its task is created when someone is assigned. For integrations such as AI Memory. Super admin, project manager and team lead.',
+  })
+  addTopic(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: AddWorkPlanTopicDto,
+  ): Promise<AddedWorkPlanTopic> {
+    return this.plans.addTopic(actor, projectId, dto);
   }
 
   @Post('combine-titles')
