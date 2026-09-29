@@ -11,7 +11,8 @@
     "build": "expo export --platform ios --platform android --output-dir dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest --passWithNoTests",
-    "clean": "rimraf node_modules dist .expo coverage"
+    "clean": "rimraf node_modules dist .expo coverage",
+    "eas-build-post-install": "pnpm --filter @ashniva/types build"
   },
   "dependencies": {
     "@ashniva/types": "workspace:*",
@@ -27,6 +28,7 @@
     "expo-constants": "~57.0.17",
     "expo-document-picker": "~57.0.2",
     "expo-file-system": "~57.0.6",
+    "expo-font": "~57.0.4",
     "expo-haptics": "~57.0.3",
     "expo-image-picker": "~57.0.16",
     "expo-linking": "~57.0.9",
@@ -45,6 +47,7 @@
     "@testing-library/react-native": "^14.0.1",
     "@types/jest": "^29.5.14",
     "@types/react": "^19.2.18",
+    "babel-preset-expo": "~57.0.10",
     "jest": "^29.7.0",
     "jest-expo": "~57.0.5",
     "react-test-renderer": "19.2.3",

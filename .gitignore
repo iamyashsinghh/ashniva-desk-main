@@ -16,6 +16,11 @@ apps/api/src/generated/
 .env.*
 !.env.example
 
+# Firebase / push credentials for the mobile app — uploaded to EAS, never committed
+apps/mobile/google-services.json
+apps/mobile/GoogleService-Info.plist
+*firebase-adminsdk*.json
+
 # Logs and OS files
 *.log
 .DS_Store

@@ -430,6 +430,16 @@ Remote push needs `extra.eas.projectId` in `app.json` (run `eas init`) and APNs 
 in EAS; until then token lookup returns nothing and only the live path runs. Android Expo Go
 cannot receive remote push at all — use a development build.
 
+- **Android (FCM).** Add an Android app with package `com.ashniva.desk` to a Firebase project and
+  download `google-services.json`. It stays out of git: upload it with
+  `eas env:create --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json
+  --environment preview --environment production --visibility secret`, and `app.config.ts` points
+  `android.googleServicesFile` at it. Then give Expo the FCM V1 service-account key (Firebase →
+  Project settings → Service accounts → Generate new private key) through `eas credentials` →
+  Android → Google Service Account → push notifications, and rebuild.
+- **iOS (APNs).** Needs a paid Apple Developer account; answer yes when `eas build` offers to set
+  up push notifications and EAS creates the key.
+
 Tapping an alert follows its `link` first (the same web route the in-app notification carries),
 then an older `screen` payload, then the Alerts tab. Work-plan notifications open Project Summary.
 
