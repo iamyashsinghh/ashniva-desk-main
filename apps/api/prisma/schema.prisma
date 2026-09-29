@@ -75,6 +75,7 @@ model Organization {
   notificationPrefs    NotificationPreference[]
   notificationSettings NotificationSetting[]
   pushSubscriptions    PushSubscription[]
+  devicePushTokens     DevicePushToken[]
   invitations          UserInvitation[]
   integrations         IntegrationConnection[]
   integrationEvents    IntegrationEvent[]
@@ -172,6 +173,13 @@ model User {
   passwordHash String?    @map("password_hash")
   status       UserStatus @default(INVITED)
   lastLoginAt  DateTime?  @map("last_login_at")
+  /// Object-storage key of their profile photo. At most one of this and `avatarPreset` is set;
+  /// never returned by any endpoint — clients fetch the bytes through `GET /users/:id/avatar`.
+  avatarKey       String?  @map("avatar_key")
+  /// A built-in picture (`AVATAR_PRESETS`) chosen instead of a photo.
+  avatarPreset    String?  @map("avatar_preset")
+  /// When the picture last changed; the photo URL's `?v=` is derived from it.
+  avatarUpdatedAt DateTime? @map("avatar_updated_at")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
   deletedAt    DateTime?  @map("deleted_at")
@@ -217,6 +225,7 @@ model User {
   notificationPrefs     NotificationPreference[]
   notificationSettings  NotificationSetting[]
   pushSubscriptions     PushSubscription[]
+  devicePushTokens      DevicePushToken[]
   invitations           UserInvitation[]         @relation("InvitationUser")
   sentInvitations       UserInvitation[]         @relation("InvitationSender")
   passwordResetTokens   PasswordResetToken[]
@@ -435,6 +444,9 @@ model RefreshToken {
   expiresAt         DateTime  @map("expires_at")
   revokedAt         DateTime? @map("revoked_at")
   replacedByTokenId String?   @map("replaced_by_token_id") @db.Uuid
+  /// When this token itself was exchanged. Null on a token retired by a retry of its predecessor,
+  /// which is what stops two holders of one family from trading retries forever.
+  presentedAt       DateTime? @map("presented_at")
   userAgent         String?   @map("user_agent")
   ipAddress         String?   @map("ip_address")
   createdAt         DateTime  @default(now()) @map("created_at")
@@ -2143,6 +2155,26 @@ model PushSubscription {
   @@unique([endpoint])
   @@index([userId, organizationId])
   @@map("push_subscriptions")
+}
+
+/// Expo push token for one install of the mobile app. The token is unique across the system: a
+/// phone that signs in as someone else is re-bound to them, never notified for both people.
+model DevicePushToken {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  token          String   @unique
+  /// `PUSH_DEVICE_PLATFORMS` in @ashniva/types (IOS | ANDROID).
+  platform       String
+  lastSeenAt     DateTime @default(now()) @map("last_seen_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId])
+  @@map("device_push_tokens")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -4772,6 +4804,8 @@ model Message {
   /// The tagged people a group message is private to; empty when the whole conversation reads it.
   /// Only the sender, these people and the tagged-message reader roles see a restricted message.
   restrictedToUserIds String[]       @default([]) @map("restricted_to_user_ids") @db.Uuid
+  /// The message this one quotes, always in the same conversation. Never changed by an edit.
+  replyToId       String?            @map("reply_to_id") @db.Uuid
   createdAt       DateTime           @default(now()) @map("created_at")
   editedAt        DateTime?          @map("edited_at")
   deletedAt       DateTime?          @map("deleted_at")
@@ -4780,11 +4814,14 @@ model Message {
   conversation Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   project      Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sender       User?             @relation("MessageSender", fields: [senderId], references: [id])
+  replyTo      Message?          @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies      Message[]         @relation("MessageReplies")
   attachments  File[]
   revisions    MessageRevision[]
 
   @@unique([conversationId, clientMessageId])
   @@index([conversationId, createdAt])
+  @@index([replyToId])
   /// The actual pagination predicate. A page of a thread is `conversation_id = $1 AND id < $2
   /// ORDER BY id DESC`, and until this index existed there was nothing supporting it: the
   /// `created_at` index above answers the unread-count group-by, not the cursor walk, so paging

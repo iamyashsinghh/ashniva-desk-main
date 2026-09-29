@@ -15,10 +15,11 @@ import { errorMessage } from '../../../shared/lib/api-client';
 import { changePassword, logout, switchOrganization } from '../../auth/api';
 import { useCurrentUser } from '../../auth/session-context';
 import { MyWorkScheduleCard } from '../../support-routing/components/MyWorkScheduleCard';
+import { ProfilePictureCard } from '../components/ProfilePictureCard';
 
 import '../../dashboard/dashboard.css';
 
-/** Profile: who you are, organization switch, password change, sign out. */
+/** Profile: who you are, your picture, organization switch, password change, sign out. */
 export function ProfilePage() {
   const user = useCurrentUser();
   const navigate = useNavigate();
@@ -99,6 +100,7 @@ export function ProfilePage() {
             </div>
           ) : null}
         </Card>
+        <ProfilePictureCard />
         <Card title="Change password">
           <form onSubmit={(event) => void submit(event)} className="composer" noValidate>
             <FormField label="Current password" required>

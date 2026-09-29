@@ -1,154 +1,133 @@
-import { TASK_LIST_VIEW, TASK_STATUS_LABELS, type TaskSummary } from '@ashniva/types';
+import { PERMISSIONS, TASK_LIST_VIEW, type TaskListView } from '@ashniva/types';
 import { useState } from 'react';
-import { FlatList, RefreshControl, View } from 'react-native';
+import { View } from 'react-native';
 
-import { usePagedResource } from '../../shared/api/queries';
-import { Segmented, type SegmentOption } from '../../shared/components/navigation-list';
-import { ListFooterLoader } from '../../shared/components/feedback';
-import { PressableCard } from '../../shared/components/layout';
-import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
-import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
-import { formatDateTime } from '../../shared/format/format';
+import { SearchFilterBar, useDebounced } from '../../shared/components/FilterSheet';
+import { Button } from '../../shared/components/primitives';
+import { TabBar } from '../../shared/components/TabBar';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { taskTone } from './task-display';
-import { TaskTimingPill } from './TaskTimingPill';
+import { useSession } from '../auth/SessionProvider';
+import { ActiveTaskFilters, useTaskFilterChips } from './ActiveTaskFilters';
+import { TaskFilterSheet } from './TaskFilterSheet';
+import { TaskResults } from './TaskResults';
+import {
+  NO_TASK_FILTERS,
+  TASK_VIEW_ICONS,
+  TASK_VIEW_LABELS,
+  countTaskFilters,
+  taskListQuery,
+  visibleTaskViews,
+  type TaskFilters,
+} from './task-list-query';
+import { taskEmptyCopy, withoutTaskChip } from './task-list-chips';
 
-/**
- * The tasks assigned to you, in two views.
- *
- * **Now** is what can be worked on; **Upcoming** is what is assigned but scheduled to begin
- * later. Separating them is the whole point of a scheduled start: a queue that mixes the two
- * reads as a longer list of work you are behind on, when half of it has not started yet.
- *
- * Both views are asked for by name rather than filtered on the device. The API already knows who
- * is calling and when a scheduled start has passed, and a client-side filter would mean
- * downloading other people's work in order to hide it.
- */
-type TaskView = typeof TASK_LIST_VIEW.MY | typeof TASK_LIST_VIEW.UPCOMING;
-
-const VIEWS: readonly SegmentOption<TaskView>[] = [
-  { value: TASK_LIST_VIEW.MY, label: 'Now' },
-  { value: TASK_LIST_VIEW.UPCOMING, label: 'Upcoming' },
+/** Views about other people's work, where each row says whose it is. */
+const OTHERS_VIEWS: readonly TaskListView[] = [
+  TASK_LIST_VIEW.BY_ME,
+  TASK_LIST_VIEW.TEAM,
+  TASK_LIST_VIEW.ALL,
+  TASK_LIST_VIEW.REVIEW,
+  TASK_LIST_VIEW.OVERDUE,
+  TASK_LIST_VIEW.TODAY,
 ];
 
-const EMPTY: Record<TaskView, { title: string; description: string }> = {
-  [TASK_LIST_VIEW.MY]: {
-    title: 'Nothing assigned',
-    description: 'Tasks you can work on now will appear here.',
-  },
-  [TASK_LIST_VIEW.UPCOMING]: {
-    title: 'Nothing scheduled',
-    description: 'Tasks assigned to you with a start date in the future will appear here.',
-  },
-};
-
-export function TasksScreen({ onOpen }: { onOpen: (taskId: string) => void }) {
+/**
+ * Tasks, in every view the web app offers this person.
+ *
+ * Each view, filter and search is asked of the API by name rather than applied on the device. The
+ * API already knows who is calling and what they may read, and a client-side filter would mean
+ * downloading other people's work in order to hide it.
+ */
+export function TasksScreen({
+  onOpen,
+  onCreate,
+}: {
+  onOpen: (taskId: string) => void;
+  /** Opens the create form. The button shows only to somebody holding `task:create`. */
+  onCreate?: () => void;
+}) {
   const theme = useTheme();
-  const [view, setView] = useState<TaskView>(TASK_LIST_VIEW.MY);
-  const list = usePagedResource<TaskSummary>(['tasks', view], '/tasks', { view, limit: 20 });
+  const { can } = useSession();
+  const views = visibleTaskViews(can(PERMISSIONS.TASK_ASSIGN));
+  const [view, setView] = useState<TaskListView>(TASK_LIST_VIEW.MY);
+  const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState<TaskFilters>(NO_TASK_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const settledSearch = useDebounced(search);
+  const chips = useTaskFilterChips(filters, '');
+  const canCreate = Boolean(onCreate) && can(PERMISSIONS.TASK_CREATE);
+
+  const query = taskListQuery(view, filters, settledSearch);
+  const narrowed = countTaskFilters(filters) > 0 || settledSearch.trim().length > 0;
+
+  const changeView = (next: TaskListView) => {
+    setView(next);
+    // As on the web: a status picked for one view rarely means anything in the next.
+    setFilters((current) => ({ ...current, statuses: [] }));
+  };
 
   const header = (
-    <View style={{ padding: theme.spacing.screen, paddingBottom: theme.spacing.xs }}>
-      <Segmented options={VIEWS} value={view} onChange={setView} label="Which tasks to show" />
+    <View>
+      <TabBar
+        accessibilityLabel="Which tasks to show"
+        options={views.map((entry) => ({
+          value: entry,
+          label: TASK_VIEW_LABELS[entry],
+          icon: TASK_VIEW_ICONS[entry],
+        }))}
+        value={view}
+        onChange={changeView}
+      />
+      <View
+        style={{
+          gap: theme.spacing.sm,
+          paddingHorizontal: theme.spacing.screen,
+          paddingTop: theme.spacing.md,
+        }}
+      >
+        <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
+          <View style={{ flex: 1 }}>
+            <SearchFilterBar
+              search={search}
+              onSearch={setSearch}
+              placeholder="Search tasks"
+              activeFilters={countTaskFilters(filters)}
+              onOpenFilters={() => setFiltersOpen(true)}
+            />
+          </View>
+          {canCreate && onCreate ? (
+            <Button
+              label="New"
+              icon="add"
+              onPress={onCreate}
+              accessibilityHint="Opens the form for a new task"
+            />
+          ) : null}
+        </View>
+        <ActiveTaskFilters
+          chips={chips}
+          onRemove={(key) => setFilters((current) => withoutTaskChip(current, key))}
+        />
+      </View>
+      {/* Mounted only while open, so its pickers fetch their lists when somebody wants them. */}
+      {filtersOpen ? (
+        <TaskFilterSheet
+          visible
+          filters={filters}
+          onChange={setFilters}
+          onClose={() => setFiltersOpen(false)}
+        />
+      ) : null}
     </View>
   );
 
-  if (list.isLoading) {
-    return (
-      <Screen>
-        {header}
-        <LoadingState label="Loading your tasks" />
-      </Screen>
-    );
-  }
-
-  if (list.error && list.items.length === 0) {
-    return (
-      <Screen>
-        {header}
-        <ErrorState
-          message={list.error instanceof Error ? list.error.message : 'Could not load your tasks'}
-          offline={list.error instanceof Error && list.error.name === 'NetworkError'}
-          onRetry={list.refresh}
-        />
-      </Screen>
-    );
-  }
-
   return (
-    <Screen>
-      {header}
-      <FlatList
-        data={list.items}
-        keyExtractor={(task) => task.id}
-        contentContainerStyle={{
-          gap: theme.spacing.sm,
-          padding: theme.spacing.screen,
-          paddingTop: theme.spacing.sm,
-        }}
-        refreshControl={
-          <RefreshControl
-            refreshing={list.isRefreshing}
-            onRefresh={list.refresh}
-            tintColor={theme.colors.primary}
-          />
-        }
-        onEndReached={list.loadMore}
-        onEndReachedThreshold={0.4}
-        ListEmptyComponent={<EmptyState {...EMPTY[view]} />}
-        ListFooterComponent={list.isLoadingMore ? <ListFooterLoader /> : undefined}
-        renderItem={({ item }) => (
-          <PressableCard
-            accessibilityLabel={`${item.key} ${item.title}`}
-            accessibilityHint="Opens the task"
-            onPress={() => onOpen(item.id)}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                gap: theme.spacing.sm,
-                justifyContent: 'space-between',
-              }}
-            >
-              <AppText size="xs" tone="faint" numberOfLines={1}>
-                {item.key} · {item.project.name}
-              </AppText>
-              <View
-                style={{
-                  backgroundColor: theme.priority[item.priority],
-                  borderRadius: 4,
-                  height: 8,
-                  marginTop: 4,
-                  width: 8,
-                }}
-              />
-            </View>
-            <AppText weight="medium" numberOfLines={2}>
-              {item.title}
-            </AppText>
-            <PillRow>
-              <Pill label={TASK_STATUS_LABELS[item.status]} tone={taskTone(item.status)} />
-              {/*
-                On time or late, from the server's own verdict. `isOverdue` below is a different
-                question — it compares the calendar due *date* and is what the list views filter
-                on — so both are shown rather than one standing in for the other.
-              */}
-              <TaskTimingPill timing={item.timing} />
-              {item.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
-            </PillRow>
-            {item.isUpcoming && item.scheduledStartAt ? (
-              <AppText size="xs" tone="muted">
-                Starts {formatDateTime(item.scheduledStartAt)}
-              </AppText>
-            ) : null}
-            {!item.isUpcoming && item.dueAt ? (
-              <AppText size="xs" tone="muted">
-                Due {formatDateTime(item.dueAt)}
-              </AppText>
-            ) : null}
-          </PressableCard>
-        )}
-      />
-    </Screen>
+    <TaskResults
+      query={query}
+      header={header}
+      empty={taskEmptyCopy(view, narrowed)}
+      onOpen={onOpen}
+      showAssignee={OTHERS_VIEWS.includes(view)}
+    />
   );
 }

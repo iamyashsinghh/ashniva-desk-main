@@ -1,14 +1,20 @@
 import { MIN_MENTIONABLE_QUERY_LENGTH } from '@ashniva/types';
 
-import { activeMention, insertMention, mentionSearchTerm } from './mention-draft';
+import {
+  activeMention,
+  bodyToDraft,
+  draftToBody,
+  insertMention,
+  mentionSearchTerm,
+} from './mention-draft';
 
 /**
  * The `@` somebody is typing.
  *
- * The picker's whole correctness rests on this: what opens it, what it searches for, and what it
- * writes into the body. The last one matters most — a mention is stored as the user's id, and a
- * composer that wrote a name instead would produce a body the notification path cannot read and a
- * mention nobody could forge or receive.
+ * The picker's whole correctness rests on this: what opens it, what it searches for, what it
+ * writes into the field and what is sent. The last one matters most — the field shows a name, but
+ * the body carries the user's id, because a body with names in it is one the notification path
+ * cannot read and one where a mention could be forged by typing a name.
  */
 
 const PRIYA = '11111111-1111-4111-8111-111111111111';
@@ -57,15 +63,38 @@ describe('mentionSearchTerm', () => {
 });
 
 describe('insertMention', () => {
-  it('writes the id, not the name, and leaves the caret after it', () => {
-    const result = insertMention('ready @pri', { term: 'pri', start: 6, end: 10 }, PRIYA);
-    expect(result.text).toBe(`ready @[${PRIYA}] `);
+  it('writes the name into the field and leaves the caret after it', () => {
+    const result = insertMention('ready @pri', { term: 'pri', start: 6, end: 10 }, 'Priya S');
+    expect(result.text).toBe('ready @Priya S ');
     expect(result.caret).toBe(result.text.length);
   });
 
   it('keeps whatever was typed after the caret', () => {
-    const result = insertMention('@pri please', { term: 'pri', start: 0, end: 4 }, PRIYA);
-    expect(result.text).toBe(`@[${PRIYA}]  please`);
+    const result = insertMention('@pri please', { term: 'pri', start: 0, end: 4 }, 'Priya S');
+    expect(result.text).toBe('@Priya S  please');
+  });
+
+  it('does not reopen the picker once the name is in', () => {
+    const result = insertMention('ready @pri', { term: 'pri', start: 6, end: 10 }, 'Priya S');
+    expect(activeMention(result.text, result.caret)).toBeNull();
+  });
+});
+
+describe('draftToBody and bodyToDraft', () => {
+  const picked = new Map([[PRIYA, 'Priya S']]);
+
+  it('sends the picked name as its id', () => {
+    expect(draftToBody('ready @Priya S for review', picked)).toBe(`ready @[${PRIYA}] for review`);
+  });
+
+  it('sends a name nobody picked as plain text', () => {
+    expect(draftToBody('ready @Priya S for review', new Map())).toBe('ready @Priya S for review');
+  });
+
+  it('opens a stored body with names, and saves it back with the same ids', () => {
+    const opened = bodyToDraft(`ready @[${PRIYA}]?`, picked);
+    expect(opened.draft).toBe('ready @Priya S?');
+    expect(draftToBody(opened.draft, opened.names)).toBe(`ready @[${PRIYA}]?`);
   });
 });
 

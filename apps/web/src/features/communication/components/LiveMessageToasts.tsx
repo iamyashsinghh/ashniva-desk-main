@@ -35,7 +35,12 @@ export function LiveMessageToasts() {
           key={toast.key}
           dismissLabel={`Dismiss the message from ${toast.from}`}
           leading={
-            <ConversationAvatar name={toast.from} imageFileId={toast.imageFileId} size="md" />
+            <ConversationAvatar
+              name={toast.from}
+              imageFileId={toast.imageFileId}
+              person={toast.counterpart}
+              size="md"
+            />
           }
           onDismiss={() => dismiss(toast.key)}
           onOpen={() => {

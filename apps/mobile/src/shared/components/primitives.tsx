@@ -14,6 +14,7 @@ import {
 import { DISABLED_OPACITY, TOUCH_TARGET, type TypeVariant } from '../theme/theme';
 import { useTheme } from '../theme/ThemeProvider';
 import { Glyph, type GlyphName } from './glyph';
+import type { IconName } from './Icon';
 
 // Form controls live in their own file; re-exported so every screen keeps one import.
 export { Field, Input } from './form-controls';
@@ -72,14 +73,7 @@ export function cardStyle(theme: ReturnType<typeof useTheme>, padded = true): Vi
 
 /** `inverse` is for text sitting on the brand colour — a badge, a selected segment. */
 type TextTone =
-  | 'default'
-  | 'muted'
-  | 'faint'
-  | 'danger'
-  | 'inverse'
-  | 'primary'
-  | 'success'
-  | 'warning';
+  'default' | 'muted' | 'faint' | 'danger' | 'inverse' | 'primary' | 'success' | 'warning';
 type TextSize = 'xs' | 'sm' | 'body' | 'lg' | 'xl';
 type TextWeight = 'regular' | 'medium' | 'bold';
 
@@ -177,7 +171,7 @@ export function Button({
   loading?: boolean;
   disabled?: boolean;
   /** A leading glyph. The label is always shown; a glyph never replaces words. */
-  icon?: GlyphName;
+  icon?: GlyphName | IconName;
   accessibilityHint?: string;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -215,7 +209,7 @@ export function Button({
           alignItems: 'center',
           backgroundColor: background,
           borderColor: theme.colors.borderStrong,
-          borderRadius: theme.radius.md,
+          borderRadius: small ? theme.radius.sm + 2 : theme.radius.md,
           borderWidth: bordered ? StyleSheet.hairlineWidth : 0,
           flexDirection: 'row',
           gap: theme.spacing.sm,
@@ -230,6 +224,7 @@ export function Button({
         pressed && (variant === 'ghost' || variant === 'dangerGhost')
           ? { backgroundColor: theme.colors.surfaceSunken }
           : null,
+        variant === 'primary' && !inactive ? primaryLift(theme.colors.primary) : null,
         style,
       ]}
     >
@@ -237,7 +232,7 @@ export function Button({
         <ActivityIndicator color={foreground} />
       ) : (
         <>
-          {icon ? <Glyph name={icon} color={foreground} size={small ? 12 : 14} /> : null}
+          {icon ? <Glyph name={icon} color={foreground} size={small ? 13 : 16} /> : null}
           <Text
             style={{
               ...theme.typography.button,
@@ -251,6 +246,19 @@ export function Button({
       )}
     </Pressable>
   );
+}
+
+/** A soft glow in the button's own colour, so the screen's main action reads as the main one. */
+function primaryLift(color: string): ViewStyle {
+  return Platform.select<ViewStyle>({
+    ios: {
+      shadowColor: color,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
+    },
+    default: { elevation: 2 },
+  });
 }
 
 /** Dimmed when unavailable, and a touch dimmer while held: two states, not a nested ternary. */

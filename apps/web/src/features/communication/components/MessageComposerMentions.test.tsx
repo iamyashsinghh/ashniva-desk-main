@@ -153,16 +153,29 @@ describe('MessageComposer mentions', () => {
     });
   });
 
-  it('writes the chosen person into the draft as an id, not as their name', async () => {
+  it('shows the chosen person in the draft by name, and closes the picker', async () => {
     stubMentionable();
     const { composer } = renderComposer();
 
     type(composer, 'hello @Pri');
     fireEvent.mouseDown(await screen.findByRole('option', { name: /Priya S/ }));
 
-    // The id, because a mention has to survive a rename and must not be forgeable by typing a
-    // colleague's name into a line.
-    expect(composer).toHaveValue(`hello @[${PRIYA}] `);
+    expect(composer).toHaveValue('hello @Priya S ');
+    // Typing on after the name must not read it as a new search.
+    type(composer, 'hello @Priya S please');
+    expect(screen.queryByRole('listbox', { name: 'Mention somebody' })).not.toBeInTheDocument();
+  });
+
+  it('does not tag somebody whose name was typed by hand', async () => {
+    stubMentionable();
+    const { composer, onSend } = renderComposer();
+
+    type(composer, 'ask @Priya S!');
+    fireEvent.keyDown(composer, { key: 'Enter' });
+
+    await vi.waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith(expect.objectContaining({ body: 'ask @Priya S!' })),
+    );
   });
 
   it('chooses the highlighted person with the keyboard, without the caret leaving the sentence', async () => {
@@ -179,11 +192,11 @@ describe('MessageComposer mentions', () => {
 
     fireEvent.keyDown(composer, { key: 'Enter' });
 
-    expect(composer).toHaveValue(`@[${SAM}] `);
+    expect(composer).toHaveValue('@Sam T ');
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it('sends the mention as written rather than as it is displayed', async () => {
+  it('sends the mention as an id rather than as it is displayed', async () => {
     stubMentionable();
     const { composer, onSend } = renderComposer();
 

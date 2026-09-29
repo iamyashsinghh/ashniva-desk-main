@@ -20,11 +20,26 @@ export function canUseInternalChat(user: SessionUser | null): boolean {
   return user.permissions.includes(PERMISSIONS.CONVERSATION_PARTICIPATE);
 }
 
-/** Managers and leads may start a 1:1. Developers and other staff only use the team group. */
-export function canStartPersonalChat(user: SessionUser | null): boolean {
+/**
+ * Whether to offer the administrator view of conversations and calls the reader is not in.
+ *
+ * Only a hint for the button: the oversight routes check `conversation:inspect` themselves and
+ * write an audit row for every read.
+ */
+export function canInspectConversations(user: SessionUser | null): boolean {
   return (
     canUseInternalChat(user) &&
-    (canUsePersonalChat(user!.roleKey) ||
-      user!.permissions.includes(PERMISSIONS.CONVERSATION_REACH_ORGANIZATION))
+    Boolean(user?.permissions.includes(PERMISSIONS.CONVERSATION_INSPECT))
+  );
+}
+
+/** Managers and leads may start a 1:1. Developers and other staff only use the team group. */
+export function canStartPersonalChat(user: SessionUser | null): boolean {
+  if (!user || !canUseInternalChat(user)) {
+    return false;
+  }
+  return (
+    canUsePersonalChat(user.roleKey) ||
+    user.permissions.includes(PERMISSIONS.CONVERSATION_REACH_ORGANIZATION)
   );
 }

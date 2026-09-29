@@ -51,7 +51,12 @@ export function ConversationHeader({
 
   return (
     <header className="chat-room__header">
-      <ConversationAvatar name={name} imageFileId={conversation.imageFileId} size="md" />
+      <ConversationAvatar
+        name={name}
+        imageFileId={conversation.imageFileId}
+        person={conversation.counterpart}
+        size="md"
+      />
 
       <div className="chat-room__identity">
         <h2 className="chat-room__title">{name}</h2>
@@ -123,7 +128,13 @@ export function ConversationHeader({
           </Button>
         ) : null}
         {onClose ? (
-          <Button variant="ghost" size="sm" iconOnly aria-label="Close conversation" onClick={onClose}>
+          <Button
+            variant="ghost"
+            size="sm"
+            iconOnly
+            aria-label="Close conversation"
+            onClick={onClose}
+          >
             ×
           </Button>
         ) : null}

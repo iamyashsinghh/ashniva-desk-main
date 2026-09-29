@@ -8,7 +8,8 @@ import { useNotificationTaps } from './use-notification-taps';
  *
  * `resolveDeepLink` and `notification-router` were both written, hardened and tested while nothing
  * in the app subscribed to a notification response at all — so every push tap opened the home
- * screen. This asserts the subscription exists and that a delivered response reaches navigation.
+ * screen. This asserts the subscription exists and that a delivered response reaches navigation,
+ * for both payload shapes: the API's `NativePushData` (a web `link`) and the older `screen` form.
  */
 
 // `mock`-prefixed so jest allows the factory below to close over it: everything else is hoisted
@@ -64,6 +65,47 @@ describe('a tap while the app is running', () => {
 
     // Not the task, and not a route parameter nobody validated: the notifications list, which is
     // always a reasonable place to be.
+    expect(mockNavigate).toHaveBeenCalledWith('Main', { screen: 'Notifications' });
+  });
+
+  it("follows the link the API's push carries", async () => {
+    await render(<Subscriber />);
+
+    const handler = listen.mock.calls[0]?.[0] as (event: unknown) => void;
+    handler(
+      response({
+        notificationId: VALID_ID,
+        type: 'TICKET_REPLY',
+        link: `/tickets/${VALID_ID}`,
+        entityType: 'ticket',
+        entityId: VALID_ID,
+      }),
+    );
+
+    expect(mockNavigate).toHaveBeenCalledWith('TicketDetail', { id: VALID_ID });
+  });
+
+  it('opens the project summary for a phase-plan push', async () => {
+    await render(<Subscriber />);
+
+    const handler = listen.mock.calls[0]?.[0] as (event: unknown) => void;
+    handler(
+      response({
+        notificationId: VALID_ID,
+        type: 'WORK_PLAN_DOUBT',
+        link: `/projects/${VALID_ID}`,
+      }),
+    );
+
+    expect(mockNavigate).toHaveBeenCalledWith('ProjectSummary', { projectId: VALID_ID });
+  });
+
+  it('lands on the alerts list when the link is one the phone does not have', async () => {
+    await render(<Subscriber />);
+
+    const handler = listen.mock.calls[0]?.[0] as (event: unknown) => void;
+    handler(response({ notificationId: VALID_ID, type: 'SLA_BREACH', link: '/reports/sla' }));
+
     expect(mockNavigate).toHaveBeenCalledWith('Main', { screen: 'Notifications' });
   });
 

@@ -1,14 +1,16 @@
 import { type UatRequestSummary } from '@ashniva/types';
-import { FlatList, RefreshControl } from 'react-native';
+import { FlatList } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
+import { MetaLine } from '../../shared/components/data-display';
 import { PressableCard } from '../../shared/components/layout';
 import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
 import { formatSince } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { isAwaitingDecision, uatStatusLabel, uatStatusTone } from './uat-display';
+import { isAwaitingDecision, uatStatusLabel, uatStatusMark, uatStatusTone } from './uat-display';
+import { PullRefresh } from '../../shared/components/PullRefresh';
 
 /**
  * What the client has been asked to try and sign off.
@@ -55,8 +57,8 @@ export function SignOffsScreen({ onOpen }: { onOpen: (requestId: string) => void
         keyExtractor={(request) => request.id}
         contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.screen }}
         refreshControl={
-          <RefreshControl
-            refreshing={query.isRefetching}
+          <PullRefresh
+            busy={query.isRefetching}
             onRefresh={refresh}
             tintColor={theme.colors.primary}
           />
@@ -65,6 +67,8 @@ export function SignOffsScreen({ onOpen }: { onOpen: (requestId: string) => void
           <EmptyState
             title="Nothing to sign off"
             description="When your team finishes something for you to try, it appears here."
+            icon="ribbon-outline"
+            iconTone="success"
           />
         }
         renderItem={({ item }) => (
@@ -73,10 +77,9 @@ export function SignOffsScreen({ onOpen }: { onOpen: (requestId: string) => void
             accessibilityHint="Opens the sign-off"
             highlight={isAwaitingDecision(item.status)}
             onPress={() => onOpen(item.id)}
+            {...uatStatusMark(item.status)}
           >
-            <AppText size="xs" tone="faint" numberOfLines={1}>
-              Asked {formatSince(item.createdAt)}
-            </AppText>
+            <MetaLine icon="time-outline">Asked {formatSince(item.createdAt)}</MetaLine>
             <AppText weight="medium" numberOfLines={3}>
               {item.summaryPlain}
             </AppText>

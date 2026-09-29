@@ -1,5 +1,7 @@
 import { TASK_STATUS_TONES } from '@ashniva/ui/status-tone';
 import {
+  PHASE1_TASK_HAPPY_PATH,
+  TASK_STATUS,
   TASK_TIMING,
   TASK_TIMING_LABELS,
   type TaskAction,
@@ -95,4 +97,42 @@ export function actionState(
   return options.showReasonWhenDisabled
     ? { offered: true, enabled: false, reason: availability.reason ?? null }
     : HIDDEN;
+}
+
+export type StepState = 'done' | 'current' | 'todo';
+
+/**
+ * The step tracker: the Phase 1 happy path with each step's state, plus the side state the task
+ * is in when it is off that path — Blocked, Returned, Reopened, Cancelled.
+ *
+ * The same reading as the web strip, so both apps put the tick marks in the same places. A side
+ * state implies how far the work got: a returned or blocked task was at least started.
+ */
+export function taskSteps(status: TaskStatus): {
+  steps: { status: TaskStatus; state: StepState }[];
+  offPath: TaskStatus | null;
+} {
+  const index = PHASE1_TASK_HAPPY_PATH.indexOf(status);
+  const onPath = index >= 0;
+  const reached = onPath ? index : impliedProgress(status);
+  return {
+    steps: PHASE1_TASK_HAPPY_PATH.map((step, stepIndex) => {
+      if (step === status) {
+        return { status: step, state: 'current' };
+      }
+      return { status: step, state: stepIndex < reached ? 'done' : 'todo' };
+    }),
+    offPath: onPath ? null : status,
+  };
+}
+
+function impliedProgress(status: TaskStatus): number {
+  switch (status) {
+    case TASK_STATUS.RETURNED_TO_DEV:
+    case TASK_STATUS.BLOCKED:
+    case TASK_STATUS.REOPENED:
+      return 1;
+    default:
+      return 0;
+  }
 }

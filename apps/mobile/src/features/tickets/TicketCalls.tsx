@@ -10,8 +10,9 @@ import { Linking, View } from 'react-native';
 import { apiRequest, errorMessage } from '../../shared/api/client';
 import { useApiMutation } from '../../shared/api/mutations';
 import { useResource } from '../../shared/api/queries';
+import { MetaLine } from '../../shared/components/data-display';
 import { Banner } from '../../shared/components/feedback';
-import { Glyph } from '../../shared/components/glyph';
+import { IconTile } from '../../shared/components/Icon';
 import { Section } from '../../shared/components/layout';
 import { AppText, Button, Divider } from '../../shared/components/primitives';
 import { formatDateTime, formatDuration } from '../../shared/format/format';
@@ -77,19 +78,18 @@ export function TicketCalls({ ticketId }: { ticketId: string }) {
   };
 
   return (
-    <Section title="Calls" count={calls.length > 0 ? calls.length : undefined}>
+    <Section title="Calls" count={calls.length > 0 ? calls.length : undefined} icon="call-outline">
       {answer?.enabled ? (
         <Button
           label="Call about this ticket"
+          icon="call-outline"
           loading={call.busy}
           accessibilityHint="Asks Ashniva IVR to place the call"
           onPress={() => void call.run()}
         />
       ) : null}
       {answer && !answer.enabled && answer.reason ? (
-        <AppText size="xs" tone="faint">
-          {answer.reason}
-        </AppText>
+        <MetaLine icon="information-circle-outline">{answer.reason}</MetaLine>
       ) : null}
       {call.error ? (
         <Banner tone="danger" role="alert">
@@ -101,30 +101,37 @@ export function TicketCalls({ ticketId }: { ticketId: string }) {
         <View key={entry.id} style={{ gap: theme.spacing.xs }}>
           {index > 0 || answer ? <Divider /> : null}
           <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
-            <Glyph name="clock" size={12} color={theme.colors.textFaint} strokeWidth={1.5} />
-            <AppText size="sm" tabular style={{ flex: 1 }}>
-              {formatDateTime(entry.requestedAt)} · {entry.status.toLowerCase()} ·{' '}
-              {formatDuration(entry.durationSeconds)}
-            </AppText>
+            <IconTile
+              name={entry.connectedTo ? 'call' : 'call-outline'}
+              tone={entry.connectedTo ? 'success' : 'neutral'}
+              size={32}
+            />
+            <View style={{ flex: 1, gap: 2 }}>
+              <AppText size="sm" tabular>
+                {formatDateTime(entry.requestedAt)} · {entry.status.toLowerCase()} ·{' '}
+                {formatDuration(entry.durationSeconds)}
+              </AppText>
+              <MetaLine icon={entry.connectedTo ? 'person-outline' : 'close-circle-outline'}>
+                {entry.connectedTo ? `Taken by ${entry.connectedTo.name}` : 'Nobody answered'}
+              </MetaLine>
+            </View>
           </View>
-          <AppText size="xs" tone="faint">
-            {entry.connectedTo ? `Taken by ${entry.connectedTo.name}` : 'Nobody answered'}
-          </AppText>
           {entry.hasRecording && entry.canPlayRecording ? (
             <View style={{ alignItems: 'flex-start' }}>
               <Button
                 label="Play the recording"
                 variant="secondary"
                 size="sm"
+                icon="play-circle-outline"
                 accessibilityHint="Opens the recording. Every playback is audited."
                 onPress={() => void play(entry.id)}
               />
             </View>
           ) : null}
           {entry.hasRecording && !entry.canPlayRecording ? (
-            <AppText size="xs" tone="faint">
+            <MetaLine icon="lock-closed-outline">
               Recorded. You are not permitted to play it.
-            </AppText>
+            </MetaLine>
           ) : null}
         </View>
       ))}

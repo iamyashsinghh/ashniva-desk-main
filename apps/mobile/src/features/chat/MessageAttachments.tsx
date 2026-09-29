@@ -2,6 +2,7 @@ import type { FileSummary } from '@ashniva/types';
 import { Image, StyleSheet, View } from 'react-native';
 
 import { mobileEnv } from '../../config/env';
+import { IconTile } from '../../shared/components/Icon';
 import { AppText } from '../../shared/components/primitives';
 import {
   attachmentImageSource,
@@ -57,21 +58,26 @@ export function MessageAttachments({ files }: { files: readonly FileSummary[] })
             // Its own surface, so the name reads the same inside a brand-coloured bubble as in a
             // plain one.
             style={{
+              alignItems: 'center',
               backgroundColor: theme.colors.surfaceRaised,
               borderColor: theme.colors.border,
               borderRadius: theme.radius.sm,
               borderWidth: StyleSheet.hairlineWidth,
-              gap: 2,
-              paddingHorizontal: theme.spacing.md,
+              flexDirection: 'row',
+              gap: theme.spacing.sm,
+              paddingHorizontal: theme.spacing.sm,
               paddingVertical: theme.spacing.sm,
             }}
           >
-            <AppText size="sm" weight="medium" numberOfLines={1}>
-              {file.name}
-            </AppText>
-            <AppText size="xs" tone="faint">
-              {formatBytes(file.sizeBytes)}
-            </AppText>
+            <IconTile name="document-text-outline" tone="info" size={32} />
+            <View style={{ flexShrink: 1, gap: 2 }}>
+              <AppText size="sm" weight="medium" numberOfLines={1}>
+                {file.name}
+              </AppText>
+              <AppText size="xs" tone="faint">
+                {formatBytes(file.sizeBytes)}
+              </AppText>
+            </View>
           </View>
         ),
       )}

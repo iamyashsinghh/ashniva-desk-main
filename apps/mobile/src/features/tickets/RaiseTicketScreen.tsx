@@ -1,9 +1,8 @@
-import { PRIORITY, TICKET_TYPE, type Priority, type TicketType } from '@ashniva/types';
+import type { FileSummary } from '@ashniva/types';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 
-import { apiRequest, errorMessage } from '../../shared/api/client';
-import { ChipGroup } from '../../shared/components/chips';
+import { useApiMutation } from '../../shared/api/mutations';
 import { Banner } from '../../shared/components/feedback';
 import {
   Grow,
@@ -13,51 +12,57 @@ import {
 } from '../../shared/components/layout';
 import { AppText, Button, Field, Input, Screen } from '../../shared/components/primitives';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-
-const TYPES: TicketType[] = Object.values(TICKET_TYPE);
-const PRIORITIES: Priority[] = Object.values(PRIORITY);
+import { isClientUser } from '../auth/audience';
+import { useSession } from '../auth/SessionProvider';
+import { RaiseAttachments } from './raise/RaiseAttachments';
+import {
+  EMPTY_RAISE_FORM,
+  raiseBody,
+  validateRaise,
+  type RaiseErrors,
+  type RaiseForm,
+} from './raise/raise-form';
+import { RaiseDetailsSection, RaiseWhereSection } from './raise/RaiseFormSections';
 
 /**
- * Raising a ticket.
+ * Raising a ticket — the web form's fields, top to bottom in the order people think of them.
  *
- * Type and priority are chip rows rather than dropdowns. A native picker on a phone is a modal
- * wheel that hides the rest of the form; four chips are visible, easy to tap, and read
- * out one at a time by a screen reader.
+ * A client raises through the portal endpoint, which files the ticket under their own company and
+ * answers with the client view; staff use `/tickets` and may raise for a client company.
+ * Mistakes are shown against the field after the first attempt, not while somebody is still typing.
  */
 export function RaiseTicketScreen({ onRaised }: { onRaised: (ticketId: string) => void }) {
   const theme = useTheme();
   const keyboardOffset = useStackKeyboardOffset();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [impact, setImpact] = useState('');
-  const [type, setType] = useState<TicketType>(TICKET_TYPE.SUPPORT);
-  const [priority, setPriority] = useState<Priority>(PRIORITY.MEDIUM);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { user } = useSession();
+  const client = isClientUser(user);
+  const [form, setForm] = useState<RaiseForm>(EMPTY_RAISE_FORM);
+  const [files, setFiles] = useState<FileSummary[]>([]);
+  const [attempted, setAttempted] = useState(false);
+  const errors: RaiseErrors = attempted ? validateRaise(form) : {};
 
-  const valid = title.trim().length >= 4 && description.trim().length >= 10;
+  const raise = useApiMutation<void, { id: string }>({
+    path: client ? '/portal/tickets' : '/tickets',
+    body: () =>
+      raiseBody(
+        form,
+        files.map((file) => file.id),
+      ),
+    invalidate: [['tickets'], ['portal'], ['dashboard']],
+    onSuccess: (created) => onRaised(created.id),
+  });
 
-  const submit = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      const created = await apiRequest<{ id: string }>('/tickets', {
-        method: 'POST',
-        body: {
-          title: title.trim(),
-          description: description.trim(),
-          type,
-          priority,
-          ...(impact.trim() ? { impact: impact.trim() } : {}),
-        },
-      });
-      onRaised(created.id);
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setBusy(false);
+  const set = <K extends keyof RaiseForm>(key: K, value: RaiseForm[K]) =>
+    setForm((current) => ({ ...current, [key]: value }));
+
+  const submit = () => {
+    setAttempted(true);
+    if (Object.keys(validateRaise(form)).length === 0) {
+      void raise.run();
     }
   };
+
+  const hasErrors = Object.keys(errors).length > 0;
 
   return (
     <Screen>
@@ -70,75 +75,63 @@ export function RaiseTicketScreen({ onRaised }: { onRaised: (ticketId: string) =
           contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.screen }}
           keyboardShouldPersistTaps="handled"
         >
-          <Section title="The problem">
-            <Field label="What is the problem?" required hint="One line">
+          <RaiseWhereSection form={form} set={set} />
+
+          <Section title="The problem" icon="create-outline">
+            <Field label="Title" required hint="One line" error={errors.title}>
               <Input
                 accessibilityLabel="Ticket title"
-                onChangeText={setTitle}
-                placeholder="Cannot complete checkout on the live site"
-                value={title}
+                onChangeText={(value) => set('title', value)}
+                placeholder="Short summary of the problem"
+                value={form.title}
               />
             </Field>
-
             <Field
-              label="Tell us more"
+              label="What is happening?"
               required
               hint="What you did, what happened, what you expected"
+              error={errors.description}
             >
               <Input
                 accessibilityLabel="Description"
                 multiline
                 numberOfLines={5}
-                onChangeText={setDescription}
+                onChangeText={(value) => set('description', value)}
                 style={{ minHeight: 120, textAlignVertical: 'top' }}
-                value={description}
+                value={form.description}
               />
             </Field>
-
             <Field
-              label="What can you not do because of this?"
-              hint="Optional, but it helps us prioritise"
+              label="What can’t you do because of this?"
+              hint="Optional, but it helps prioritise"
+              error={errors.impact}
             >
               <Input
                 accessibilityLabel="Impact"
                 multiline
                 numberOfLines={2}
-                onChangeText={setImpact}
+                onChangeText={(value) => set('impact', value)}
                 style={{ minHeight: 64, textAlignVertical: 'top' }}
-                value={impact}
+                value={form.impact}
               />
             </Field>
           </Section>
 
-          <Section title="Details">
-            <ChipGroup
-              label="Kind"
-              options={TYPES}
-              selected={type}
-              onSelect={(value) => setType(value)}
-              labelFor={humanise}
-            />
-            <ChipGroup
-              label="How urgent"
-              options={PRIORITIES}
-              selected={priority}
-              onSelect={(value) => setPriority(value)}
-              labelFor={humanise}
-            />
-          </Section>
+          <RaiseDetailsSection form={form} errors={errors} set={set} />
+          <RaiseAttachments files={files} onChange={setFiles} />
 
-          {error ? (
+          {raise.error ? (
             <Banner tone="danger" role="alert">
-              {error}
+              {raise.error}
             </Banner>
           ) : null}
         </ScrollView>
 
         <StickyActionBar
           note={
-            !valid ? (
-              <AppText size="xs" tone="faint">
-                A short title and a few sentences of detail are needed.
+            hasErrors ? (
+              <AppText size="xs" tone="danger">
+                Check the highlighted fields.
               </AppText>
             ) : null
           }
@@ -146,19 +139,14 @@ export function RaiseTicketScreen({ onRaised }: { onRaised: (ticketId: string) =
           <Grow>
             <Button
               label="Raise the ticket"
-              loading={busy}
-              disabled={!valid}
+              icon="add-circle-outline"
+              loading={raise.busy}
               accessibilityHint="Creates the ticket and opens it"
-              onPress={() => void submit()}
+              onPress={submit}
             />
           </Grow>
         </StickyActionBar>
       </KeyboardAvoidingView>
     </Screen>
   );
-}
-
-function humanise(value: string): string {
-  const lower = value.toLowerCase().replaceAll('_', ' ');
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
 }

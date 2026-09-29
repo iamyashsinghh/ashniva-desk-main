@@ -56,7 +56,16 @@ function build(overrides: { userFound?: boolean; passwordOk?: boolean } = {}) {
     auditLog as unknown as AuditLogService,
     workPlanLogoutPause as never,
   );
-  return { service, users, passwords, tokens, refreshTokens, sessions, auditLog, workPlanLogoutPause };
+  return {
+    service,
+    users,
+    passwords,
+    tokens,
+    refreshTokens,
+    sessions,
+    auditLog,
+    workPlanLogoutPause,
+  };
 }
 
 describe('AuthService', () => {

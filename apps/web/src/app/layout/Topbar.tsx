@@ -1,11 +1,12 @@
 import { PERMISSIONS } from '@ashniva/types';
-import { Avatar, Button, DropdownMenu, type MenuItem } from '@ashniva/ui';
+import { Button, DropdownMenu, type MenuItem } from '@ashniva/ui';
 import { Link, useNavigate } from 'react-router';
 
 import { logout } from '../../features/auth/api';
 import { useCurrentUser, usePermission } from '../../features/auth/session-context';
 import { NotificationBell } from '../../features/notifications/components/NotificationBell';
 import { GlobalSearch } from '../../features/search/components/GlobalSearch';
+import { PersonAvatar } from '../../shared/components/PersonAvatar';
 import { ColorSchemeToggle } from './ColorSchemeToggle';
 
 interface TopbarProps {
@@ -72,7 +73,9 @@ export function Topbar({ title, isSidebarOpen, onToggleSidebar, homePath }: Topb
       <DropdownMenu
         className="app-topbar__user"
         triggerLabel={`Account menu for ${user.name}`}
-        trigger={<Avatar name={user.name} size="sm" />}
+        trigger={
+          <PersonAvatar name={user.name} userId={user.id} avatar={user.avatar} size="sm" labelled />
+        }
         header={
           <>
             <strong>{user.name}</strong>

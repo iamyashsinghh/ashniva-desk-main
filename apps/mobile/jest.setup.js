@@ -44,6 +44,59 @@ jest.mock('expo-secure-store', () => {
   };
 });
 
+/**
+ * The documents folder, as a set of file names. It starts with the install marker in it, so a
+ * suite is an app that has been launched before; the install-marker tests empty it to be a
+ * fresh install.
+ *
+ * What was written is kept in `__contents`, by name, so a preference file reads back. A file
+ * outside the documents folder — a picker's `file://` result — always exists: the picker just
+ * made it. `delete` throws for a missing file, as the real module does.
+ */
+jest.mock('expo-file-system', () => {
+  const files = new Set(['ashniva-installed']);
+  const contents = new Map();
+  class File {
+    constructor(...parts) {
+      const path = parts.map((part) => (typeof part === 'string' ? part : part.uri)).join('/');
+      this.inDocuments = parts[0] === 'documents';
+      this.uri = path.startsWith('file://') ? path : `file:///${path}`;
+      this.name = path.split('/').pop();
+    }
+    get exists() {
+      return this.inDocuments ? files.has(this.name) : true;
+    }
+    write(content) {
+      files.add(this.name);
+      contents.set(this.name, String(content));
+    }
+    textSync() {
+      if (!this.exists) {
+        throw new Error(`No file at ${this.uri}`);
+      }
+      return contents.get(this.name) ?? '';
+    }
+    async text() {
+      return this.textSync();
+    }
+    delete() {
+      if (!this.inDocuments || !files.has(this.name)) {
+        throw new Error(`No file at ${this.uri}`);
+      }
+      files.delete(this.name);
+      contents.delete(this.name);
+    }
+    copySync(destination) {
+      files.add(destination.name);
+      contents.set(destination.name, contents.get(this.name) ?? `copy of ${this.uri}`);
+    }
+    async copy(destination) {
+      this.copySync(destination);
+    }
+  }
+  return { __files: files, __contents: contents, File, Paths: { document: 'documents' } };
+});
+
 jest.mock('@react-native-community/netinfo', () => ({
   addEventListener: jest.fn(() => () => undefined),
   fetch: jest.fn(async () => ({ isConnected: true, isInternetReachable: true })),
@@ -70,6 +123,8 @@ jest.mock('expo-notifications', () => ({
 jest.mock('expo-image-picker', () => ({
   requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true })),
   launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: null })),
+  requestCameraPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  launchCameraAsync: jest.fn(async () => ({ canceled: true, assets: null })),
 }));
 
 jest.mock('expo-document-picker', () => ({

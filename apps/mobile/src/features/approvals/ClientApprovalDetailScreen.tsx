@@ -1,16 +1,25 @@
 import { APPROVAL_STATUS, type PortalApprovalDetail } from '@ashniva/types';
-import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
+import { PullRefresh } from '../../shared/components/PullRefresh';
 import { useResource } from '../../shared/api/queries';
+import { KeyValueRow, ListRow, MetaLine } from '../../shared/components/data-display';
 import { Hero, Section, useStackKeyboardOffset } from '../../shared/components/layout';
 import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDate, formatDateTime } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { approvalStatusLabel, approvalTone, subjectLine } from './approval-display';
+import {
+  approvalStatusIcon,
+  approvalStatusLabel,
+  approvalTone,
+  byLine,
+  subjectLine,
+} from './approval-display';
 import { ApprovalDecisionForm } from './ApprovalDecisionForm';
-import { ApprovalFilesCard, ApprovalHistoryCard } from './ApprovalHistoryCard';
+import { ApprovalFiles } from './ApprovalFiles';
+import { ApprovalHistoryCard } from './ApprovalHistoryCard';
 
 /**
  * One request, as the client reads it.
@@ -23,7 +32,13 @@ import { ApprovalFilesCard, ApprovalHistoryCard } from './ApprovalHistoryCard';
  * the person who raised or published the request — it is what stops a colleague without the
  * permission being shown a form that would answer 403.
  */
-export function ClientApprovalDetailScreen({ approvalId }: { approvalId: string }) {
+export function ClientApprovalDetailScreen({
+  approvalId,
+  onOpenProject,
+}: {
+  approvalId: string;
+  onOpenProject?: (projectId: string) => void;
+}) {
   const theme = useTheme();
   const keyboardOffset = useStackKeyboardOffset();
   const query = useResource<PortalApprovalDetail>(
@@ -53,6 +68,7 @@ export function ClientApprovalDetailScreen({ approvalId }: { approvalId: string 
   }
 
   const waiting = approval.status === APPROVAL_STATUS.PUBLISHED;
+  const project = approval.project;
 
   return (
     <Screen>
@@ -69,16 +85,18 @@ export function ClientApprovalDetailScreen({ approvalId }: { approvalId: string 
           }}
           keyboardShouldPersistTaps="handled"
           refreshControl={
-            <RefreshControl
-              refreshing={query.isRefetching}
+            <PullRefresh
+              busy={query.isRefetching}
               onRefresh={refresh}
               tintColor={theme.colors.primary}
             />
           }
         >
           <Hero
-            overline={`${subjectLine(approval.subject)}${approval.project ? ` · ${approval.project.name}` : ''}`}
+            overline={`${subjectLine(approval.subject)}${project ? ` · ${project.name}` : ''}`}
             title={approval.title}
+            icon="shield-checkmark"
+            iconTone={approvalStatusIcon(approval.status).tone}
           >
             <PillRow>
               <Pill
@@ -89,18 +107,27 @@ export function ClientApprovalDetailScreen({ approvalId }: { approvalId: string 
               {approval.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
             </PillRow>
             {approval.dueDate ? (
-              <AppText size="sm" tone="muted">
+              <MetaLine icon="alarm-outline" danger={approval.isOverdue}>
                 Asked for by {formatDate(approval.dueDate)}
-              </AppText>
+              </MetaLine>
             ) : null}
           </Hero>
 
-          <Section title="What you are being asked to approve">
+          <Section title="What you are being asked to approve" icon="document-text-outline">
             <AppText>{approval.summary}</AppText>
+            {project && onOpenProject ? (
+              <ListRow
+                title={project.name}
+                subtitle="Project"
+                icon="folder-open-outline"
+                iconTone="info"
+                onPress={() => onOpenProject(project.id)}
+              />
+            ) : null}
           </Section>
 
           {approval.decidedBy ? (
-            <Section title="Your answer">
+            <Section title="Your answer" icon="chatbox-ellipses-outline">
               <AppText size="sm">
                 {approvalStatusLabel(approval.status)} by {approval.decidedBy.name}
                 {approval.decidedAt ? ` · ${formatDateTime(approval.decidedAt)}` : ''}
@@ -113,18 +140,28 @@ export function ClientApprovalDetailScreen({ approvalId }: { approvalId: string 
           {approval.canDecide ? (
             <ApprovalDecisionForm approvalId={approval.id} onDecided={refresh} />
           ) : (
-            <Section title="Your decision">
+            <Section title="Your decision" icon="hand-left-outline">
               <AppText size="sm" tone="muted">
-                {waiting
-                  ? 'Somebody with approval rights at your organization has to answer this one.'
-                  : 'This request has already been answered.'}
+                {approval.decidedBy
+                  ? `Decided by ${approval.decidedBy.name} on ${formatDate(approval.decidedAt) ?? '—'}.`
+                  : 'Only a client administrator can decide this request.'}
               </AppText>
             </Section>
           )}
 
-          <ApprovalFilesCard files={approval.files} />
+          <Section title="Details" icon="information-circle-outline">
+            <KeyValueRow label="Published" value={formatDateTime(approval.publishedAt) ?? '—'} />
+            <KeyValueRow
+              label="Decision needed by"
+              value={formatDate(approval.dueDate) ?? '—'}
+              {...(approval.isOverdue ? { tone: 'danger' as const } : {})}
+            />
+            <KeyValueRow label="Decided" value={byLine(approval.decidedBy, approval.decidedAt)} />
+          </Section>
 
-          <ApprovalHistoryCard history={approval.history} />
+          <ApprovalFiles files={approval.files} approvalId={approval.id} />
+
+          <ApprovalHistoryCard history={approval.history} clientSide />
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>

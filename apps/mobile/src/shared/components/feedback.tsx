@@ -3,7 +3,7 @@ import { ActivityIndicator, Animated, View, type DimensionValue } from 'react-na
 
 import { duration, useReducedMotion } from '../theme/motion';
 import { useTheme } from '../theme/ThemeProvider';
-import { Glyph } from './glyph';
+import { Icon, type IconName } from './Icon';
 import { AppText, cardStyle } from './primitives';
 
 /**
@@ -46,31 +46,42 @@ export function Banner({
     <View
       accessibilityRole={role}
       style={{
+        alignItems: 'flex-start',
         backgroundColor: palette.background,
-        borderLeftColor: palette.color,
-        borderLeftWidth: 3,
-        borderRadius: theme.radius.sm,
-        gap: theme.spacing.xs,
+        borderRadius: theme.radius.md,
+        flexDirection: 'row',
+        gap: theme.spacing.sm + 2,
         paddingHorizontal: theme.spacing.md,
         paddingVertical: theme.spacing.md - 2,
       }}
     >
-      {title ? (
-        <AppText size="sm" weight="bold">
-          {title}
-        </AppText>
-      ) : null}
-      {typeof children === 'string' ? (
-        <AppText size="sm" tone={tone === 'danger' ? 'danger' : 'muted'}>
-          {children}
-        </AppText>
-      ) : (
-        children
-      )}
-      {action}
+      <Icon name={BANNER_ICONS[tone]} size={20} color={palette.color} style={{ marginTop: 1 }} />
+      <View style={{ flex: 1, gap: theme.spacing.xs }}>
+        {title ? (
+          <AppText size="sm" weight="bold">
+            {title}
+          </AppText>
+        ) : null}
+        {typeof children === 'string' ? (
+          <AppText size="sm" tone={tone === 'danger' ? 'danger' : 'muted'}>
+            {children}
+          </AppText>
+        ) : (
+          children
+        )}
+        {action}
+      </View>
     </View>
   );
 }
+
+const BANNER_ICONS: Record<BannerTone, IconName> = {
+  info: 'information-circle',
+  warning: 'warning',
+  danger: 'alert-circle',
+  success: 'checkmark-circle',
+  neutral: 'information-circle-outline',
+};
 
 /** A small, confirming line after something worked: "Saved", "Sent". */
 export function SuccessNote({ label }: { label: string }) {
@@ -80,7 +91,7 @@ export function SuccessNote({ label }: { label: string }) {
       accessibilityLiveRegion="polite"
       style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.xs }}
     >
-      <Glyph name="check" color={theme.colors.success} size={12} />
+      <Icon name="checkmark-circle" color={theme.colors.success} size={16} />
       <AppText size="sm" tone="success" weight="medium">
         {label}
       </AppText>
@@ -161,7 +172,11 @@ function usePulse(): Animated.Value {
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(value, { toValue: 0.45, duration: duration.slow * 3, useNativeDriver: true }),
+        Animated.timing(value, {
+          toValue: 0.45,
+          duration: duration.slow * 3,
+          useNativeDriver: true,
+        }),
         Animated.timing(value, { toValue: 1, duration: duration.slow * 3, useNativeDriver: true }),
       ]),
     );

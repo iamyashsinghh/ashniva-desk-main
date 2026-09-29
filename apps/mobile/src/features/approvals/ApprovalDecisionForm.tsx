@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useApiMutation } from '../../shared/api/mutations';
 import { Segmented, type SegmentOption } from '../../shared/components/navigation-list';
 import { Banner } from '../../shared/components/feedback';
+import type { IconName } from '../../shared/components/Icon';
 import { Section } from '../../shared/components/layout';
 import { AppText, Button, Field, Input } from '../../shared/components/primitives';
 
@@ -23,26 +24,29 @@ import { AppText, Button, Field, Input } from '../../shared/components/primitive
 type Decision = Extract<ApprovalAction, 'approve' | 'request-changes' | 'reject'>;
 
 const DECISIONS: readonly SegmentOption<Decision>[] = [
-  { value: APPROVAL_ACTION.APPROVE, label: 'Approve' },
-  { value: APPROVAL_ACTION.REQUEST_CHANGES, label: 'Ask for changes' },
-  { value: APPROVAL_ACTION.REJECT, label: 'Reject' },
+  { value: APPROVAL_ACTION.APPROVE, label: 'Approve', icon: 'checkmark-circle-outline' },
+  { value: APPROVAL_ACTION.REQUEST_CHANGES, label: 'Ask for changes', icon: 'create-outline' },
+  { value: APPROVAL_ACTION.REJECT, label: 'Reject', icon: 'close-circle-outline' },
 ];
 
-const PROMPT: Record<Decision, { label: string; hint: string; button: string }> = {
+const PROMPT: Record<Decision, { label: string; hint: string; button: string; icon: IconName }> = {
   [APPROVAL_ACTION.APPROVE]: {
     label: 'Anything to add?',
     hint: 'Optional. Your team sees this alongside your approval.',
     button: 'Approve this',
+    icon: 'checkmark-circle-outline',
   },
   [APPROVAL_ACTION.REQUEST_CHANGES]: {
     label: 'What needs to change?',
     hint: 'Required. This is what your team works from.',
     button: 'Ask for changes',
+    icon: 'create-outline',
   },
   [APPROVAL_ACTION.REJECT]: {
     label: 'Why are you rejecting it?',
     hint: 'Required. Your team reads this first.',
     button: 'Reject this',
+    icon: 'close-circle-outline',
   },
 };
 
@@ -75,7 +79,7 @@ export function ApprovalDecisionForm({
   const valid = !commentRequired || comment.trim().length >= 3;
 
   return (
-    <Section title="Your decision">
+    <Section title="Your decision" icon="hand-left-outline">
       <Segmented
         options={DECISIONS}
         value={decision}
@@ -102,6 +106,7 @@ export function ApprovalDecisionForm({
 
       <Button
         label={prompt.button}
+        icon={prompt.icon}
         variant={decision === APPROVAL_ACTION.REJECT ? 'danger' : 'primary'}
         loading={decide.busy}
         disabled={!valid}

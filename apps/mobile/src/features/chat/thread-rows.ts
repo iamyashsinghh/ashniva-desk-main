@@ -70,6 +70,14 @@ export interface ThreadRowOptions {
   viewerId: string | null;
   /** How many messages were unread when the thread was opened. Zero draws no divider. */
   unreadCount: number;
+  /**
+   * The message the divider sits above, already decided and frozen by the screen.
+   *
+   * When given — `null` included, meaning "no divider" — it wins over the count: a count walked
+   * back from the newest message moves every time one arrives, and a live thread would drag its
+   * "you were here" line down with it.
+   */
+  firstUnreadId?: string | null;
 }
 
 /**
@@ -82,8 +90,10 @@ export function threadRows(
   messages: readonly MessageSummary[],
   options: ThreadRowOptions,
 ): ThreadRow[] {
-  const dividerAt = unreadStartIndex(messages, options.viewerId, options.unreadCount);
-  const dividerId = dividerAt === null ? null : messages[dividerAt]?.id;
+  const dividerId =
+    options.firstUnreadId !== undefined
+      ? options.firstUnreadId
+      : countedDividerId(messages, options);
 
   const rows: ThreadRow[] = [];
   for (const section of groupMessagesByDay(messages)) {
@@ -114,4 +124,12 @@ export function threadRows(
     }
   }
   return rows;
+}
+
+function countedDividerId(
+  messages: readonly MessageSummary[],
+  options: ThreadRowOptions,
+): string | null {
+  const index = unreadStartIndex(messages, options.viewerId, options.unreadCount);
+  return index === null ? null : (messages[index]?.id ?? null);
 }

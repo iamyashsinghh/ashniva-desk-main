@@ -1,12 +1,14 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ALL_PERMISSION_KEYS,
   ALL_ROLE_KEYS,
+  AVATAR_PRESETS,
   type PermissionKey,
   type RoleKey,
   type SessionOrganization,
   type SessionResponse,
   type SessionUser,
+  type UserAvatar,
 } from '@ashniva/types';
 
 /** Swagger models only; the runtime shapes come from packages/types. */
@@ -60,6 +62,21 @@ export class SessionUserDto implements SessionUser {
 
   @ApiProperty({ type: [SessionOrganizationDto] })
   organizations!: SessionOrganizationDto[];
+
+  @ApiPropertyOptional({
+    type: 'object',
+    properties: {
+      kind: { type: 'string', enum: ['photo', 'preset'] },
+      version: { type: 'string', description: 'Photo only' },
+      preset: { type: 'string', enum: [...AVATAR_PRESETS], description: 'Preset only' },
+    },
+    required: ['kind'],
+    nullable: true,
+    description:
+      'Null: draw initials. `{ kind: "photo", version }`: GET /users/:id/avatar?v=<version>. ' +
+      '`{ kind: "preset", preset }`: one of the built-in pictures.',
+  })
+  avatar?: UserAvatar | null;
 }
 
 export class SessionResponseDto implements SessionResponse {

@@ -19,6 +19,7 @@ process.env.MESSAGING_PROVIDER = 'mock';
 process.env.AI_PROVIDER = 'mock';
 process.env.IVR_PROVIDER = 'mock';
 process.env.SUPPORT_CALLBACK_TRANSPORT = 'mock';
+process.env.EXPO_PUSH_ENABLED = 'false';
 
 // Themes come from the deployment's own database unless a suite deliberately says otherwise —
 // `theme-manager.e2e-spec.ts` sets this to `remote` before it builds its app, precisely so it can

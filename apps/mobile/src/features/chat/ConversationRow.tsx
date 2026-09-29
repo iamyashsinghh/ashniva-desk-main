@@ -1,13 +1,24 @@
-import { CONVERSATION_KIND_LABELS, type ConversationSummary } from '@ashniva/types';
+import {
+  CONVERSATION_KIND_LABELS,
+  type ConversationSummary,
+  type MessagingScopeContact,
+} from '@ashniva/types';
 import { memo } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { Icon } from '../../shared/components/Icon';
+import { PersonAvatar } from '../../shared/components/PersonAvatar';
 import { AppText } from '../../shared/components/primitives';
 import { formatSince } from '../../shared/format/format';
 import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { Avatar } from './Avatar';
-import { conversationLabel } from './conversation-filters';
+import { ConversationAvatar } from './ConversationAvatar';
+import {
+  CONVERSATION_KIND_ICONS,
+  contextLabelOf,
+  conversationLabel,
+  unreadBadge,
+} from './conversation-filters';
 
 /**
  * One conversation in the list.
@@ -35,6 +46,7 @@ export const ConversationRow = memo(function ConversationRow({
   const theme = useTheme();
   const unread = row.unreadCount > 0;
   const name = conversationLabel(row);
+  const context = contextLabelOf(row);
 
   return (
     <Pressable
@@ -51,10 +63,9 @@ export const ConversationRow = memo(function ConversationRow({
         paddingVertical: theme.spacing.md,
       })}
     >
-      <Avatar
-        name={name}
+      <ConversationAvatar
+        conversation={row}
         size={AVATAR_SIZE}
-        shape={row.kind === 'GROUP' ? 'group' : 'person'}
         // The tile's cut corner shows the row behind it, which is the screen, not a card.
         cutColor={theme.colors.background}
       />
@@ -73,10 +84,13 @@ export const ConversationRow = memo(function ConversationRow({
             {formatSince(row.lastMessageAt) ?? ''}
           </AppText>
         </View>
-        <AppText size="xs" tone="faint" numberOfLines={1}>
-          {row.project ? `${row.project.code} · ` : ''}
-          {CONVERSATION_KIND_LABELS[row.kind]}
-        </AppText>
+        <View style={{ alignItems: 'center', flexDirection: 'row', gap: 4 }}>
+          <Icon name={CONVERSATION_KIND_ICONS[row.kind]} size={12} color={theme.colors.textFaint} />
+          <AppText size="xs" tone="faint" numberOfLines={1} style={{ flexShrink: 1 }}>
+            {context ? `${context} · ` : ''}
+            {CONVERSATION_KIND_LABELS[row.kind]}
+          </AppText>
+        </View>
         <View style={{ alignItems: 'flex-start', flexDirection: 'row', gap: theme.spacing.sm }}>
           <View style={{ flex: 1 }}>
             {row.lastMessagePreview ? (
@@ -95,11 +109,62 @@ export const ConversationRow = memo(function ConversationRow({
           {mentioned || unread ? (
             <View style={{ alignItems: 'flex-end', gap: theme.spacing.xs }}>
               {mentioned ? <Badge label="@ you" prominent /> : null}
-              {unread ? <Badge label={`${row.unreadCount} unread`} prominent={!mentioned} /> : null}
+              {unread ? (
+                <Badge label={`${unreadBadge(row.unreadCount)} unread`} prominent={!mentioned} />
+              ) : null}
             </View>
           ) : null}
         </View>
       </View>
+    </Pressable>
+  );
+});
+
+/**
+ * Somebody this person may message and has no thread with yet.
+ *
+ * Opening one starts the direct message, so the row says why they are reachable — the directory's
+ * own reason — rather than a preview there is not.
+ */
+export const PersonRow = memo(function PersonRow({
+  contact,
+  opening,
+  onOpen,
+}: {
+  contact: MessagingScopeContact;
+  opening: boolean;
+  onOpen: (contact: MessagingScopeContact) => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${contact.name}, ${contact.reason}`}
+      accessibilityHint="Starts a direct message"
+      accessibilityState={{ busy: opening, disabled: opening }}
+      disabled={opening}
+      onPress={() => onOpen(contact)}
+      style={({ pressed }) => ({
+        alignItems: 'center',
+        backgroundColor: pressed ? theme.colors.surfaceSunken : theme.colors.background,
+        flexDirection: 'row',
+        gap: theme.spacing.md,
+        minHeight: TOUCH_TARGET,
+        opacity: opening ? 0.6 : 1,
+        paddingHorizontal: theme.spacing.screen,
+        paddingVertical: theme.spacing.md,
+      })}
+    >
+      <PersonAvatar person={contact} size={AVATAR_SIZE} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <AppText weight="medium" numberOfLines={1}>
+          {contact.name}
+        </AppText>
+        <AppText size="sm" tone="muted" numberOfLines={1}>
+          {opening ? 'Opening…' : contact.reason}
+        </AppText>
+      </View>
+      <Icon name="chatbubble-outline" size={18} color={theme.colors.textFaint} />
     </Pressable>
   );
 });

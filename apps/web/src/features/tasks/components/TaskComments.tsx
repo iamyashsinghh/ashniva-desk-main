@@ -65,9 +65,10 @@ export function TaskComments({ task, canInternal }: TaskCommentsProps) {
     setError(undefined);
     const visibility: Visibility = clientVisible ? VISIBILITY.CLIENT : VISIBILITY.INTERNAL;
     try {
-      await comment.mutateAsync({ body: body.trim(), visibility });
+      await comment.mutateAsync({ body: mentions.toBody(body.trim()), visibility });
       setBody('');
       mentions.noteDraft('');
+      mentions.forget();
       mentionSearch.setTerm(null);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -129,9 +130,7 @@ export function TaskComments({ task, canInternal }: TaskCommentsProps) {
             aria-label="New comment"
             aria-controls={mentionSearch.isOpen ? listboxId : undefined}
             aria-activedescendant={
-              mentionSearch.isOpen
-                ? `${listboxId}-${mentionSearch.activeIndex}`
-                : undefined
+              mentionSearch.isOpen ? `${listboxId}-${mentionSearch.activeIndex}` : undefined
             }
             onChange={(event) => {
               apply(event.target.value, event.target.selectionStart);

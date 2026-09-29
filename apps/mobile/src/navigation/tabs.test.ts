@@ -5,7 +5,7 @@ import {
   type SessionUser,
 } from '@ashniva/types';
 
-import { initialTabFor, isMobileScreen, tabsFor } from './tabs';
+import { barTabsFor, initialTabFor, isMobileScreen, tabsFor } from './tabs';
 
 /**
  * Role-aware navigation.
@@ -34,15 +34,26 @@ function userWith(roleKey: RoleKey): SessionUser {
 const ALL_ROLES = Object.values(ROLE_KEYS);
 
 describe('every role gets a usable tab bar', () => {
-  it.each(ALL_ROLES)('%s has between two and five tabs', (roleKey) => {
-    const tabs = tabsFor(userWith(roleKey));
-    expect(tabs.length).toBeGreaterThanOrEqual(2);
-    expect(tabs.length).toBeLessThanOrEqual(5);
+  it.each(ALL_ROLES)('%s has a short bar that starts at Home', (roleKey) => {
+    const bar = barTabsFor(userWith(roleKey)).map((tab) => tab.name);
+    expect(bar.length).toBeGreaterThanOrEqual(3);
+    expect(bar.length).toBeLessThanOrEqual(4);
+    expect(bar[0]).toBe('Home');
+  });
+
+  it.each(ALL_ROLES)('%s has a screen behind every bar button', (roleKey) => {
+    const user = userWith(roleKey);
+    const registered = tabsFor(user).map((tab) => tab.name);
+    for (const name of barTabsFor(user).map((tab) => tab.name)) {
+      expect(registered).toContain(name);
+    }
   });
 
   it.each(ALL_ROLES)('%s has no duplicate tab', (roleKey) => {
-    const names = tabsFor(userWith(roleKey)).map((tab) => tab.name);
-    expect(new Set(names).size).toBe(names.length);
+    const user = userWith(roleKey);
+    for (const names of [tabsFor(user), barTabsFor(user)].map((list) => list.map((t) => t.name))) {
+      expect(new Set(names).size).toBe(names.length);
+    }
   });
 
   it.each(ALL_ROLES)('%s lands on a tab it actually has', (roleKey) => {
@@ -62,6 +73,15 @@ describe('internal roles', () => {
     const names = tabsFor(userWith(ROLE_KEYS.DEVELOPER)).map((tab) => tab.name);
     expect(names).toContain('Tasks');
     expect(names).toContain('Tickets');
+  });
+
+  it('puts tasks, messages and alerts on a developer’s bar, tickets in the menu', () => {
+    expect(barTabsFor(userWith(ROLE_KEYS.DEVELOPER)).map((tab) => tab.name)).toEqual([
+      'Home',
+      'Tasks',
+      'Messages',
+      'Notifications',
+    ]);
   });
 
   it('gives a support executive tickets', () => {
@@ -96,6 +116,13 @@ describe('client roles', () => {
       // A client never gets the internal task list, whatever permissions a custom role holds.
       expect(names).not.toContain('Tasks');
       expect(names).not.toContain('Notifications');
+      expect(names).not.toContain('Messages');
+      expect(barTabsFor(userWith(roleKey)).map((tab) => tab.name)).toEqual([
+        'Home',
+        'Tickets',
+        'Updates',
+        'Invoices',
+      ]);
     },
   );
 });
@@ -109,6 +136,11 @@ describe('a custom role', () => {
     expect(names).not.toContain('Tasks');
     expect(names).not.toContain('Tickets');
     expect(names).toEqual(['Home', 'Notifications', 'Profile']);
+    expect(barTabsFor(stripped).map((tab) => tab.name)).toEqual([
+      'Home',
+      'Notifications',
+      'Profile',
+    ]);
   });
 });
 
@@ -118,15 +150,14 @@ describe('what belongs on a phone', () => {
     expect(isMobileScreen('TicketDetail')).toBe(true);
   });
 
-  it('does not claim to have the desktop administration screens', () => {
-    for (const screen of [
-      'Users',
-      'Roles',
-      'SlaPolicies',
-      'AuditLog',
-      'BillingSettings',
-      'Reports',
-    ]) {
+  it('opens the delivery, billing and report screens a notification can be about', () => {
+    for (const screen of ['ContractDetail', 'ChangeRequestDetail', 'IncidentDetail', 'Reports']) {
+      expect(isMobileScreen(screen)).toBe(true);
+    }
+  });
+
+  it('does not claim a screen it has no route for', () => {
+    for (const screen of ['Users', 'Roles', 'Audit', 'NotAScreen']) {
       expect(isMobileScreen(screen)).toBe(false);
     }
   });

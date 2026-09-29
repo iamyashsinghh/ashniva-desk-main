@@ -117,6 +117,14 @@ export class AppConfigService {
     };
   }
 
+  /** Native push to the mobile app via Expo. Shares the PUSH preference with Web Push. */
+  get expoPush() {
+    return {
+      enabled: this.get('EXPO_PUSH_ENABLED'),
+      accessToken: this.get('EXPO_ACCESS_TOKEN'),
+    };
+  }
+
   get messaging() {
     return { useMockProviders: this.get('MESSAGING_PROVIDER') === 'mock' };
   }

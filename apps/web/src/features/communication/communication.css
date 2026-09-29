@@ -507,6 +507,104 @@
   border-radius: var(--radius-xs);
 }
 
+.chat-message__avatar {
+  align-self: center;
+}
+
+/* The line somebody just followed a quote to: a brief glow that fades, so the eye lands on it
+   without the row staying marked once it has been found. */
+.chat-message--flash .chat-message__bubble,
+.chat-message--flash.chat-message--deleted,
+.chat-message--flash.chat-message--system {
+  animation: chat-message-flash 1.6s var(--ease-standard);
+}
+
+@keyframes chat-message-flash {
+  0%,
+  40% {
+    box-shadow: var(--focus-ring);
+  }
+  100% {
+    box-shadow: var(--shadow-xs);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-message--flash .chat-message__bubble,
+  .chat-message--flash.chat-message--deleted,
+  .chat-message--flash.chat-message--system {
+    animation: none;
+    box-shadow: var(--focus-ring);
+  }
+}
+
+/* The line a reply answers, quoted above the reply's own words. */
+.chat-quote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-px);
+  width: 100%;
+  margin: 0 0 var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-left: var(--space-1) solid var(--brand-primary);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+}
+
+button.chat-quote {
+  cursor: pointer;
+}
+
+button.chat-quote:hover {
+  background: var(--state-hover-bg);
+}
+
+button.chat-quote:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.chat-quote--muted {
+  border-left-color: var(--color-border-strong);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.chat-quote__sender {
+  font-size: var(--font-size-xs);
+  color: var(--brand-primary-text);
+}
+
+.chat-quote__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.chat-thread__notice {
+  position: absolute;
+  inset: var(--space-3) var(--space-3) auto;
+  z-index: var(--z-sticky);
+  margin: 0 auto;
+  max-width: 28rem;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--surface-inverse);
+  color: var(--color-text-on-inverse);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  box-shadow: var(--shadow-md);
+}
+
 /* A call starting or ending, written by the system rather than by a person. Quieter on purpose:
    it belongs in the thread so the conversation reads correctly, not so it competes with it. */
 .chat-message--system {
@@ -743,7 +841,7 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2);
-  border-left: var(--space-half) solid var(--brand-primary-text);
+  border-left: var(--space-1) solid var(--brand-primary);
   border-radius: var(--radius-md);
   background: var(--surface-sunken);
   font-size: var(--font-size-sm);
@@ -754,9 +852,10 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: var(--space-px);
 }
 
-.chat-composer__reply-text > * {
+.chat-composer__reply-text > :not(.chat-quote__text) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

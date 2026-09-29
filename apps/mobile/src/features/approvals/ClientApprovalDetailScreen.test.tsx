@@ -110,11 +110,69 @@ describe('a request this person may not decide', () => {
     const view = await renderScreen(<ClientApprovalDetailScreen approvalId="a1" />);
 
     expect(
-      await view.findByText(
-        'Somebody with approval rights at your organization has to answer this one.',
-      ),
+      await view.findByText('Only a client administrator can decide this request.'),
     ).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Approve this' })).toBeNull();
+  });
+
+  it('says who decided it once it has been decided', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        approval({
+          canDecide: false,
+          status: APPROVAL_STATUS.CLIENT_APPROVED,
+          decidedBy: { id: 'u9', name: 'Dana Kim', email: 'dana@example.com' },
+          decidedAt: '2026-09-03T09:00:00.000Z',
+          decisionComment: 'Looks good.',
+        }),
+      ),
+    );
+    const view = await renderScreen(<ClientApprovalDetailScreen approvalId="a1" />);
+
+    expect(await view.findByText(/^Decided by Dana Kim on /)).toBeTruthy();
+    expect(view.getByText('Looks good.')).toBeTruthy();
+  });
+});
+
+describe('what is attached and what happened', () => {
+  it('lists the files and marks which side acted in the history', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        approval({
+          files: [
+            {
+              id: 'f1',
+              name: 'handover.pdf',
+              contentType: 'application/pdf',
+              sizeBytes: 2048,
+              visibility: 'CLIENT',
+              caption: null,
+              uploadedBy: { id: 'u1', name: 'Priya Rao', email: 'priya@example.com' },
+              createdAt: '2026-09-01T09:00:00.000Z',
+            },
+          ],
+          history: [
+            {
+              id: 'h1',
+              fromStatus: APPROVAL_STATUS.INTERNAL_REVIEW,
+              toStatus: APPROVAL_STATUS.PUBLISHED,
+              comment: null,
+              actor: { id: 'u1', name: 'Priya Rao', email: 'priya@example.com' },
+              side: 'INTERNAL',
+              createdAt: '2026-09-01T09:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+    );
+    const view = await renderScreen(<ClientApprovalDetailScreen approvalId="a1" />);
+
+    expect(await view.findByText('handover.pdf')).toBeTruthy();
+    // The client never uploads to a request; the provider prepares what is attached.
+    expect(view.queryByRole('button', { name: 'Attach a photo' })).toBeNull();
+
+    await fireEvent.press(view.getByRole('button', { name: /History/ }));
+    expect(await view.findByText('Provider')).toBeTruthy();
   });
 });
 

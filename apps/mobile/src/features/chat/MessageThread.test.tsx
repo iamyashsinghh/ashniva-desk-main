@@ -16,10 +16,9 @@ import { MessageThread } from './MessageThread';
  * the right and everybody else's on the left, and a withdrawn message keeping its place rather
  * than vanishing and leaving a reply to nothing.
  *
- * **Rewritten from the version that asserted a `Card` per day.** The thread was a scrolling stack
- * of cards and is now bubbles in an inverted list, which is what the alignment assertions below
- * are about: "whose message is this" is carried by the side it sits on, and that is a property
- * worth a test rather than a screenshot.
+ * **Rewritten from the version that asserted a `Card` per day.** The thread is now bubbles in an
+ * inverted list, which is what the alignment assertions below are about: "whose message is this"
+ * is carried by the side it sits on, and that is a property worth a test, not a screenshot.
  */
 
 // Real UUIDs: a mention is stored as `@[<uuid>]` and the shared parser only recognises that
@@ -47,6 +46,7 @@ function message(over: Partial<MessageSummary> & { id: string }): MessageSummary
     deletedAt: null,
     canEdit: false,
     canDelete: false,
+    restrictedToUserIds: [],
     ...over,
   };
 }
@@ -62,10 +62,12 @@ function at(local: string): string {
  * The query client is a parameter for the same reason: a new client per render would drop the
  * editor's mutation state and prove nothing about what survived.
  */
+type ThreadOptions = { showSenderNames?: boolean; unreadCount?: number };
+
 function threadWith(
   messages: MessageSummary[],
   client: QueryClient,
-  options: { showSenderNames?: boolean; unreadCount?: number } = {},
+  options: ThreadOptions = {},
 ): ReactElement {
   return (
     <ThemeProvider>
@@ -85,12 +87,8 @@ function threadWith(
   );
 }
 
-function renderThread(
-  messages: MessageSummary[],
-  options: { showSenderNames?: boolean; unreadCount?: number } = {},
-): Promise<RenderResult> {
-  return render(threadWith(messages, testQueryClient(), options));
-}
+const renderThread = (messages: MessageSummary[], options: ThreadOptions = {}) =>
+  render(threadWith(messages, testQueryClient(), options));
 
 /**
  * The editor's text field and the Edit buttons share one accessibility label, so they are told

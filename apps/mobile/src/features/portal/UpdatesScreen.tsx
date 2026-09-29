@@ -1,10 +1,12 @@
 import type { PortalAiSummary, PortalReleaseNoteSummary } from '@ashniva/types';
 import { useState } from 'react';
-import { FlatList, RefreshControl, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { usePagedResource, type PagedResult } from '../../shared/api/queries';
+import { MetaLine } from '../../shared/components/data-display';
 import { ListFooterLoader } from '../../shared/components/feedback';
+import { IconTile, type IconName } from '../../shared/components/Icon';
 import { PressableCard } from '../../shared/components/layout';
 import { Segmented, type SegmentOption } from '../../shared/components/navigation-list';
 import { AppText, Button, Card, Screen } from '../../shared/components/primitives';
@@ -12,6 +14,7 @@ import { EmptyState, ErrorState, LoadingState } from '../../shared/components/st
 import { formatDate } from '../../shared/format/format';
 import { animateLayout } from '../../shared/theme/motion';
 import { useTheme } from '../../shared/theme/ThemeProvider';
+import { PullRefresh } from '../../shared/components/PullRefresh';
 
 /**
  * What a client's team has published: progress summaries and releases.
@@ -29,8 +32,8 @@ import { useTheme } from '../../shared/theme/ThemeProvider';
 type Section = 'progress' | 'releases';
 
 const SECTIONS: readonly SegmentOption<Section>[] = [
-  { value: 'progress', label: 'Progress' },
-  { value: 'releases', label: 'Releases' },
+  { value: 'progress', label: 'Progress', icon: 'trending-up' },
+  { value: 'releases', label: 'Releases', icon: 'rocket-outline' },
 ];
 
 export function UpdatesScreen({ onOpenRelease }: { onOpenRelease: (releaseId: string) => void }) {
@@ -65,6 +68,7 @@ export function UpdatesScreen({ onOpenRelease }: { onOpenRelease: (releaseId: st
           loadingLabel="Loading progress summaries"
           emptyTitle="Nothing published yet"
           emptyBody="Progress summaries appear here once your team publishes them."
+          emptyIcon="newspaper-outline"
           renderItem={(summary) => <SummaryCard summary={summary} />}
         />
       ) : (
@@ -73,15 +77,18 @@ export function UpdatesScreen({ onOpenRelease }: { onOpenRelease: (releaseId: st
           loadingLabel="Loading releases"
           emptyTitle="Nothing released yet"
           emptyBody="Releases your team publishes appear here, with what changed in each."
+          emptyIcon="rocket-outline"
           renderItem={(release) => (
             <PressableCard
               accessibilityLabel={`Version ${release.version}`}
               accessibilityHint="Opens what changed in this release"
               onPress={() => onOpenRelease(release.id)}
+              icon="rocket-outline"
+              iconTone="violet"
             >
-              <AppText size="xs" tone="faint" numberOfLines={1}>
+              <MetaLine icon="calendar-outline">
                 Released {formatDate(release.releaseDate)}
-              </AppText>
+              </MetaLine>
               <AppText weight="medium">Version {release.version}</AppText>
               <AppText size="sm" tone="primary">
                 See what changed
@@ -107,11 +114,16 @@ function SummaryCard({ summary }: { summary: PortalAiSummary }) {
   const long = summary.content.length > FOLD_AFTER;
   const [open, setOpen] = useState(false);
   return (
-    <Card style={{ gap: theme.spacing.xs + 2 }}>
-      <AppText size="xs" tone="faint" numberOfLines={1}>
-        {formatDate(summary.periodStart)} – {formatDate(summary.periodEnd)}
-      </AppText>
-      <AppText weight="medium">{summary.title}</AppText>
+    <Card style={{ gap: theme.spacing.sm }}>
+      <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.md }}>
+        <IconTile name="newspaper-outline" tone="teal" size={40} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <MetaLine icon="calendar-outline">
+            {formatDate(summary.periodStart)} – {formatDate(summary.periodEnd)}
+          </MetaLine>
+          <AppText weight="medium">{summary.title}</AppText>
+        </View>
+      </View>
       <AppText size="sm" numberOfLines={long && !open ? 6 : undefined}>
         {summary.content}
       </AppText>
@@ -121,6 +133,7 @@ function SummaryCard({ summary }: { summary: PortalAiSummary }) {
             label={open ? 'Show less' : 'Show more'}
             variant="ghost"
             size="sm"
+            icon={open ? 'chevron-up' : 'chevron-down'}
             onPress={() => {
               animateLayout();
               setOpen((value) => !value);
@@ -144,12 +157,14 @@ function UpdatesList<T extends { id: string }>({
   loadingLabel,
   emptyTitle,
   emptyBody,
+  emptyIcon,
   renderItem,
 }: {
   list: PagedResult<T>;
   loadingLabel: string;
   emptyTitle: string;
   emptyBody: string;
+  emptyIcon: IconName;
   renderItem: (item: T) => React.JSX.Element;
 }) {
   const theme = useTheme();
@@ -178,15 +193,17 @@ function UpdatesList<T extends { id: string }>({
         paddingTop: theme.spacing.sm,
       }}
       refreshControl={
-        <RefreshControl
-          refreshing={list.isRefreshing}
+        <PullRefresh
+          busy={list.isRefreshing}
           onRefresh={list.refresh}
           tintColor={theme.colors.primary}
         />
       }
       onEndReached={list.loadMore}
       onEndReachedThreshold={0.4}
-      ListEmptyComponent={<EmptyState title={emptyTitle} description={emptyBody} />}
+      ListEmptyComponent={
+        <EmptyState title={emptyTitle} description={emptyBody} icon={emptyIcon} />
+      }
       ListFooterComponent={list.isLoadingMore ? <ListFooterLoader /> : undefined}
       renderItem={({ item }) => renderItem(item)}
     />

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../database/prisma.service';
+import { USER_AVATAR_SELECT } from '../users/user-avatar';
 
 /** Membership with role and permissions — exactly what the JWT guard needs. */
 export type MembershipWithPermissions = NonNullable<
@@ -27,7 +28,8 @@ export class OrganizationMembershipsRepository {
       },
       include: {
         role: { include: { permissions: { include: { permission: true } } } },
-        user: { select: { id: true, email: true, name: true } },
+        // The picture columns are for the session user; the guard reads none of this.
+        user: { select: { id: true, email: true, name: true, ...USER_AVATAR_SELECT } },
         organization: { select: { id: true, name: true, slug: true, isServiceProvider: true } },
       },
     });

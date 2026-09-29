@@ -1,4 +1,5 @@
 import { MAX_MESSAGE_LENGTH, type MessageSummary } from '@ashniva/types';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type MutableRefObject } from 'react';
 import { View } from 'react-native';
 
@@ -6,7 +7,8 @@ import { useApiMutation } from '../../shared/api/mutations';
 import { Banner } from '../../shared/components/feedback';
 import { AppText, Button, Input } from '../../shared/components/primitives';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { conversationKeys } from './chat-api';
+import { landOwnMessage } from './chat-api';
+import { bodyToDraft, draftToBody } from './mention-draft';
 
 /**
  * Rewriting one's own line, inside the fifteen-minute window the server allows.
@@ -32,13 +34,19 @@ import { conversationKeys } from './chat-api';
  * row, which is why the words being typed are *the thread's*. This keeps its own `useState` for
  * rendering and mirrors every keystroke into `draft`, so a remount reopens on what was typed
  * rather than on what the message said before the edit began.
+ *
+ * Mentions are shown as `@Name` while editing and written back as ids on save; the names come
+ * from the thread's roster when the editor opens, so a rename mid-edit cannot drop a mention.
  */
 export function MessageEditor({
   message,
+  names,
   draftRef,
   onDone,
 }: {
   message: MessageSummary;
+  /** Names for the mentions already in the message. */
+  names: ReadonlyMap<string, string>;
   /**
    * Where the thread keeps this edit's words, so they outlive the row being unmounted.
    *
@@ -50,7 +58,9 @@ export function MessageEditor({
   onDone: () => void;
 }) {
   const theme = useTheme();
-  const [draft, setDraft] = useState(message.body);
+  const queryClient = useQueryClient();
+  const [opened] = useState(() => bodyToDraft(message.body, names));
+  const [draft, setDraft] = useState(opened.draft);
 
   /**
    * Picks up an edit the list interrupted.
@@ -69,12 +79,14 @@ export function MessageEditor({
     path: `/conversations/${message.conversationId}/messages/${message.id}`,
     method: 'PATCH',
     body: (variables) => ({ body: variables.body }),
-    invalidate: conversationKeys(message.conversationId),
-    onSuccess: onDone,
+    onSuccess: (result) => {
+      landOwnMessage(queryClient, message.conversationId, result);
+      onDone();
+    },
   });
 
-  const body = draft.trim();
-  const tooLong = draft.length > MAX_MESSAGE_LENGTH;
+  const body = draftToBody(draft.trim(), opened.names);
+  const tooLong = body.length > MAX_MESSAGE_LENGTH;
 
   return (
     <View
@@ -106,11 +118,11 @@ export function MessageEditor({
       ) : null}
       {tooLong ? (
         <AppText tone="danger" size="sm">
-          {draft.length} of {MAX_MESSAGE_LENGTH} characters. Shorten it to save.
+          {body.length} of {MAX_MESSAGE_LENGTH} characters. Shorten it to save.
         </AppText>
       ) : null}
       <View style={{ flexDirection: 'row', gap: theme.spacing.sm, justifyContent: 'flex-end' }}>
-        <Button label="Cancel" variant="ghost" size="sm" onPress={onDone} />
+        <Button label="Cancel" variant="ghost" size="sm" icon="close" onPress={onDone} />
         <Button
           label="Save"
           size="sm"

@@ -153,6 +153,16 @@ export class SendMessageDto {
   @IsString()
   @MaxLength(64)
   clientMessageId?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'The message this answers: same conversation, readable by you, not withdrawn. Anything ' +
+      'else is 404 (409 for a withdrawn one).',
+  })
+  @IsOptional()
+  @IsUUID()
+  replyToId?: string;
 }
 
 /**

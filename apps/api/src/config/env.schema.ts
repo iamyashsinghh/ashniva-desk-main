@@ -316,6 +316,23 @@ export const envSchema = z
     VAPID_SUBJECT: z.string().min(1).default('mailto:ops@ashniva.local'),
 
     /**
+     * Native push to the mobile app through Expo's push service (exp.host).
+     *
+     * On by default: Expo accepts unauthenticated sends, so a phone that registered a token gets
+     * its notifications without any setup. `false` stops every native push without touching the
+     * stored tokens — the e2e environment forces it off so a test can never reach a real phone.
+     */
+    EXPO_PUSH_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
+    /**
+     * Expo access token, sent as a bearer token when set. Only needed once "enhanced push
+     * security" is switched on for the Expo project; without it Expo refuses unauthenticated sends.
+     */
+    EXPO_ACCESS_TOKEN: z.string().min(1).optional(),
+
+    /**
      * Which outbound message providers to register.
      *
      * `mock` captures messages in memory and reaches nothing, for tests and the local preview.
@@ -435,7 +452,12 @@ export const envSchema = z
     }
 
     if (env.STORAGE_PROVIDER === 's3') {
-      const requiredS3Fields = ['STORAGE_ENDPOINT', 'STORAGE_BUCKET', 'STORAGE_ACCESS_KEY', 'STORAGE_SECRET_KEY'] as const;
+      const requiredS3Fields = [
+        'STORAGE_ENDPOINT',
+        'STORAGE_BUCKET',
+        'STORAGE_ACCESS_KEY',
+        'STORAGE_SECRET_KEY',
+      ] as const;
       for (const field of requiredS3Fields) {
         if (!env[field]) {
           ctx.addIssue({

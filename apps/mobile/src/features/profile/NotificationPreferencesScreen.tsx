@@ -1,45 +1,56 @@
 import {
-  NOTIFICATION_CHANNEL,
   NOTIFICATION_TYPE_GROUPS,
-  NOTIFICATION_TYPE_LABELS,
-  type NotificationPreferenceEntry,
+  type NotificationChannel,
   type NotificationPreferences,
   type NotificationType,
 } from '@ashniva/types';
 import { useState } from 'react';
-import { RefreshControl, ScrollView, Switch, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
-import { errorMessage } from '../../shared/api/client';
+import { errorMessage, isOffline } from '../../shared/api/client';
 import { useApiMutation } from '../../shared/api/mutations';
 import { useResource } from '../../shared/api/queries';
 import { Banner } from '../../shared/components/feedback';
+import type { IconName } from '../../shared/components/Icon';
 import { Section } from '../../shared/components/layout';
 import { AppText, Divider, Screen } from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
+import {
+  isChannelEnabled,
+  toggleKey,
+  type PreferencesInput,
+  type QuietHours,
+} from './preference-options';
+import { ChannelHeader, TypeRow } from './PreferenceRows';
+import { QuietHoursSection } from './QuietHoursSection';
+import { PullRefresh } from '../../shared/components/PullRefresh';
 
 /**
- * What you receive, and switching it off.
+ * What you are told about, on which channel, and when.
  *
- * In-app only, on purpose: in-app is the one channel this deployment sends on, so a phone screen
- * offering email and WhatsApp switches would be offering settings that change nothing. Each switch
- * saves on its own — a phone has no room for a form with a Save button at the bottom of
+ * The same settings as the web's preferences card, for the channels this deployment delivers on.
+ * Each change saves on its own — a phone has no room for a form with a Save button below
  * twenty-seven rows, and the endpoint takes exactly the entries that changed.
  */
 
-const PREFERENCES_KEY = ['notifications', 'preferences'] as const;
+export const PREFERENCES_KEY = ['notifications', 'preferences'] as const;
 
-interface PreferencesInput {
-  entries?: NotificationPreferenceEntry[];
-  quietHoursEnabled?: boolean;
-}
+const GROUP_ICONS: Record<string, IconName> = {
+  Tasks: 'checkbox-outline',
+  'Tickets and SLA': 'ticket-outline',
+  'Support routing': 'git-network-outline',
+  'Internal communication': 'chatbubbles-outline',
+  'Approvals and change requests': 'thumbs-up-outline',
+  Contracts: 'document-text-outline',
+};
 
-function isEnabled(entries: NotificationPreferenceEntry[], type: NotificationType): boolean {
-  const found = entries.find(
-    (entry) => entry.type === type && entry.channel === NOTIFICATION_CHANNEL.IN_APP,
-  );
-  return found ? found.enabled : true;
+function without<T extends object>(record: T, keys: readonly string[]): T {
+  const next = { ...record };
+  for (const key of keys) {
+    delete next[key as keyof T];
+  }
+  return next;
 }
 
 export function NotificationPreferencesScreen() {
@@ -49,47 +60,36 @@ export function NotificationPreferencesScreen() {
     path: '/notifications/preferences',
     method: 'PUT',
     body: (input) => input,
-    // Only the preferences: what is already in the inbox does not change because a switch moved,
-    // and re-fetching every page of it on each toggle would be a lot of network for nothing.
+    // Only the preferences: the inbox does not change because a switch moved.
     invalidate: [PREFERENCES_KEY],
   });
   // What this screen has just changed, over what the server last said. A failed save takes its
-  // entry back out, so the switch returns to the truth rather than lying about a saved setting.
-  const [local, setLocal] = useState<Record<string, boolean>>({});
+  // entry back out, so the control returns to the truth rather than showing an unsaved setting.
+  const [toggles, setToggles] = useState<Record<string, boolean>>({});
+  const [quiet, setQuiet] = useState<Partial<QuietHours>>({});
   const preferences = query.data ?? null;
-  const error = query.error;
 
-  const revert = (key: string) =>
-    setLocal((current) => {
-      const next = { ...current };
-      delete next[key];
-      return next;
-    });
-
-  const setType = async (type: NotificationType, enabled: boolean) => {
-    setLocal((current) => ({ ...current, [type]: enabled }));
-    const saved = await save.run({
-      entries: [{ type, channel: NOTIFICATION_CHANNEL.IN_APP, enabled }],
-    });
-    if (!saved) {
-      revert(type);
+  const setEntry = async (type: NotificationType, channel: NotificationChannel, on: boolean) => {
+    const key = toggleKey(type, channel);
+    setToggles((current) => ({ ...current, [key]: on }));
+    if (!(await save.run({ entries: [{ type, channel, enabled: on }] }))) {
+      setToggles((current) => without(current, [key]));
     }
   };
 
-  const setQuietHours = async (enabled: boolean) => {
-    setLocal((current) => ({ ...current, quietHours: enabled }));
-    const saved = await save.run({ quietHoursEnabled: enabled });
-    if (!saved) {
-      revert('quietHours');
+  const setQuietHours = async (patch: Partial<QuietHours>) => {
+    setQuiet((current) => ({ ...current, ...patch }));
+    if (!(await save.run(patch))) {
+      setQuiet((current) => without(current, Object.keys(patch)));
     }
   };
 
-  if (!preferences && error) {
+  if (!preferences && query.error) {
     return (
       <Screen>
         <ErrorState
-          message={errorMessage(error)}
-          offline={error instanceof Error && error.name === 'NetworkError'}
+          message={errorMessage(query.error)}
+          offline={isOffline(query.error)}
           onRetry={() => void query.refetch()}
         />
       </Screen>
@@ -103,7 +103,12 @@ export function NotificationPreferencesScreen() {
     );
   }
 
-  const quietHoursEnabled = local.quietHours ?? preferences.quietHoursEnabled;
+  const quietHours: QuietHours = {
+    quietHoursEnabled: quiet.quietHoursEnabled ?? preferences.quietHoursEnabled,
+    quietHoursStart: quiet.quietHoursStart ?? preferences.quietHoursStart,
+    quietHoursEnd: quiet.quietHoursEnd ?? preferences.quietHoursEnd,
+    timezone: quiet.timezone ?? preferences.timezone,
+  };
 
   return (
     <Screen>
@@ -114,8 +119,8 @@ export function NotificationPreferencesScreen() {
           paddingBottom: theme.spacing.xxl,
         }}
         refreshControl={
-          <RefreshControl
-            refreshing={query.isRefetching}
+          <PullRefresh
+            busy={query.isRefetching}
             onRefresh={() => void query.refetch()}
             tintColor={theme.colors.primary}
           />
@@ -127,44 +132,31 @@ export function NotificationPreferencesScreen() {
           </Banner>
         ) : null}
 
-        <Section>
-          <View style={{ gap: theme.spacing.xs }}>
-            <SwitchRow
-              label="Quiet hours"
-              value={quietHoursEnabled}
-              disabled={save.busy}
-              onChange={(next) => void setQuietHours(next)}
-            />
-            {quietHoursEnabled ? (
-              <AppText size="sm" tone="muted">
-                Notifications raised between {preferences.quietHoursStart} and{' '}
-                {preferences.quietHoursEnd} ({preferences.timezone}) wait until afterwards rather
-                than being dropped. Five kinds do not wait at all: an SLA breach, a ticket escalated
-                to you, a ticket with nobody to route it to, and a support call ringing or missed.
-                Those reach you at any hour.
-              </AppText>
-            ) : (
-              <AppText size="sm" tone="muted">
-                Off — you can be notified at any hour.
-              </AppText>
-            )}
-            <AppText size="xs" tone="faint">
-              The window itself is set on the web, along with its timezone.
-            </AppText>
-          </View>
-        </Section>
+        <QuietHoursSection
+          value={quietHours}
+          disabled={save.busy}
+          onChange={(patch) => void setQuietHours(patch)}
+        />
 
         {NOTIFICATION_TYPE_GROUPS.map((group) => (
-          <Section key={group.label} title={group.label}>
+          <Section
+            key={group.label}
+            title={group.label}
+            icon={GROUP_ICONS[group.label] ?? 'notifications-outline'}
+          >
             <View>
-              {group.types.map((type, index) => (
+              <ChannelHeader />
+              {group.types.map((type) => (
                 <View key={type}>
-                  {index > 0 ? <Divider /> : null}
-                  <SwitchRow
-                    label={NOTIFICATION_TYPE_LABELS[type]}
-                    value={local[type] ?? isEnabled(preferences.entries, type)}
+                  <Divider />
+                  <TypeRow
+                    type={type}
                     disabled={save.busy}
-                    onChange={(next) => void setType(type, next)}
+                    isOn={(channel) =>
+                      toggles[toggleKey(type, channel)] ??
+                      isChannelEnabled(preferences.entries, type, channel)
+                    }
+                    onChange={(channel, on) => void setEntry(type, channel, on)}
                   />
                 </View>
               ))}
@@ -173,45 +165,10 @@ export function NotificationPreferencesScreen() {
         ))}
 
         <AppText size="xs" tone="faint" align="center">
-          These settings apply to every device you use.
+          These settings apply to every device you use. Push notifications reach this phone only
+          when notifications are allowed for it on the Profile screen.
         </AppText>
       </ScrollView>
     </Screen>
-  );
-}
-
-function SwitchRow({
-  label,
-  value,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  value: boolean;
-  disabled: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View
-      style={{
-        alignItems: 'center',
-        flexDirection: 'row',
-        gap: theme.spacing.md,
-        minHeight: TOUCH_TARGET + 4,
-        paddingVertical: theme.spacing.xs,
-      }}
-    >
-      <View style={{ flex: 1 }}>
-        <AppText>{label}</AppText>
-      </View>
-      <Switch
-        accessibilityLabel={label}
-        disabled={disabled}
-        onValueChange={onChange}
-        trackColor={{ true: theme.colors.primary, false: theme.colors.borderStrong }}
-        value={value}
-      />
-    </View>
   );
 }

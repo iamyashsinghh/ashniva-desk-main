@@ -1,22 +1,23 @@
-import { PERMISSIONS, TASK_LIST_VIEW, isClientRole } from '@ashniva/types';
+import { PERMISSIONS, isClientRole } from '@ashniva/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { mobileEnv } from '../../config/env';
-import { Avatar } from '../../shared/components/Avatar';
 import { Banner } from '../../shared/components/feedback';
 import { SectionHeader } from '../../shared/components/layout';
 import { NavigationRow } from '../../shared/components/navigation-list';
-import { AppText, Screen } from '../../shared/components/primitives';
+import { Screen } from '../../shared/components/primitives';
 import { useNetworkStatus } from '../../shared/hooks/use-network-status';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { useSession } from '../auth/SessionProvider';
 import { isProviderUser } from '../auth/audience';
 import { canUseInternalChat } from '../chat/chat-access';
+import type { ListRequest } from './dashboards/dashboard-actions';
 import { ClientSummary } from './HomeDashboard';
-import { InternalSummary } from './InternalSummary';
+import { HomeFooter } from './HomeFooter';
+import { HomeHeader } from './HomeHeader';
+import { DASHBOARD_KEY, InternalSummary } from './InternalSummary';
 import { useClientWaiting } from './use-client-waiting';
 
 /**
@@ -45,8 +46,11 @@ export function HomeScreen({
   onOpenTasks,
   onOpenTicket,
   onOpenTickets,
+  onOpenTaskList,
+  onOpenTicketList,
   onOpenAlerts,
   onOpenProfile,
+  onOpenMenu,
 }: {
   onRefresh?: () => void;
   onOpenProjects: () => void;
@@ -61,8 +65,15 @@ export function HomeScreen({
   onOpenTasks?: () => void;
   onOpenTicket?: (id: string) => void;
   onOpenTickets?: () => void;
+  /**
+   * A dashboard tile opens the filtered list it counted. Without these the tiles still show their
+   * numbers but are not pressable.
+   */
+  onOpenTaskList?: (target: ListRequest) => void;
+  onOpenTicketList?: (target: ListRequest) => void;
   onOpenAlerts?: () => void;
   onOpenProfile?: () => void;
+  onOpenMenu?: () => void;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -98,8 +109,8 @@ export function HomeScreen({
       isClient
         ? []
         : [
-            queryClient.refetchQueries({ queryKey: ['tasks', TASK_LIST_VIEW.MY], type: 'active' }),
-            queryClient.refetchQueries({ queryKey: ['tickets'], type: 'active' }),
+            // The prefix covers the operations board too; `active` refetches only the visible one.
+            queryClient.refetchQueries({ queryKey: DASHBOARD_KEY, type: 'active' }),
             queryClient.refetchQueries({ queryKey: ['notifications'], type: 'active' }),
           ],
     );
@@ -112,11 +123,7 @@ export function HomeScreen({
   return (
     <Screen>
       <ScrollView
-        contentContainerStyle={{
-          gap: theme.spacing.section,
-          padding: theme.spacing.screen,
-          paddingBottom: insets.bottom + theme.spacing.xl,
-        }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + theme.spacing.xl }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -125,143 +132,121 @@ export function HomeScreen({
           />
         }
       >
-        <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.md }}>
-          <View style={{ flex: 1, gap: 2 }}>
-            <AppText variant="title">
-              {greeting()}, {user.name.split(' ')[0]}
-            </AppText>
-            <AppText size="sm" tone="muted" numberOfLines={1}>
-              {user.roleName} · {user.organization.name}
-            </AppText>
-          </View>
-          {onOpenProfile ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Your profile"
-              hitSlop={8}
-              onPress={onOpenProfile}
+        <HomeHeader
+          user={user}
+          {...(onOpenProfile ? { onOpenProfile } : {})}
+          {...(hasAlertsTab && onOpenAlerts ? { onOpenAlerts } : {})}
+          {...(onOpenMenu ? { onOpenMenu } : {})}
+        />
+
+        <View style={{ gap: theme.spacing.section, padding: theme.spacing.screen }}>
+          {status === 'offline' || !isOnline ? (
+            <Banner
+              tone="warning"
+              title={status === 'offline' ? 'Working offline' : 'No connection'}
             >
-              <Avatar name={user.name} size={44} />
-            </Pressable>
+              {status === 'offline'
+                ? 'Your session could not be checked. What you see was loaded earlier, and nothing new will arrive until you are back on a connection.'
+                : 'Lists will show what was last loaded. Pull down to try again once you are back on.'}
+            </Banner>
           ) : null}
-        </View>
 
-        {status === 'offline' || !isOnline ? (
-          <Banner tone="warning" title={status === 'offline' ? 'Working offline' : 'No connection'}>
-            {status === 'offline'
-              ? 'Your session could not be checked. What you see was loaded earlier, and nothing new will arrive until you are back on a connection.'
-              : 'Lists will show what was last loaded. Pull down to try again once you are back on.'}
-          </Banner>
-        ) : null}
+          {isClient ? (
+            <ClientSummary onOpenApprovals={onOpenApprovals} onOpenApproval={onOpenApproval} />
+          ) : (
+            <InternalSummary
+              onOpenApprovals={onOpenApprovals}
+              {...(showProjects ? { onOpenProjects } : {})}
+              {...(onOpenTask ? { onOpenTask } : {})}
+              {...(onOpenTasks ? { onOpenTasks } : {})}
+              {...(onOpenTicket ? { onOpenTicket } : {})}
+              {...(onOpenTickets ? { onOpenTickets } : {})}
+              {...(onOpenTaskList ? { onOpenTaskList } : {})}
+              {...(onOpenTicketList ? { onOpenTicketList } : {})}
+              {...(hasAlertsTab && onOpenAlerts ? { onOpenAlerts } : {})}
+            />
+          )}
 
-        {isClient ? (
-          <ClientSummary onOpenApprovals={onOpenApprovals} onOpenApproval={onOpenApproval} />
-        ) : (
-          <InternalSummary
-            onOpenTask={onOpenTask}
-            onOpenTasks={onOpenTasks}
-            onOpenTicket={onOpenTicket}
-            onOpenTickets={onOpenTickets}
-            onOpenAlerts={hasAlertsTab ? onOpenAlerts : undefined}
-          />
-        )}
+          <View style={{ gap: theme.spacing.sm }}>
+            <SectionHeader title="Go to" icon="grid-outline" />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md }}>
+              {showProjects ? (
+                <NavigationRow
+                  layout="tile"
+                  label="Projects"
+                  icon="folder-open"
+                  iconTone="info"
+                  description="Where each project stands and who is on it."
+                  onPress={onOpenProjects}
+                />
+              ) : null}
 
-        <View style={{ gap: theme.spacing.sm }}>
-          <SectionHeader title="Go to" />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md }}>
-            {showProjects ? (
-              <NavigationRow
-                layout="tile"
-                label="Projects"
-                mark="Pr"
-                description="Where each project stands and who is on it."
-                onPress={onOpenProjects}
-              />
-            ) : null}
+              {showApprovals ? (
+                <NavigationRow
+                  layout="tile"
+                  label="Approvals"
+                  icon="shield-checkmark"
+                  iconTone="success"
+                  description={
+                    isProvider
+                      ? 'Requests to prepare, publish and follow up with a client.'
+                      : 'What your team has asked you to approve.'
+                  }
+                  badge={waiting.pendingApprovals}
+                  badgeUnit="waiting for you"
+                  onPress={onOpenApprovals}
+                />
+              ) : null}
 
-            {showApprovals ? (
-              <NavigationRow
-                layout="tile"
-                label="Approvals"
-                mark="Ap"
-                description={
-                  isProvider
-                    ? 'Requests to prepare, publish and follow up with a client.'
-                    : 'What your team has asked you to approve.'
-                }
-                badge={waiting.pendingApprovals}
-                badgeUnit="waiting for you"
-                onPress={onOpenApprovals}
-              />
-            ) : null}
+              {showSignOffs ? (
+                <NavigationRow
+                  layout="tile"
+                  label="Sign-offs"
+                  icon="ribbon"
+                  iconTone="orange"
+                  description="Changes your team has finished, for you to try and answer."
+                  onPress={onOpenSignOffs}
+                />
+              ) : null}
 
-            {showSignOffs ? (
-              <NavigationRow
-                layout="tile"
-                label="Sign-offs"
-                mark="So"
-                description="Changes your team has finished, for you to try and answer."
-                onPress={onOpenSignOffs}
-              />
-            ) : null}
+              {showChat ? (
+                <NavigationRow
+                  layout="tile"
+                  label="Messages"
+                  icon="chatbubbles"
+                  iconTone="violet"
+                  description="Internal conversations on your projects, tasks and tickets."
+                  onPress={onOpenConversations}
+                />
+              ) : null}
 
-            {showChat ? (
-              <NavigationRow
-                layout="tile"
-                label="Messages"
-                mark="Me"
-                description="Internal conversations on your projects, tasks and tickets."
-                onPress={onOpenConversations}
-              />
-            ) : null}
+              {showQa ? (
+                <NavigationRow
+                  layout="tile"
+                  label="Testing"
+                  icon="flask"
+                  iconTone="teal"
+                  description="Your testing queue and the pass/fail form."
+                  onPress={onOpenQa}
+                />
+              ) : null}
 
-            {showQa ? (
-              <NavigationRow
-                layout="tile"
-                label="Testing"
-                mark="Qa"
-                description="Your testing queue and the pass/fail form."
-                onPress={onOpenQa}
-              />
-            ) : null}
-
-            {showMyTime ? (
-              <NavigationRow
-                layout="tile"
-                label="My time"
-                mark="Ti"
-                description="The hours you have logged, by the day you did them."
-                onPress={onOpenMyTime}
-              />
-            ) : null}
+              {showMyTime ? (
+                <NavigationRow
+                  layout="tile"
+                  label="My time"
+                  icon="time"
+                  iconTone="pink"
+                  description="The hours you have logged, by the day you did them."
+                  onPress={onOpenMyTime}
+                />
+              ) : null}
+            </View>
           </View>
-        </View>
 
-        <View style={{ gap: theme.spacing.xs, paddingHorizontal: theme.spacing.xs }}>
-          <AppText size="sm" weight="medium" tone="muted">
-            {isClient ? 'What you can do here' : 'On your phone'}
-          </AppText>
-          <AppText size="xs" tone="faint">
-            {isClient
-              ? 'Raise a ticket, follow the ones you have open, approve what your team sends you, read what has been published, and check an invoice.'
-              : 'Your tasks, the tickets you are on, approvals, your logged time, and what needs your attention. Everything else — reports, administration, billing setup — is on the web app.'}
-          </AppText>
+          <HomeFooter isClient={isClient} />
         </View>
-
-        {mobileEnv.isDevelopment ? (
-          <AppText size="xs" tone="faint">
-            Development build — {mobileEnv.apiBaseUrl}
-          </AppText>
-        ) : null}
       </ScrollView>
     </Screen>
   );
-}
-
-function greeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) {
-    return 'Good morning';
-  }
-  return hour < 17 ? 'Good afternoon' : 'Good evening';
 }

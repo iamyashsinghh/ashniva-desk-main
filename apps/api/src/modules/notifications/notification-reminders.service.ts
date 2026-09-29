@@ -9,8 +9,14 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { tracksHours } from '../contracts/contract-periods';
 import { HourLedgerService } from '../contracts/hour-ledger.service';
-import { NotificationDispatcher } from './notification-dispatcher.service';
+import { NotificationDispatcher, type NotifyInput } from './notification-dispatcher.service';
 import { NotificationRecipientsService, type Recipient } from './recipients.service';
+
+/** One side of a contract and the page that side opens it on. */
+interface ContractAudience {
+  recipients: Recipient[];
+  link: string;
+}
 
 export interface RemindersResult {
   dueSoon: number;
@@ -68,10 +74,7 @@ export class NotificationRemindersService {
       include: { clientOrganization: { select: { name: true } } },
     });
     for (const contract of contracts) {
-      const to = await this.contractRecipients(
-        contract.organizationId,
-        contract.clientOrganizationId,
-      );
+      const to = await this.contractRecipients(contract);
       if (contract.endDate) {
         const days = daysUntil(contract.endDate, today);
         if (EXPIRY_STEPS.has(days)) {
@@ -100,16 +103,14 @@ export class NotificationRemindersService {
         const balance = await this.ledger.ensureCurrentBalance(contract, now);
         if (balance?.isLow) {
           const hours = (balance.remainingMinutes / 60).toFixed(1);
-          const sent = await this.dispatcher.notify({
+          result.lowHours += await this.notifyAudiences(to, {
             type: NOTIFICATION_TYPE.SUPPORT_HOURS_LOW,
             title: `Support hours running low on ${contract.numberLabel}`,
             body: `${hours} hours left this period for ${contract.clientOrganization.name}.`,
             entityType: 'contract',
             entityId: contract.id,
             dedupeKey: `hours-low:${contract.id}:${balance.periodStart ?? 'open'}`,
-            recipients: to,
           });
-          result.lowHours += sent.created;
         }
       }
     }
@@ -169,34 +170,54 @@ export class NotificationRemindersService {
       title: string;
       clientOrganization: { name: string };
     },
-    to: Recipient[],
+    to: readonly ContractAudience[],
     type: 'CONTRACT_EXPIRY' | 'CONTRACT_RENEWAL',
     days: number,
     today: Date,
   ): Promise<number> {
     const when = days === 0 ? 'today' : `in ${days} day${days === 1 ? '' : 's'}`;
     const verb = type === NOTIFICATION_TYPE.CONTRACT_EXPIRY ? 'expires' : 'is due for renewal';
-    const result = await this.dispatcher.notify({
+    return this.notifyAudiences(to, {
       type,
       title: `${contract.numberLabel} ${verb} ${when}`,
       body: `${contract.title} — ${contract.clientOrganization.name}`,
       entityType: 'contract',
       entityId: contract.id,
       dedupeKey: `${type}:${contract.id}:${dateKey(today)}`,
-      recipients: to,
     });
-    return result.created;
   }
 
-  /** Provider contract managers plus the client organization's contract readers (admins). */
-  private async contractRecipients(
-    providerId: string,
-    clientOrganizationId: string,
-  ): Promise<Recipient[]> {
+  /**
+   * Provider contract managers and the client organization's contract readers (admins), each with
+   * the contract page on their own side — a notification with no link opens nothing when tapped,
+   * on a phone or in a browser.
+   */
+  private async contractRecipients(contract: {
+    id: string;
+    organizationId: string;
+    clientOrganizationId: string;
+  }): Promise<ContractAudience[]> {
     const [internal, client] = await Promise.all([
-      this.recipients.withPermission(providerId, PERMISSIONS.CONTRACT_MANAGE),
-      this.recipients.withPermission(clientOrganizationId, PERMISSIONS.CONTRACT_READ),
+      this.recipients.withPermission(contract.organizationId, PERMISSIONS.CONTRACT_MANAGE),
+      this.recipients.withPermission(contract.clientOrganizationId, PERMISSIONS.CONTRACT_READ),
     ]);
-    return [...internal, ...client];
+    return [
+      { recipients: internal, link: `/contracts/${contract.id}` },
+      { recipients: client, link: `/portal/contracts/${contract.id}` },
+    ];
+  }
+
+  /** One dispatch per audience, so each side's link is the page it can open. */
+  private async notifyAudiences(
+    audiences: readonly ContractAudience[],
+    input: Omit<NotifyInput, 'recipients' | 'link'>,
+  ): Promise<number> {
+    let created = 0;
+    for (const { recipients, link } of audiences) {
+      if (recipients.length > 0) {
+        created += (await this.dispatcher.notify({ ...input, link, recipients })).created;
+      }
+    }
+    return created;
   }
 }

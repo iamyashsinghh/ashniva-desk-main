@@ -4,19 +4,22 @@ import {
   MAX_MESSAGE_LENGTH,
   mentionsIn,
   type CommunicationRefusal,
+  type ConversationAudienceMember,
   type MessageSummary,
 } from '@ashniva/types';
 import { Alert, Button } from '@ashniva/ui';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { errorMessage } from '../../../shared/lib/api-client';
 import { useComposerAttachments } from './composer-attachments';
+import { ComposerFiles } from './ComposerFiles';
 import { useComposerMentions } from './composer-mentions';
 import { useComposerSend, type SendMessageDraft } from './composer-send';
 import { grow } from './composer-textarea';
 import { withMentionsAsPlainText } from './mention-refusal';
 import { useMentionSearch } from './mention-search';
 import { MentionPicker } from './MentionPicker';
+import { ReplyBar } from './ReplyBar';
 
 export type { SendMessageDraft } from './composer-send';
 
@@ -29,6 +32,8 @@ export interface MessageComposerProps {
   /** The message being answered, when somebody pressed Reply. */
   replyingTo?: MessageSummary | null;
   onCancelReply?: () => void;
+  /** The roster, so mentions in the line being answered read as names. */
+  audience?: readonly ConversationAudienceMember[];
   onSend: (input: SendMessageDraft) => Promise<void>;
   /** Corner messenger: short placeholder, no character counter crowding the bar. */
   compact?: boolean;
@@ -63,6 +68,7 @@ export function MessageComposer({
   reason,
   replyingTo,
   onCancelReply,
+  audience = [],
   onSend,
   compact = false,
   tagsArePrivate = false,
@@ -82,12 +88,18 @@ export function MessageComposer({
   const mentionSearch = useMentionSearch(conversationId);
   const mentions = useComposerMentions(mentionSearch, textarea);
   const listboxId = useId();
+  const replyToId = replyingTo?.id;
 
-  const trimmed = draft.trim();
-  const tooLong = draft.length > MAX_MESSAGE_LENGTH;
+  useEffect(() => {
+    sending.draftChanged();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the reply target moves.
+  }, [replyToId]);
+
+  const trimmed = mentions.toBody(draft.trim());
+  const tooLong = trimmed.length > MAX_MESSAGE_LENGTH;
   const canSubmit =
     canPost && !sending.busy && !tooLong && (trimmed.length > 0 || attachments.files.length > 0);
-  const goesPrivate = tagsArePrivate && mentionsIn(bodyToSend()).length > 0;
+  const goesPrivate = tagsArePrivate && mentionsIn(trimmed).length > 0;
   let placeholder = 'You cannot post here';
   if (canPost) {
     placeholder = compact ? 'Aa' : 'Write a message. Type @ to mention somebody.';
@@ -109,17 +121,6 @@ export function MessageComposer({
     }
   }
 
-  /**
-   * The body as it will be sent.
-   *
-   * A reply is delivered as an address rather than as a thread: the API has no `replyToId`, so
-   * naming the person is the only way to answer one line of a busy channel that the notification
-   * path will actually carry.
-   */
-  function bodyToSend(): string {
-    return replyingTo?.sender ? `@[${replyingTo.sender.id}] ${trimmed}`.trim() : trimmed;
-  }
-
   function landed() {
     setDraft('');
     mentions.noteDraft('');
@@ -133,10 +134,13 @@ export function MessageComposer({
     if (!canSubmit) {
       return;
     }
+    // A reply names the message it answers rather than the person: the server tells the original's
+    // sender the way it tells somebody mentioned, so the words stay the sender's own.
     const ok = await sending.attempt(
-      bodyToSend(),
+      trimmed,
       attachments.files.map((file) => file.id),
       mentions.names,
+      replyToId,
     );
     if (ok) {
       landed();
@@ -145,15 +149,17 @@ export function MessageComposer({
 
   /** The same words, with the refused mention written out as a name instead of a token. */
   async function submitWithoutMentions() {
-    const body = withMentionsAsPlainText(bodyToSend(), mentions.names);
-    // Kept in the box as well, so that what is being sent is what the sender can see. The send key
-    // is kept with it: the refusal happened before the row was written, so this is that same
-    // message going out once, not a second one.
-    apply(withMentionsAsPlainText(draft, mentions.names), true);
+    const body = withMentionsAsPlainText(trimmed, mentions.names);
+    // The box already shows the names, so what is sent is what the sender can see; forgetting the
+    // picks keeps a retry from tagging them again. The send key is kept: the refusal happened
+    // before the row was written, so this is that same message going out once, not a second one.
+    const names = mentions.names;
+    mentions.forget();
     const ok = await sending.attempt(
       body,
       attachments.files.map((file) => file.id),
-      mentions.names,
+      names,
+      replyToId,
     );
     if (ok) {
       landed();
@@ -188,41 +194,10 @@ export function MessageComposer({
       ) : null}
 
       {replyingTo ? (
-        <div className="chat-composer__reply">
-          <span className="chat-composer__reply-text">
-            <strong>Replying to {replyingTo.sender?.name ?? 'somebody'}</strong>
-            <span className="timeline__note">{replyingTo.body}</span>
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            iconOnly
-            aria-label="Cancel this reply"
-            onClick={() => onCancelReply?.()}
-          >
-            ×
-          </Button>
-        </div>
+        <ReplyBar replyingTo={replyingTo} audience={audience} onCancel={() => onCancelReply?.()} />
       ) : null}
 
-      {attachments.files.length > 0 ? (
-        <ul className="chat-composer__files">
-          {attachments.files.map((file) => (
-            <li key={file.id}>
-              <span className="chat-composer__file-name">{file.name}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                iconOnly
-                aria-label={`Remove ${file.name}`}
-                onClick={() => attachments.remove(file.id)}
-              >
-                ×
-              </Button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <ComposerFiles files={attachments.files} onRemove={attachments.remove} />
 
       {goesPrivate ? (
         <p className="chat-composer__private" role="status">
@@ -310,7 +285,7 @@ export function MessageComposer({
 
         {draft.length > 0 && !compact ? (
           <span className={tooLong ? 'form-error' : 'chat-composer__count'} aria-live="polite">
-            {draft.length} / {MAX_MESSAGE_LENGTH}
+            {trimmed.length} / {MAX_MESSAGE_LENGTH}
           </span>
         ) : null}
 

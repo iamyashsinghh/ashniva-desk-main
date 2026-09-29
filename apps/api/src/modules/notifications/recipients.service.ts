@@ -65,10 +65,7 @@ export class NotificationRecipientsService {
     return rows.map((row) => ({ userId: row.userId, organizationId }));
   }
 
-  private async queryWithRoleKey(
-    organizationId: string,
-    roleKey: RoleKey,
-  ): Promise<Recipient[]> {
+  private async queryWithRoleKey(organizationId: string, roleKey: RoleKey): Promise<Recipient[]> {
     const rows = await this.prisma.organizationMembership.findMany({
       where: {
         organizationId,

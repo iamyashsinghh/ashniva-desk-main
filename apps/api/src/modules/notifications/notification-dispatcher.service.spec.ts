@@ -92,7 +92,9 @@ function repositoryDouble(preferences: PreferenceRow[]) {
   return { repository, created, cleared, delivered, calls };
 }
 
-function channelDouble(key: 'EMAIL' | 'WHATSAPP' | 'PUSH'): NotificationChannel & { sent: unknown[] } {
+function channelDouble(
+  key: 'EMAIL' | 'WHATSAPP' | 'PUSH',
+): NotificationChannel & { sent: unknown[] } {
   const sent: unknown[] = [];
   return {
     key,
@@ -204,6 +206,22 @@ describe('NotificationDispatcher channels', () => {
     expect(emitted).toEqual([USER]);
   });
 
+  it('sends to every adapter under the PUSH key — browsers and phones share the preference', async () => {
+    const webPush = channelDouble('PUSH');
+    const expoPush = channelDouble('PUSH');
+    const { dispatcher, created } = dispatcherWith([], [webPush, expoPush]);
+
+    await dispatcher.notify({ ...NOTIFY, entityType: 'TICKET', entityId: 'ticket-1' });
+
+    const expected = expect.objectContaining({
+      notificationId: created[0]?.id,
+      entityType: 'TICKET',
+      entityId: 'ticket-1',
+    });
+    expect(webPush.sent).toEqual([expected]);
+    expect(expoPush.sent).toEqual([expected]);
+  });
+
   it('reads the whole recipient set’s preferences and settings in one query each', async () => {
     const { dispatcher, calls } = dispatcherWith([]);
 
@@ -220,6 +238,76 @@ describe('NotificationDispatcher channels', () => {
     expect(calls.settingsForUsers).toBe(1);
     expect(calls.preferences).toBe(0);
     expect(calls.settings).toBe(0);
+  });
+});
+
+/**
+ * A second event merged into an unread row: one line in the inbox, but a push for each event —
+ * the second reply on a ticket reaches the phone the way the second chat message does.
+ */
+describe('NotificationDispatcher grouping', () => {
+  function groupedRow(overrides: Partial<NotificationRow> = {}): NotificationRow {
+    return {
+      id: 'notification-grouped',
+      organizationId: ORG,
+      userId: USER,
+      type: NOTIFICATION_TYPE.TICKET_REPLY,
+      title: 'A reply on your ticket',
+      body: null,
+      link: '/tickets/t-1',
+      entityType: null,
+      entityId: null,
+      dedupeKey: null,
+      groupKey: 'ticket-reply:t-1',
+      groupedCount: 2,
+      readAt: null,
+      deliverAfter: null,
+      deliveredAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    } as unknown as NotificationRow;
+  }
+
+  function withGroup(row: NotificationRow, recentRows = 0) {
+    const push = channelDouble('PUSH');
+    const setup = dispatcherWith([], [push]);
+    Object.assign(setup.repository, {
+      findGroupable: jest.fn(async () => row),
+      bumpGroup: jest.fn(async () => row),
+      countSince: jest.fn(async () => recentRows),
+    });
+    return { ...setup, push };
+  }
+
+  it('pushes the merged event to the phone and updates the inbox', async () => {
+    const { dispatcher, push, emitted } = withGroup(groupedRow());
+
+    const result = await dispatcher.notify({ ...NOTIFY, groupKey: 'ticket-reply:t-1' });
+
+    expect(result.grouped).toBe(1);
+    expect(emitted).toEqual([USER]);
+    expect(push.sent).toEqual([
+      expect.objectContaining({ notificationId: 'notification-grouped', groupedCount: 2 }),
+    ]);
+  });
+
+  it('leaves a row still waiting out quiet hours to push when it is delivered', async () => {
+    const { dispatcher, push } = withGroup(
+      groupedRow({ deliveredAt: null, deliverAfter: new Date(Date.now() + 60_000) }),
+    );
+
+    await dispatcher.notify({ ...NOTIFY, groupKey: 'ticket-reply:t-1' });
+
+    expect(push.sent).toEqual([]);
+  });
+
+  it('stays silent over the rate limit, as a new notification would be deferred', async () => {
+    const { dispatcher, push } = withGroup(groupedRow(), 1_000);
+
+    await dispatcher.notify({ ...NOTIFY, groupKey: 'ticket-reply:t-1' });
+
+    expect(push.sent).toEqual([]);
   });
 });
 

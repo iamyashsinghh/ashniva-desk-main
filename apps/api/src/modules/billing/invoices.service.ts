@@ -18,6 +18,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { BillingRepository, type InvoiceDetailRow } from './billing.repository';
 import { calculateInvoice, supplyTypeFor } from './invoice-calculator';
 import { toLineInput } from './invoice-line-input';
+import { assertInvoiceLinks } from './invoice-links';
 import { financialYearOf } from './invoice-numbering';
 import {
   addDays,
@@ -149,6 +150,7 @@ export class InvoicesService {
   async create(actor: AuthenticatedUser, input: CreateInvoiceInput): Promise<InvoiceDetailRow> {
     const profile = await this.requireProfile(actor.organizationId);
     await this.assertClient(actor.organizationId, input.clientOrganizationId);
+    await assertInvoiceLinks(this.prisma, actor.organizationId, input.clientOrganizationId, input);
 
     if (input.lines.length === 0) {
       throw new BadRequestException('An invoice needs at least one line');
@@ -230,6 +232,9 @@ export class InvoicesService {
   ): Promise<InvoiceDetailRow> {
     const current = await this.detail(actor, id);
     this.assertEditable(current);
+    await assertInvoiceLinks(this.prisma, actor.organizationId, current.clientOrganizationId, {
+      projectId: input.projectId,
+    });
 
     const profile = await this.requireProfile(actor.organizationId);
     const lines = input.lines ?? current.lineItems.map(toLineDto);

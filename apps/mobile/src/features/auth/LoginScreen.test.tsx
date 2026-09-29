@@ -26,7 +26,7 @@ jest.mock('./auth-api', () => ({
 
 const { login } = jest.requireMock('./auth-api') as { login: jest.Mock };
 
-function renderScreen(): Promise<RenderResult> {
+function renderScreen(onForgotPassword?: () => void): Promise<RenderResult> {
   // The session provider clears the query cache on sign-out, so it needs a client above it —
   // the same arrangement as App.tsx.
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -40,7 +40,7 @@ function renderScreen(): Promise<RenderResult> {
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <SessionProvider>
-            <LoginScreen />
+            <LoginScreen {...(onForgotPassword ? { onForgotPassword } : {})} />
           </SessionProvider>
         </QueryClientProvider>
       </ThemeProvider>
@@ -102,6 +102,14 @@ describe('the sign-in form', () => {
     await fireEvent.press(view.getByRole('button', { name: 'Sign in' }));
 
     expect(await view.findByText('That email and password did not match')).toBeTruthy();
+  });
+
+  it('offers a way to reset a forgotten password', async () => {
+    const onForgotPassword = jest.fn();
+    const view = await renderScreen(onForgotPassword);
+
+    await fireEvent.press(await view.findByRole('link', { name: 'Forgot password?' }));
+    expect(onForgotPassword).toHaveBeenCalledTimes(1);
   });
 
   it('uses a large enough input font that the platforms do not zoom', async () => {

@@ -1,7 +1,13 @@
 import type { NavigationProp } from '@react-navigation/native';
 
 import { resolveDeepLink } from './deep-links';
-import { followTarget, targetFor, targetForWebLink } from './notification-router';
+import {
+  followTarget,
+  targetFor,
+  targetForPayload,
+  targetForWebLink,
+  withinTabs,
+} from './notification-router';
 import type { RootStackParamList } from './param-lists';
 import type { TabName } from './tabs';
 
@@ -138,6 +144,27 @@ describe("a notification's own web link", () => {
     });
   });
 
+  it.each([
+    [`/invoices/${VALID_ID}`, 'BillingInvoiceDetail'],
+    [`/contracts/${VALID_ID}`, 'ContractDetail'],
+    [`/portal/contracts/${VALID_ID}`, 'PortalContractDetail'],
+    [`/change-requests/${VALID_ID}`, 'ChangeRequestDetail'],
+    [`/portal/change-requests/${VALID_ID}`, 'PortalChangeRequestDetail'],
+    [`/releases/${VALID_ID}`, 'ReleaseDetail'],
+    [`/problems/${VALID_ID}`, 'ProblemDetail'],
+    [`/incidents/${VALID_ID}`, 'IncidentDetail'],
+  ])('opens %s on %s, the screen for that side', (link, screen) => {
+    expect(targetForWebLink(link)).toEqual({ kind: 'detail', screen, id: VALID_ID });
+  });
+
+  it('opens the settings an integration alert is about', () => {
+    expect(targetForWebLink('/settings/email')).toEqual({ kind: 'plain', screen: 'EmailSettings' });
+    expect(targetForWebLink('/settings/whatsapp')).toEqual({
+      kind: 'plain',
+      screen: 'WhatsAppSettings',
+    });
+  });
+
   it('lands both audiences of an approval on the same screen', () => {
     // The API writes `/approvals/<id>` for the provider and `/portal/approvals/<id>` for the
     // client. The screen behind `ApprovalDetail` asks the endpoint for the caller's own side, so
@@ -151,6 +178,24 @@ describe("a notification's own web link", () => {
     }
   });
 
+  it('opens the web messenger’s links and the newer list pages', () => {
+    expect(targetForWebLink(`/messages/${VALID_ID}`)).toEqual({
+      kind: 'detail',
+      screen: 'Conversation',
+      id: VALID_ID,
+    });
+    expect(targetForWebLink('/intern-work')).toEqual({ kind: 'plain', screen: 'InternWork' });
+    expect(targetForWebLink('/completed-today')).toEqual({
+      kind: 'plain',
+      screen: 'CompletedToday',
+    });
+    expect(targetForWebLink('/team/session-logs')).toEqual({
+      kind: 'plain',
+      screen: 'SessionLogs',
+    });
+    expect(targetForWebLink('/support-queue')).toEqual({ kind: 'plain', screen: 'SupportQueue' });
+  });
+
   it('returns null for a route that lives only on the desktop', () => {
     // Null rather than Notifications: the person is standing in the notifications list, and
     // "opening" it under them would read as the tap having failed in a different way.
@@ -160,5 +205,82 @@ describe("a notification's own web link", () => {
 
   it('does not accept a link with something appended to a real one', () => {
     expect(targetForWebLink(`/tickets/${VALID_ID}/../../admin`)).toBeNull();
+  });
+
+  it('ignores a query string on a detail link — the id only ever comes from the path', () => {
+    expect(targetForWebLink(`/tasks/${VALID_ID}?comment=abc`)).toEqual({
+      kind: 'detail',
+      screen: 'TaskDetail',
+      id: VALID_ID,
+    });
+    expect(targetForWebLink(`/tasks?id=${VALID_ID}`)).toEqual({ kind: 'tab', tab: 'Tasks' });
+  });
+
+  it("opens a project's summary for the summary forms of a project link", () => {
+    for (const link of [
+      `/projects/${VALID_ID}/summary`,
+      `/projects/${VALID_ID}?summary=1`,
+      `/projects/${VALID_ID}?tab=summary`,
+    ]) {
+      expect(targetForWebLink(link)).toEqual({ kind: 'summary', projectId: VALID_ID });
+    }
+    expect(targetForWebLink(`/projects/${VALID_ID}?tab=tasks`)).toEqual({
+      kind: 'detail',
+      screen: 'ProjectDetail',
+      id: VALID_ID,
+    });
+  });
+
+  it('opens list pages, dropping a filter the phone cannot express', () => {
+    expect(targetForWebLink('/tasks?status=OVERDUE')).toEqual({ kind: 'tab', tab: 'Tasks' });
+    expect(targetForWebLink('/portal/tickets')).toEqual({ kind: 'tab', tab: 'Tickets' });
+    expect(targetForWebLink('/projects')).toEqual({ kind: 'plain', screen: 'Projects' });
+    expect(targetForWebLink('/qa')).toEqual({ kind: 'plain', screen: 'QaQueue' });
+  });
+});
+
+describe('a tapped push, from its untrusted data block', () => {
+  it("follows the notification's link first", () => {
+    expect(
+      targetForPayload(
+        { notificationId: VALID_ID, type: 'TASK_ASSIGNED', link: `/tasks/${VALID_ID}` },
+        INTERNAL,
+      ),
+    ).toEqual({ kind: 'detail', screen: 'TaskDetail', id: VALID_ID });
+  });
+
+  it('opens the project summary for a phase-plan alert, whose link is the bare project', () => {
+    expect(
+      targetForPayload({ type: 'WORK_PLAN_RETURNED', link: `/projects/${VALID_ID}` }, INTERNAL),
+    ).toEqual({ kind: 'summary', projectId: VALID_ID });
+  });
+
+  it('falls back to an older payload that names a screen', () => {
+    expect(targetForPayload({ screen: 'TicketDetail', id: VALID_ID }, INTERNAL)).toEqual({
+      kind: 'detail',
+      screen: 'TicketDetail',
+      id: VALID_ID,
+    });
+  });
+
+  it('lands on the alerts list for a link the phone does not have, or a hostile one', () => {
+    for (const link of ['/admin/users', 'https://evil.example', '//evil.example/tasks']) {
+      expect(targetForPayload({ link }, INTERNAL)).toEqual({ kind: 'tab', tab: 'Notifications' });
+    }
+  });
+
+  it('does not open a tab the person lacks because a link named it', () => {
+    // A client has no Tasks tab and no alerts list; their first tab is the somewhere-real answer.
+    expect(targetForPayload({ link: '/tasks' }, CLIENT)).toEqual({ kind: 'tab', tab: 'Home' });
+    expect(withinTabs({ kind: 'tab', tab: 'Invoices' }, INTERNAL)).toEqual({
+      kind: 'tab',
+      tab: 'Notifications',
+    });
+  });
+
+  it('navigates to the summary route with the project id', () => {
+    const { navigate, nav } = fakeNavigation();
+    followTarget(nav, { kind: 'summary', projectId: VALID_ID });
+    expect(navigate).toHaveBeenCalledWith('ProjectSummary', { projectId: VALID_ID });
   });
 });

@@ -1,8 +1,16 @@
 import type { NavigationProp } from '@react-navigation/native';
 
-import type { ResolvedLink } from './deep-links';
+import {
+  linkForNotification,
+  pushLink,
+  pushType,
+} from '../shared/notifications/notification-payload';
+import { resolveDeepLink, type ResolvedLink } from './deep-links';
+import { targetForWebLink } from './notification-web-links';
 import type { RootStackParamList } from './param-lists';
 import type { TabName } from './tabs';
+
+export { targetForWebLink };
 
 /**
  * Where a notification takes you.
@@ -20,16 +28,24 @@ import type { TabName } from './tabs';
  */
 
 /** A detail route: one that cannot be opened without an id. */
-type DetailScreen =
+export type DetailScreen =
   | 'TaskDetail'
   | 'TicketDetail'
   | 'InvoiceDetail'
+  | 'BillingInvoiceDetail'
   | 'ProjectDetail'
   | 'Conversation'
   | 'QaAssignment'
   | 'ApprovalDetail'
   | 'SignOff'
-  | 'ReleaseNote';
+  | 'ReleaseNote'
+  | 'ContractDetail'
+  | 'PortalContractDetail'
+  | 'ChangeRequestDetail'
+  | 'PortalChangeRequestDetail'
+  | 'ReleaseDetail'
+  | 'ProblemDetail'
+  | 'IncidentDetail';
 
 /** A stack route that carries nothing. */
 type PlainScreen =
@@ -40,18 +56,27 @@ type PlainScreen =
   | 'QaQueue'
   | 'Approvals'
   | 'SignOffs'
-  | 'MyTime';
+  | 'MyTime'
+  | 'InternWork'
+  | 'CompletedToday'
+  | 'SessionLogs'
+  | 'SupportQueue'
+  | 'EmailSettings'
+  | 'WhatsAppSettings';
 
 export type NavigationTarget =
   | { kind: 'tab'; tab: TabName }
   | { kind: 'detail'; screen: DetailScreen; id: string }
-  | { kind: 'plain'; screen: PlainScreen };
+  | { kind: 'plain'; screen: PlainScreen }
+  /** A project's summary screen, where its phase plan lives on the phone. */
+  | { kind: 'summary'; projectId: string };
 
 /** Screen names that are tabs rather than stack routes. */
 const TAB_SCREENS = new Set<string>([
   'Home',
   'Tasks',
   'Tickets',
+  'Messages',
   'Updates',
   'Notifications',
   'Invoices',
@@ -59,7 +84,7 @@ const TAB_SCREENS = new Set<string>([
 ]);
 
 /**
- * The detail routes a notification may open.
+ * The detail routes an older, screen-naming payload may open.
  *
  * `CompleteTask` is deliberately absent although it takes an id: it is a form you reach from a
  * task you are already reading, not a place to be dropped into by a tap on a lock screen.
@@ -85,6 +110,10 @@ const PLAIN_SCREENS: Record<string, PlainScreen> = {
   Approvals: 'Approvals',
   SignOffs: 'SignOffs',
   MyTime: 'MyTime',
+  InternWork: 'InternWork',
+  CompletedToday: 'CompletedToday',
+  SessionLogs: 'SessionLogs',
+  SupportQueue: 'SupportQueue',
 };
 
 /**
@@ -116,35 +145,29 @@ export function targetFor(link: ResolvedLink, tabs: readonly TabName[]): Navigat
   return fallback;
 }
 
-/** The web paths the API writes into a notification's `link`, and the phone screen for each. */
-const WEB_LINKS: ReadonlyArray<{ pattern: RegExp; screen: DetailScreen }> = [
-  { pattern: /^\/(?:portal\/)?tickets\/([0-9a-f-]{36})$/i, screen: 'TicketDetail' },
-  { pattern: /^\/tasks\/([0-9a-f-]{36})$/i, screen: 'TaskDetail' },
-  { pattern: /^\/(?:portal\/)?invoices\/([0-9a-f-]{36})$/i, screen: 'InvoiceDetail' },
-  { pattern: /^\/projects\/([0-9a-f-]{36})$/i, screen: 'ProjectDetail' },
-  { pattern: /^\/conversations\/([0-9a-f-]{36})$/i, screen: 'Conversation' },
-  { pattern: /^\/qa\/assignments\/([0-9a-f-]{36})$/i, screen: 'QaAssignment' },
-  // One pattern for both audiences, as with tickets and invoices: the provider's notification
-  // links to `/approvals/<id>` and the client's to `/portal/approvals/<id>`, and the screen behind
-  // `ApprovalDetail` asks the endpoint for the caller's own side rather than trusting the path.
-  { pattern: /^\/(?:portal\/)?approvals\/([0-9a-f-]{36})$/i, screen: 'ApprovalDetail' },
-];
+/** A tab target the person does not have becomes the fallback `targetFor` would choose. */
+export function withinTabs(target: NavigationTarget, tabs: readonly TabName[]): NavigationTarget {
+  if (target.kind === 'tab' && !tabs.includes(target.tab)) {
+    return targetFor({ screen: 'Notifications' }, tabs);
+  }
+  return target;
+}
 
 /**
- * A notification's own link, as a phone target.
+ * Where a tapped notification goes, from its untrusted `data` block.
  *
- * The API writes one set of links for both apps and not all of them exist here. Returning null
- * for the rest leaves the person where they are rather than opening a blank screen — and
- * `Notifications` would be a worse answer than null, because they are already standing in it.
+ * The API's pushes (`NativePushData`) carry the notification's web `link`, which is translated
+ * first — with its type, so a phase-plan alert opens the project summary. Older payloads that
+ * name a `screen` go through `resolveDeepLink`. Anything else lands on the alerts list, or the
+ * person's first tab when they have no alerts list.
  */
-export function targetForWebLink(link: string): NavigationTarget | null {
-  for (const { pattern, screen } of WEB_LINKS) {
-    const id = pattern.exec(link)?.[1];
-    if (id) {
-      return { kind: 'detail', screen, id };
-    }
+export function targetForPayload(data: unknown, tabs: readonly TabName[]): NavigationTarget {
+  const link = linkForNotification(pushLink(data), pushType(data));
+  const fromLink = link ? targetForWebLink(link) : null;
+  if (fromLink) {
+    return withinTabs(fromLink, tabs);
   }
-  return null;
+  return targetFor(resolveDeepLink(data), tabs);
 }
 
 /** Performs the navigation. Split from the decision above so the decision can be tested alone. */
@@ -152,13 +175,17 @@ export function followTarget(
   navigation: NavigationProp<RootStackParamList>,
   target: NavigationTarget,
 ): void {
-  if (target.kind === 'tab') {
-    navigation.navigate('Main', { screen: target.tab });
-    return;
+  switch (target.kind) {
+    case 'tab':
+      navigation.navigate('Main', { screen: target.tab });
+      return;
+    case 'plain':
+      navigation.navigate(target.screen);
+      return;
+    case 'summary':
+      navigation.navigate('ProjectSummary', { projectId: target.projectId });
+      return;
+    default:
+      navigation.navigate(target.screen, { id: target.id });
   }
-  if (target.kind === 'plain') {
-    navigation.navigate(target.screen);
-    return;
-  }
-  navigation.navigate(target.screen, { id: target.id });
 }

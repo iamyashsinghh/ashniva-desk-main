@@ -1,14 +1,16 @@
 import { INVOICE_STATUS_LABELS, type PortalInvoiceSummary } from '@ashniva/types';
-import { FlatList, RefreshControl } from 'react-native';
+import { FlatList } from 'react-native';
 
 import { usePagedResource } from '../../shared/api/queries';
+import { MetaLine } from '../../shared/components/data-display';
 import { ListFooterLoader } from '../../shared/components/feedback';
 import { PressableCard } from '../../shared/components/layout';
 import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { invoiceDate } from './invoice-dates';
-import { invoiceTone } from './invoice-display';
+import { invoiceIconTone, invoiceTone } from './invoice-display';
+import { PullRefresh } from '../../shared/components/PullRefresh';
 
 /**
  * A client's own invoices.
@@ -49,8 +51,8 @@ export function InvoicesScreen({ onOpen }: { onOpen: (invoiceId: string) => void
         keyExtractor={(invoice) => invoice.id}
         contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.screen }}
         refreshControl={
-          <RefreshControl
-            refreshing={list.isRefreshing}
+          <PullRefresh
+            busy={list.isRefreshing}
             onRefresh={list.refresh}
             tintColor={theme.colors.primary}
           />
@@ -58,7 +60,11 @@ export function InvoicesScreen({ onOpen }: { onOpen: (invoiceId: string) => void
         onEndReached={list.loadMore}
         onEndReachedThreshold={0.4}
         ListEmptyComponent={
-          <EmptyState title="No invoices" description="Issued invoices will appear here." />
+          <EmptyState
+            title="No invoices"
+            description="Issued invoices will appear here."
+            icon="receipt-outline"
+          />
         }
         ListFooterComponent={list.isLoadingMore ? <ListFooterLoader /> : undefined}
         renderItem={({ item }) => (
@@ -67,6 +73,8 @@ export function InvoicesScreen({ onOpen }: { onOpen: (invoiceId: string) => void
             accessibilityHint="Opens the invoice"
             onPress={() => onOpen(item.id)}
             highlight={item.isOverdue}
+            icon="receipt"
+            iconTone={invoiceIconTone(item.status, item.isOverdue)}
           >
             <AppText size="xs" tone="faint" numberOfLines={1}>
               {item.numberLabel}
@@ -78,9 +86,9 @@ export function InvoicesScreen({ onOpen }: { onOpen: (invoiceId: string) => void
               <Pill label={INVOICE_STATUS_LABELS[item.status]} tone={invoiceTone(item.status)} />
               {item.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
             </PillRow>
-            <AppText size="xs" tone="muted">
+            <MetaLine icon="calendar-outline" danger={item.isOverdue}>
               Issued {invoiceDate(item.issueDate)} · due {invoiceDate(item.dueDate)}
-            </AppText>
+            </MetaLine>
           </PressableCard>
         )}
       />

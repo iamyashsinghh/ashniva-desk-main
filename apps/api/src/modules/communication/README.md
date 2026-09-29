@@ -206,6 +206,43 @@ picker still uses.
 A mentioned person gets exactly one notification, through the existing dispatcher with its dedupe,
 grouping, quiet hours and rate limit. Email and WhatsApp stay off — a standing product decision.
 
+Who hears about an ordinary line depends on the kind of conversation, the way a phone chat app
+behaves:
+
+* **Direct** — the other person, every line (`CONVERSATION_MESSAGE`, titled with the sender's name).
+* **Group** — every member but the sender, every line, titled with the group's name and the body
+  `Sender: preview`. Somebody mentioned or replied to is left out of that one and gets the mention
+  instead, so nobody is told twice about the same line.
+* **Project, task and ticket threads** — only on a mention or a reply. They are working channels
+  with whole teams in them, and a ring for every line there would teach people to mute the app.
+
+## Quoted replies
+
+`POST /conversations/:id/messages` takes an optional `replyToId`. `MessageRepliesService` looks the
+original up **inside this conversation and through the sender's own tagged-message visibility**
+(the same `messageById` the moderation routes use), so a message from another thread, a tagged line
+the sender cannot read, an unknown id and a system note are all `404 The message you are replying
+to was not found`. A withdrawn original is `409 That message was withdrawn, so it can no longer be
+replied to`. An edit never changes `replyToId`.
+
+Every `MessageSummary` carries `replyTo` — null when it answers nothing, otherwise a
+`MessageReplyRef` built by `toMessageReplyRef` for the reader:
+
+* the reader could not read the original (`mayViewMessage`, the in-memory twin of
+  `visibleMessagesWhere` in `message-visibility.ts`): `unavailable`, no sender, no words;
+* the original is withdrawn: `deleted`, sender kept, empty preview, no attachment count;
+* otherwise: the first `MESSAGE_REPLY_PREVIEW_LENGTH` characters of the *current* body, cut before
+  any `@[uuid]` token it would split, plus the count of live attachments.
+
+The original is loaded through the `replyTo` relation in the same query as the reply. **Realtime
+payloads are shared by their whole audience**, so they are built with no viewer: a tagged original
+quotes as `unavailable` to everybody there, and each client's refetch gets its own answer. A
+withdrawn reply keeps no quote.
+
+Replying to somebody's line in a shared thread notifies them as a mention does
+(`CONVERSATION_MENTION`, "… replied to you in …", deduped per message) — only when they are in the
+message's audience, are not the replier, and were not already mentioned in it.
+
 ## Realtime
 
 `conversation.subscribe` is authorized and refused when it should be. It is **not** a grant.

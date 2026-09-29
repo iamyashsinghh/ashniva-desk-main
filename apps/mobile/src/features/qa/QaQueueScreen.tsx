@@ -1,60 +1,46 @@
 import { TESTER_VIEW, type TesterQueue, type TesterView } from '@ashniva/types';
 import { useState } from 'react';
-import { FlatList, RefreshControl, View } from 'react-native';
+import { FlatList } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
+import { PullRefresh } from '../../shared/components/PullRefresh';
 import { useResource } from '../../shared/api/queries';
-import { PressableCard } from '../../shared/components/layout';
-import { Segmented } from '../../shared/components/navigation-list';
-import { AppText, Pill, PillRow, Screen } from '../../shared/components/primitives';
+import { Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
-import { formatDateTime } from '../../shared/format/format';
+import { TabBar } from '../../shared/components/TabBar';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { PHONE_TESTER_VIEWS, assignmentStatusLabel, assignmentStatusTone } from './qa-display';
-import { QueueCounts, humanise } from './QaQueueCounts';
+import { testerViewLabel, testerViewTabs } from './qa-labels';
+import { QaQueueRow } from './QaQueueRow';
 
 /**
- * The tester's queue.
+ * The tester's queue — all nine views the web workspace has.
  *
- * One request answers both halves: `GET /qa/assignments` returns the counts behind every view and
- * the selected view's list, so switching views does not mean two round trips to find out that the
- * next one is empty.
- *
- * Assigning testing to somebody is not here. That is a decision about who does what, taken with a
- * team's workload in front of you; what a phone is for is working through what you have been given.
+ * Nine, because a tester's day is nine different questions and answering them by filtering one
+ * list is how things get missed. One request answers both halves: `GET /qa/assignments` returns
+ * the counts behind every view with the selected view's list, so the badges cannot disagree with
+ * the rows beneath them.
  */
 export function QaQueueScreen({ onOpen }: { onOpen: (assignmentId: string) => void }) {
   const theme = useTheme();
   const [view, setView] = useState<TesterView>(TESTER_VIEW.MINE);
-  const query = useResource<TesterQueue>(['qa', 'assignments', view], '/qa/assignments', {
+  const query = useResource<TesterQueue>(['qa', 'queue', view], '/qa/assignments', {
     query: { view, limit: 50 },
   });
 
   const queue = query.data?.queue ?? [];
-  const counts = query.data?.counts ?? null;
+  // The previous view's counts stay up while the next one loads, so the tabs do not flicker.
+  const [counts, setCounts] = useState(query.data?.counts ?? null);
+  if (query.data && query.data.counts !== counts) {
+    setCounts(query.data.counts);
+  }
 
   const header = (
-    <View
-      style={{
-        gap: theme.spacing.sm,
-        padding: theme.spacing.screen,
-        paddingBottom: theme.spacing.xs,
-      }}
-    >
-      <Segmented
-        options={PHONE_TESTER_VIEWS}
-        value={view}
-        onChange={setView}
-        label="Which testing to show"
-      />
-      {counts ? (
-        <QueueCounts
-          mine={counts[TESTER_VIEW.MINE]}
-          ready={counts[TESTER_VIEW.READY]}
-          overdue={counts[TESTER_VIEW.OVERDUE]}
-        />
-      ) : null}
-    </View>
+    <TabBar
+      options={testerViewTabs(counts)}
+      value={view}
+      onChange={setView}
+      accessibilityLabel="Which testing to show"
+    />
   );
 
   if (query.isLoading) {
@@ -85,47 +71,23 @@ export function QaQueueScreen({ onOpen }: { onOpen: (assignmentId: string) => vo
       <FlatList
         data={queue}
         keyExtractor={(assignment) => assignment.id}
-        contentContainerStyle={{
-          gap: theme.spacing.sm,
-          padding: theme.spacing.screen,
-          paddingTop: theme.spacing.sm,
-        }}
+        contentContainerStyle={{ gap: theme.spacing.sm, padding: theme.spacing.screen }}
         refreshControl={
-          <RefreshControl
-            refreshing={query.isRefetching}
+          <PullRefresh
+            busy={query.isRefetching}
             onRefresh={() => void query.refetch()}
             tintColor={theme.colors.primary}
           />
         }
         ListEmptyComponent={
-          <EmptyState title="Nothing to test" description="This view is empty right now." />
+          <EmptyState
+            title="Nothing here"
+            description={`No assignments in "${testerViewLabel(view)}" right now.`}
+            icon="flask-outline"
+            iconTone="violet"
+          />
         }
-        renderItem={({ item }) => (
-          <PressableCard
-            accessibilityLabel={item.subjectLabel}
-            accessibilityHint="Opens the assignment"
-            onPress={() => onOpen(item.id)}
-          >
-            <AppText size="xs" tone="faint" numberOfLines={1}>
-              {item.projectName} · {humanise(item.kind)} · {item.environment.toLowerCase()}
-            </AppText>
-            <AppText weight="medium" numberOfLines={2}>
-              {item.subjectLabel}
-            </AppText>
-            <PillRow>
-              <Pill
-                label={assignmentStatusLabel(item.status)}
-                tone={assignmentStatusTone(item.status)}
-              />
-              {item.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
-            </PillRow>
-            {item.dueAt ? (
-              <AppText size="xs" tone="muted">
-                Due {formatDateTime(item.dueAt)}
-              </AppText>
-            ) : null}
-          </PressableCard>
-        )}
+        renderItem={({ item }) => <QaQueueRow item={item} onOpen={() => onOpen(item.id)} />}
       />
     </Screen>
   );

@@ -14,6 +14,7 @@ import type {
   MessagePage,
   MessageRevisionSummary,
   MessageSummary,
+  SendMessageInput,
 } from '@ashniva/types';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -210,7 +211,7 @@ export function useConversationMutations(conversationId: string | undefined) {
 
   return {
     send: useMutation({
-      mutationFn: (input: { body: string; attachmentIds?: string[]; clientMessageId?: string }) =>
+      mutationFn: (input: SendMessageInput) =>
         apiRequest<MessageSummary>(`/conversations/${conversationId}/messages`, {
           method: 'POST',
           body: input,

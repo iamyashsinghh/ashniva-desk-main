@@ -1,4 +1,4 @@
-import type { PermissionKey, SessionUser } from '@ashniva/types';
+import type { AcceptInvitationRequest, PermissionKey, SessionUser } from '@ashniva/types';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
@@ -10,8 +10,13 @@ import {
   type ReactNode,
 } from 'react';
 
+import {
+  acceptInvitation as acceptInvitationRequest,
+  switchOrganization as switchOrganizationRequest,
+} from './account-api';
 import { login as loginRequest, logout as logoutRequest, restoreSession } from './auth-api';
-import { subscribeToSession } from './session-store';
+import { unregisterPushDevice } from '../../shared/notifications/push-registration';
+import { subscribeToSession, updateSessionUser } from './session-store';
 
 /**
  * The session, as the screens see it.
@@ -32,6 +37,12 @@ interface SessionContextValue {
   user: SessionUser | null;
   can: (permission: PermissionKey) => boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  /** Sets the first password from an invitation link and signs the new person in. */
+  acceptInvitation: (input: AcceptInvitationRequest) => Promise<void>;
+  /** Moves the session to another organization in `user.organizations`. */
+  switchOrganization: (organizationId: string) => Promise<void>;
+  /** Applies a change the API has already accepted to the signed-in person, such as a picture. */
+  updateUser: (change: (user: SessionUser) => SessionUser) => void;
   signOut: () => Promise<void>;
 }
 
@@ -57,7 +68,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // The API client clears the session when a refresh is refused mid-use. Subscribing means an
-  // expired session takes the app back to sign-in wherever it happens, not only on launch.
+  // expired session takes the app back to sign-in wherever it happens, not only on launch — and
+  // that an app started offline becomes signed-in the first time a refresh gets through.
   useEffect(
     () =>
       subscribeToSession((session) => {
@@ -65,7 +77,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setStatus('signed-out');
           setUser(null);
           queryClient.clear();
+          return;
         }
+        setStatus((previous) => (previous === 'offline' ? 'signed-in' : previous));
       }),
     [queryClient],
   );
@@ -76,7 +90,35 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setStatus('signed-in');
   }, []);
 
+  const acceptInvitation = useCallback(async (input: AcceptInvitationRequest) => {
+    const signedIn = await acceptInvitationRequest(input);
+    setUser(signedIn);
+    setStatus('signed-in');
+  }, []);
+
+  const switchOrganization = useCallback(
+    async (organizationId: string) => {
+      const switched = await switchOrganizationRequest(organizationId);
+      // Every cached answer belongs to the organization just left. Requests still in flight are
+      // cancelled first so a late reply cannot write the old organization's rows back in after the
+      // clear.
+      await queryClient.cancelQueries();
+      queryClient.clear();
+      setUser(switched);
+      setStatus('signed-in');
+    },
+    [queryClient],
+  );
+
+  const updateUser = useCallback((change: (user: SessionUser) => SessionUser) => {
+    setUser((previous) => (previous ? change(previous) : previous));
+    void updateSessionUser(change);
+  }, []);
+
   const signOut = useCallback(async () => {
+    // Before the logout, while there is still a token to authenticate with: a phone handed to the
+    // next person must stop receiving the previous person's alerts.
+    await unregisterPushDevice();
     await logoutRequest();
     setUser(null);
     setStatus('signed-out');
@@ -94,9 +136,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       user,
       can: (permission) => user?.permissions.includes(permission) ?? false,
       signIn,
+      acceptInvitation,
+      switchOrganization,
+      updateUser,
       signOut,
     }),
-    [status, user, signIn, signOut],
+    [status, user, signIn, acceptInvitation, switchOrganization, updateUser, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

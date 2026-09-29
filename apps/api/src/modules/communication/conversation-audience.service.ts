@@ -11,6 +11,7 @@ import {
 
 import { PrismaService } from '../../database/prisma.service';
 import { TaskChatScopeService } from '../tasks/task-chat-scope.service';
+import { USER_REF_WITH_AVATAR_SELECT, toUserRefWithAvatar } from '../users/user-avatar';
 import { CommunicationPolicyService } from './communication-policy.service';
 import { ConversationsService } from './conversations.service';
 import type { ConversationRow } from './conversations.repository';
@@ -192,7 +193,7 @@ export class ConversationAudienceService {
     const [users, memberships] = await Promise.all([
       this.prisma.user.findMany({
         where: { id: { in: userIds } },
-        select: { id: true, name: true, email: true },
+        select: USER_REF_WITH_AVATAR_SELECT,
         orderBy: { name: 'asc' },
       }),
       row.projectId === null
@@ -207,7 +208,10 @@ export class ConversationAudienceService {
     const roles = new Map<string, ProjectMemberRole>(
       memberships.map((member) => [member.userId, member.role as ProjectMemberRole]),
     );
-    return users.map((user) => ({ ...user, projectRole: roles.get(user.id) ?? null }));
+    return users.map((user) => ({
+      ...toUserRefWithAvatar(user),
+      projectRole: roles.get(user.id) ?? null,
+    }));
   }
 
   /**

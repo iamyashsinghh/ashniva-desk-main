@@ -1,29 +1,38 @@
-import type { ApprovalHistoryEntry, FileSummary } from '@ashniva/types';
+import type { ApprovalHistoryEntry } from '@ashniva/types';
 import { View } from 'react-native';
 
-import { formatBytes } from '../../shared/attachments/attachments';
+import { IconTile } from '../../shared/components/Icon';
 import { Section } from '../../shared/components/layout';
-import { AppText, Divider } from '../../shared/components/primitives';
+import { AppText, Divider, Pill } from '../../shared/components/primitives';
 import { formatDateTime } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { approvalStatusLabel } from './approval-display';
+import { approvalStatusIcon, approvalStatusLabel } from './approval-display';
 
 /**
- * The trail behind a request, and what is attached to it.
+ * The trail behind a request.
  *
- * Both halves are rendered from whatever the API sent. The provider's DTO and the client's carry
- * the same two field names and deliberately not the same rows — the client's history is built by
- * an allow-list mapper — so one component can draw both without either audience learning what the
- * other was told.
+ * Rendered from whatever the API sent. The provider's DTO and the client's carry the same field
+ * name and deliberately not the same rows — the client's history is built by an allow-list
+ * mapper — so one component can draw both without either audience learning what the other was
+ * told. Each entry says which side acted, as the web trail does, because "Changes requested by
+ * Priya" means something different depending on whose Priya she is.
  */
-
-export function ApprovalHistoryCard({ history }: { history: readonly ApprovalHistoryEntry[] }) {
+export function ApprovalHistoryCard({
+  history,
+  clientSide = false,
+}: {
+  history: readonly ApprovalHistoryEntry[];
+  /** Whether the reader is the client, which changes whose side is "you". */
+  clientSide?: boolean;
+}) {
+  const theme = useTheme();
   // The trail is folded: it is secondary to what is being asked and what can be done, and it is
   // already on the device, so opening it is one tap and no request. An empty trail has nothing to
   // fold, so its one sentence stays in view.
   return (
     <Section
       title="History"
+      icon="time-outline"
       count={history.length > 0 ? history.length : undefined}
       collapsible={history.length > 0}
       initiallyOpen={false}
@@ -33,50 +42,40 @@ export function ApprovalHistoryCard({ history }: { history: readonly ApprovalHis
           Nothing has happened to this request yet.
         </AppText>
       ) : (
-        history.map((entry, index) => (
-          <View key={entry.id} style={{ gap: 2 }}>
-            {index > 0 ? <Divider /> : null}
-            <AppText size="xs" tone="faint">
-              {entry.actor.name} · {formatDateTime(entry.createdAt)}
-            </AppText>
-            <AppText size="sm" weight="medium">
-              {approvalStatusLabel(entry.toStatus)}
-            </AppText>
-            {entry.comment ? <AppText size="sm">{entry.comment}</AppText> : null}
-          </View>
-        ))
+        history.map((entry, index) => {
+          const mark = approvalStatusIcon(entry.toStatus);
+          return (
+            <View key={entry.id} style={{ gap: theme.spacing.sm }}>
+              {index > 0 ? <Divider /> : null}
+              <View style={{ flexDirection: 'row', gap: theme.spacing.md }}>
+                <IconTile name={mark.icon} tone={mark.tone} size={28} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <AppText size="xs" tone="faint">
+                    {entry.actor.name} · {formatDateTime(entry.createdAt)}
+                  </AppText>
+                  <View style={{ alignItems: 'center', flexDirection: 'row', gap: 6 }}>
+                    <AppText size="sm" weight="medium" style={{ flexShrink: 1 }}>
+                      {approvalStatusLabel(entry.toStatus)}
+                    </AppText>
+                    <Pill
+                      label={sideLabel(entry.side, clientSide)}
+                      tone={entry.side === 'CLIENT' ? 'info' : 'neutral'}
+                    />
+                  </View>
+                  {entry.comment ? <AppText size="sm">{entry.comment}</AppText> : null}
+                </View>
+              </View>
+            </View>
+          );
+        })
       )}
     </Section>
   );
 }
 
-/**
- * Attachments, listed rather than opened.
- *
- * Downloading a client's file onto the device and handing it to another app is a decision this
- * app has not taken — see the README. Naming the files is still worth doing: somebody deciding on
- * a request needs to know a signed document is attached even if they will open it at a desk.
- */
-export function ApprovalFilesCard({ files }: { files: readonly FileSummary[] }) {
-  const theme = useTheme();
-
-  if (files.length === 0) {
-    return null;
+function sideLabel(side: ApprovalHistoryEntry['side'], clientSide: boolean): string {
+  if (side === 'CLIENT') {
+    return clientSide ? 'Your team' : 'Client';
   }
-
-  return (
-    <Section title={`Attached (${files.length})`}>
-      {files.map((file, index) => (
-        <View key={file.id} style={{ gap: theme.spacing.xs }}>
-          {index > 0 ? <Divider /> : null}
-          <AppText size="sm" weight="medium" numberOfLines={2}>
-            {file.name}
-          </AppText>
-          <AppText size="xs" tone="faint">
-            {formatBytes(file.sizeBytes)} · open it on the web app
-          </AppText>
-        </View>
-      ))}
-    </Section>
-  );
+  return clientSide ? 'Provider' : 'Our team';
 }

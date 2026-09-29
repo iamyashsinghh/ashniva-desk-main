@@ -15,6 +15,8 @@ export interface SendMessageDraft {
    * it matters: the send whose response was lost on the way back.
    */
   clientMessageId: string;
+  /** The message this answers, when the sender pressed Reply. */
+  replyToId?: string;
 }
 
 /**
@@ -41,6 +43,9 @@ export type ComposerFailure = { kind: 'mention' | 'other'; message: string };
  * with nothing saying so. `draftChanged` is called wherever the draft changes, which is the rule
  * the mobile composer already follows.
  *
+ * **So does the message being answered.** Choosing a different line to reply to, or cancelling
+ * the reply, makes the next send a different message.
+ *
  * **The files count as the draft.** Attaching or removing one releases the key too, and for the
  * sharper version of the same failure: the first send landed and adopted nothing, the sender adds
  * the file they meant to include, presses Send, and the key returns the original message — without
@@ -60,12 +65,18 @@ export function useComposerSend(send: (draft: SendMessageDraft) => Promise<void>
     body: string,
     attachmentIds: string[],
     mentionNames: ReadonlyMap<string, string>,
+    replyToId?: string,
   ): Promise<boolean> {
     pendingKey.current ??= crypto.randomUUID();
     setBusy(true);
     setFailure(null);
     try {
-      await send({ body, attachmentIds, clientMessageId: pendingKey.current });
+      await send({
+        body,
+        attachmentIds,
+        clientMessageId: pendingKey.current,
+        ...(replyToId ? { replyToId } : {}),
+      });
       pendingKey.current = null;
       return true;
     } catch (cause) {

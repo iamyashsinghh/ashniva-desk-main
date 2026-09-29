@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import type { PermissionKey } from '../permissions/permission-keys';
 import type { RoleKey } from '../roles/role-keys';
+import type { UserAvatar } from './identity';
 
 /**
  * Session contract between the web/mobile apps and POST /auth/login, /auth/refresh, /auth/me.
@@ -42,6 +43,8 @@ export interface SessionUser {
   organization: SessionOrganization;
   /** Every organization the user can switch to (memberships). */
   organizations: SessionOrganization[];
+  /** Their own picture, so the profile screen and the header can draw it without another call. */
+  avatar?: UserAvatar | null;
 }
 
 export interface SessionResponse {

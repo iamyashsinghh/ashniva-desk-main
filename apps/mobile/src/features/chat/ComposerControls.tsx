@@ -7,6 +7,7 @@ import {
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Glyph } from '../../shared/components/glyph';
+import { Icon } from '../../shared/components/Icon';
 import { AppText, Button } from '../../shared/components/primitives';
 import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -61,6 +62,7 @@ export function SendFailure({
           </AppText>
           <Button
             label="Send without the mention"
+            icon="send"
             variant="secondary"
             size="sm"
             onPress={onSendWithoutMentions}
@@ -97,6 +99,7 @@ export function AttachmentStrip({
             paddingRight: theme.spacing.xs,
           }}
         >
+          <Icon name="document-attach-outline" size={14} color={theme.colors.primary} />
           <View style={{ flexShrink: 1 }}>
             <AppText size="xs" weight="medium" numberOfLines={1}>
               {file.name}
@@ -152,20 +155,48 @@ export function ComposerNotices({
   );
 }
 
+/** Said above the bar while a group message tags somebody, because that makes it private. */
+export function PrivateNotice() {
+  const theme = useTheme();
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.xs }}
+    >
+      <Icon name="lock-closed" size={12} color={theme.colors.warning} />
+      <AppText size="xs" tone="warning" style={{ flexShrink: 1 }}>
+        Private message: only the people you tag, Super Admins and Project Managers will see it.
+      </AppText>
+    </View>
+  );
+}
+
 /** In place of the composer when nobody may post: the API's own reason, in a quiet strip. */
-export function ComposerClosed({ reason }: { reason: CommunicationRefusal | null }) {
+export function ComposerClosed({
+  reason,
+  bottomInset = 0,
+}: {
+  reason: CommunicationRefusal | null;
+  bottomInset?: number;
+}) {
   const theme = useTheme();
   return (
     <View
       style={{
+        alignItems: 'center',
         backgroundColor: theme.colors.surface,
         borderColor: theme.colors.border,
         borderTopWidth: StyleSheet.hairlineWidth,
+        flexDirection: 'row',
+        gap: theme.spacing.sm,
+        justifyContent: 'center',
+        paddingBottom: theme.spacing.md + bottomInset,
         paddingHorizontal: theme.spacing.screen,
-        paddingVertical: theme.spacing.md,
+        paddingTop: theme.spacing.md,
       }}
     >
-      <AppText size="sm" tone="muted" align="center">
+      <Icon name="lock-closed-outline" size={15} color={theme.colors.textMuted} />
+      <AppText size="sm" tone="muted" align="center" style={{ flexShrink: 1 }}>
         {reason ? COMMUNICATION_REFUSAL_LABELS[reason] : 'You cannot post here.'}
       </AppText>
     </View>

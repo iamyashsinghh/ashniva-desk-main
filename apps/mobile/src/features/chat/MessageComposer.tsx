@@ -1,39 +1,40 @@
 import {
   MAX_MESSAGE_ATTACHMENTS,
   MAX_MESSAGE_LENGTH,
+  mentionsIn,
   type CommunicationRefusal,
-  type FileSummary,
   type MentionableUser,
   type MessageSummary,
 } from '@ashniva/types';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   type NativeSyntheticEvent,
+  type TextInput,
   type TextInputSelectionChangeEventData,
 } from 'react-native';
 
-import { errorMessage } from '../../shared/api/client';
-import { useApiMutation } from '../../shared/api/mutations';
-import {
-  pickDocument,
-  pickImage,
-  uploadAttachment,
-  UNPARENTED,
-  type PickedFile,
-} from '../../shared/attachments/attachments';
-import { conversationKeys, useMentionable } from './chat-api';
+import { useMentionable } from './chat-api';
 import { newClientMessageId } from './client-message-id';
 import { ComposerBar } from './ComposerBar';
-import { AttachmentStrip, ComposerClosed, ComposerNotices, SendFailure } from './ComposerControls';
+import { useComposerAttachments, useSendMessage } from './composer-hooks';
+import {
+  AttachmentStrip,
+  ComposerClosed,
+  ComposerNotices,
+  PrivateNotice,
+  SendFailure,
+} from './ComposerControls';
 import {
   activeMention,
+  draftToBody,
   insertMention,
   mentionSearchTerm,
   type MentionDraft,
 } from './mention-draft';
 import { withMentionsAsPlainText } from './mention-refusal';
 import { MentionSuggestions } from './MentionSuggestions';
+import { ReplyPreview } from './ReplyPreview';
 
 /**
  * Writing a message.
@@ -63,34 +64,52 @@ export interface MessageComposerProps {
   /** Why not, when the server refused. Rendered instead of the composer, in the API's own words. */
   reason: CommunicationRefusal | null;
   onSent?: () => void;
+  /** The message being answered: the send carries its id as `replyToId`. */
+  replyingTo?: MessageSummary | null;
+  onCancelReply?: () => void;
+  /** A group, where tagging somebody makes the message private to them. */
+  tagsArePrivate?: boolean;
+  /** Names for the mentions in the message being answered. */
+  names?: ReadonlyMap<string, string>;
+  /** The reader, so the reply bar says "You" over their own line. */
+  viewerId?: string | null;
+  /** The home indicator's height, filled with the composer's own colour. */
+  bottomInset?: number;
 }
 
-export function MessageComposer({ conversationId, canPost, reason, onSent }: MessageComposerProps) {
+const NO_NAMES: ReadonlyMap<string, string> = new Map();
+
+export function MessageComposer({
+  conversationId,
+  canPost,
+  reason,
+  onSent,
+  replyingTo = null,
+  onCancelReply,
+  tagsArePrivate = false,
+  names = NO_NAMES,
+  viewerId = null,
+  bottomInset = 0,
+}: MessageComposerProps) {
   const [draft, setDraft] = useState('');
   const [caret, setCaret] = useState(0);
-  const [attachments, setAttachments] = useState<FileSummary[]>([]);
-  const [attachError, setAttachError] = useState<string | null>(null);
-  const [attaching, setAttaching] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(true);
 
   /**
    * The id this draft is being sent under.
    *
    * Created on the first attempt and kept until one succeeds, so a retry is the same send. Cleared
-   * on success and whenever the draft changes, because the next thing typed is a different message.
-   *
-   * **The files are part of the draft**, so attaching or removing one clears it too. Only a *retry*
-   * of the same words and the same files reuses a key; anything else would risk the server
-   * answering with the earlier message and the composer clearing what has not been sent.
+   * on success and whenever the draft — its words or its files — changes, because anything but a
+   * retry risks the server answering with the earlier message and clearing what was not sent.
    */
   const sendId = useRef<string | null>(null);
 
   /**
-   * The names behind the mention tokens in the draft.
+   * The people picked into the draft, by id.
    *
-   * The picker is the only place on this screen where an id is paired with a name, so it is where
-   * the pairing is remembered — for the two moments it is needed: naming who was refused, and
-   * rewriting the token as plain text. A token this map has forgotten degrades to `@someone`.
+   * The field shows their names; this is what turns those names back into mentions when the
+   * message is sent (`draftToBody`), names who was refused, and is emptied when the mentions are
+   * sent as plain text so the resend does not tag anyone.
    *
    * State rather than a ref because the refusal sentence is *rendered* from it.
    */
@@ -99,24 +118,29 @@ export function MessageComposer({ conversationId, canPost, reason, onSent }: Mes
   const mention = mentionOpen ? activeMention(draft, caret) : null;
   const audience = useMentionable(conversationId, mentionSearchTerm(mention), mention !== null);
 
-  const send = useApiMutation<
-    { body: string; attachmentIds: string[]; clientMessageId: string },
-    MessageSummary
-  >({
-    path: `/conversations/${conversationId}/messages`,
-    body: (variables) => ({
-      body: variables.body,
-      clientMessageId: variables.clientMessageId,
-      ...(variables.attachmentIds.length > 0 ? { attachmentIds: variables.attachmentIds } : {}),
-    }),
-    invalidate: conversationKeys(conversationId),
-    onSuccess: () => {
-      sendId.current = null;
-      setDraft('');
-      setAttachments([]);
-      onSent?.();
-    },
+  const files = useComposerAttachments(() => {
+    sendId.current = null;
   });
+  const send = useSendMessage(conversationId, () => {
+    sendId.current = null;
+    setDraft('');
+    setCaret(0);
+    files.clear();
+    setMentionNames(new Map());
+    onCancelReply?.();
+    onSent?.();
+  });
+
+  // Answering somebody else is a different message, so it is sent under a different key. Choosing
+  // a reply also puts the caret in the field, because answering is why the person chose it.
+  const field = useRef<TextInput>(null);
+  const replyId = replyingTo?.id ?? null;
+  useEffect(() => {
+    sendId.current = null;
+    if (replyId) {
+      field.current?.focus();
+    }
+  }, [replyId]);
 
   const onChangeText = useCallback((text: string) => {
     setDraft(text);
@@ -125,8 +149,7 @@ export function MessageComposer({ conversationId, canPost, reason, onSent }: Mes
     // depends entirely on a selection event arriving, and a keyboard that does not send one —
     // or a change made any way but typing — leaves the `@` unnoticed.
     setCaret(text.length);
-    // A new draft is a new message, so it gets a new id. Only a *retry* of the same text reuses
-    // one — which is the whole point of holding it.
+    // A new draft is a new message, so it gets a new id; only a retry of the same text reuses one.
     sendId.current = null;
     setMentionOpen(true);
   }, []);
@@ -137,31 +160,8 @@ export function MessageComposer({ conversationId, canPost, reason, onSent }: Mes
     [],
   );
 
-  const pick = async (picker: () => Promise<PickedFile | null>) => {
-    setAttachError(null);
-    setAttaching(true);
-    try {
-      const file = await picker();
-      if (!file) {
-        // The picker was opened and dismissed. Nothing changed, so the key stands.
-        return;
-      }
-      // A different set of files is a different message, exactly as different words are — and the
-      // sharper case: the first send landed carrying nothing, and this is the file it should have
-      // carried. Reusing the key would answer with that first message and clear the strip.
-      sendId.current = null;
-      // No parent: the message adopts the file when it is sent. See `AttachmentTarget`.
-      const uploaded = await uploadAttachment(file, UNPARENTED);
-      setAttachments((current) => [...current, uploaded]);
-    } catch (cause) {
-      setAttachError(errorMessage(cause));
-    } finally {
-      setAttaching(false);
-    }
-  };
-
   const chooseMention = (person: MentionableUser, at: MentionDraft) => {
-    const next = insertMention(draft, at, person.userId);
+    const next = insertMention(draft, at, person.name);
     setMentionNames((current) => new Map(current).set(person.userId, person.name));
     setDraft(next.text);
     setCaret(next.caret);
@@ -169,34 +169,35 @@ export function MessageComposer({ conversationId, canPost, reason, onSent }: Mes
     setMentionOpen(false);
   };
 
-  const body = draft.trim();
-  const tooLong = draft.length > MAX_MESSAGE_LENGTH;
+  const body = draftToBody(draft.trim(), mentionNames);
+  const tooLong = body.length > MAX_MESSAGE_LENGTH;
   const canSend =
-    !tooLong && !send.busy && !attaching && (body.length > 0 || attachments.length > 0);
+    !tooLong && !send.busy && !files.busy && (body.length > 0 || files.files.length > 0);
+  const goesPrivate = tagsArePrivate && mentionsIn(body).length > 0;
 
   const submit = (text: string) => {
     sendId.current ??= newClientMessageId();
     void send.run({
       body: text,
-      attachmentIds: attachments.map((file) => file.id),
+      attachmentIds: files.files.map((file) => file.id),
       clientMessageId: sendId.current,
+      // No mention of the person answered in the body: the server notifies them for the reply.
+      replyToId: replyingTo?.id ?? null,
     });
   };
 
   /**
-   * The same words again, with the refused mention written out as a name.
-   *
-   * The draft is rewritten too, so what is being sent is what the sender can see. The key is
-   * deliberately kept: the audience is checked before the row is written, so a refusal means
-   * nothing was stored under it, and re-presenting it is one message sent once.
+   * The same words again with the mentions as plain names — which is what the field already shows,
+   * so what is sent is what the sender sees. The key is kept: a refusal means nothing was stored
+   * under it.
    */
   const sendWithMentionsAsPlainText = () => {
-    setDraft(withMentionsAsPlainText(draft, mentionNames));
     submit(withMentionsAsPlainText(body, mentionNames));
+    setMentionNames(new Map());
   };
 
   if (!canPost) {
-    return <ComposerClosed reason={reason} />;
+    return <ComposerClosed reason={reason} bottomInset={bottomInset} />;
   }
 
   return (
@@ -211,12 +212,15 @@ export function MessageComposer({ conversationId, canPost, reason, onSent }: Mes
       ) : null}
 
       <ComposerBar
-        attachDisabled={attaching || attachments.length >= MAX_MESSAGE_ATTACHMENTS}
-        onAttachPhoto={() => void pick(pickImage)}
-        onAttachFile={() => void pick(pickDocument)}
+        attachDisabled={files.busy || files.files.length >= MAX_MESSAGE_ATTACHMENTS}
+        onAttachPhoto={files.attachPhoto}
+        onAttachCamera={files.attachCamera}
+        onAttachFile={files.attachFile}
+        bottomInset={bottomInset}
+        fieldRef={field}
         field={{
           accessibilityLabel: 'Your message',
-          placeholder: 'Message',
+          placeholder: replyingTo ? 'Reply' : 'Message',
           value: draft,
           onChangeText,
           onSelectionChange,
@@ -225,14 +229,16 @@ export function MessageComposer({ conversationId, canPost, reason, onSent }: Mes
         sendDisabled={!canSend}
         onSend={() => submit(body)}
       >
-        {attachments.length > 0 ? (
-          <AttachmentStrip
-            files={attachments}
-            onRemove={(id) => {
-              setAttachments((current) => current.filter((file) => file.id !== id));
-              sendId.current = null;
-            }}
+        {replyingTo ? (
+          <ReplyPreview
+            replyingTo={replyingTo}
+            names={names}
+            viewerId={viewerId}
+            onCancel={() => onCancelReply?.()}
           />
+        ) : null}
+        {files.files.length > 0 ? (
+          <AttachmentStrip files={files.files} onRemove={files.remove} />
         ) : null}
 
         <SendFailure
@@ -242,7 +248,8 @@ export function MessageComposer({ conversationId, canPost, reason, onSent }: Mes
           names={mentionNames}
           onSendWithoutMentions={sendWithMentionsAsPlainText}
         />
-        <ComposerNotices attachError={attachError} length={draft.length} />
+        {goesPrivate ? <PrivateNotice /> : null}
+        <ComposerNotices attachError={files.error} length={body.length} />
       </ComposerBar>
     </View>
   );

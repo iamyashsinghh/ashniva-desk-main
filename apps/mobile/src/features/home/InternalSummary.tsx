@@ -1,61 +1,134 @@
-import {
-  PERMISSIONS,
-  TASK_LIST_VIEW,
-  TASK_STATUS_LABELS,
-  TICKET_STATUS_LABELS,
-  type TaskSummary,
-  type TicketSummary,
-} from '@ashniva/types';
+import { isManagerRole, type DashboardResponse, type OperationsDashboard } from '@ashniva/types';
+import type { UseQueryResult } from '@tanstack/react-query';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
-import { usePagedResource } from '../../shared/api/queries';
+import { useResource } from '../../shared/api/queries';
 import { StatTile, TileGrid } from '../../shared/components/data-display';
-import { PressableCard, SectionHeader } from '../../shared/components/layout';
-import { AppText, Button, Pill, PillRow } from '../../shared/components/primitives';
+import { Icon } from '../../shared/components/Icon';
+import { Segmented, type SegmentOption } from '../../shared/components/navigation-list';
+import { AppText, Button, cardStyle } from '../../shared/components/primitives';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { useSession } from '../auth/SessionProvider';
 import { useInbox } from '../notifications/notifications-api';
-import { taskTone, timingPill } from '../tasks/task-display';
-import { ticketTone } from '../tickets/ticket-display';
-import { PREVIEW_LENGTH as PREVIEW, TileSkeleton } from './HomeDashboard';
+import { DashboardBody } from './dashboards/DashboardBody';
+import { DashboardActionsProvider, type DashboardHandlers } from './dashboards/dashboard-actions';
+import { OperationsBoard } from './dashboards/OperationsBoard';
+import { TileSkeleton } from './HomeDashboard';
 
 /**
- * Home's summary for the people who do the work: unread alerts, what is up next, and the latest
- * tickets — each the first page of the list its own tab loads, under the same query key.
+ * Home's summary for the people who do the work: the same role dashboard the web app shows, from
+ * the same `GET /dashboard`, with every tile opening the list it counted.
+ *
+ * Managers and team leads also get the operations board, as on the web. The role check only
+ * decides whether to offer it; the API refuses the route to anybody else and chooses its own
+ * sections. Only the visible panel is fetched and polled.
  */
 
+export const DASHBOARD_KEY = ['dashboard'] as const;
+export const OPERATIONS_KEY = ['dashboard', 'operations'] as const;
+const POLL = 60_000;
+
+type Panel = 'mine' | 'operations';
+
+const PANELS: readonly SegmentOption<Panel>[] = [
+  { value: 'mine', label: 'My dashboard', icon: 'person-circle-outline' },
+  { value: 'operations', label: 'Operations', icon: 'pulse-outline' },
+];
+
 export function InternalSummary({
-  onOpenTask,
-  onOpenTasks,
-  onOpenTicket,
-  onOpenTickets,
   onOpenAlerts,
-}: {
-  onOpenTask?: (id: string) => void;
-  onOpenTasks?: () => void;
-  onOpenTicket?: (id: string) => void;
-  onOpenTickets?: () => void;
-  onOpenAlerts?: () => void;
-}) {
-  const { can } = useSession();
-  const showTasks = can(PERMISSIONS.TASK_READ) && Boolean(onOpenTask);
-  const showTickets =
-    (can(PERMISSIONS.TICKET_READ) || can(PERMISSIONS.TICKET_RAISE)) && Boolean(onOpenTicket);
+  ...handlers
+}: DashboardHandlers & { onOpenAlerts?: () => void }) {
+  const theme = useTheme();
+  const { user } = useSession();
+  const canSeeOperations = user ? isManagerRole(user.roleKey) : false;
+  const [panel, setPanel] = useState<Panel>('mine');
+  const active = canSeeOperations ? panel : 'mine';
+
+  const dashboard = useResource<DashboardResponse>(DASHBOARD_KEY, '/dashboard', {
+    enabled: active === 'mine',
+    refetchInterval: POLL,
+  });
+  const operations = useResource<OperationsDashboard>(OPERATIONS_KEY, '/dashboard/operations', {
+    enabled: active === 'operations',
+    refetchInterval: POLL,
+  });
 
   return (
-    <>
-      {onOpenAlerts ? <AlertsTile onOpen={onOpenAlerts} /> : null}
-      {showTasks && onOpenTask ? <UpNext onOpen={onOpenTask} onOpenAll={onOpenTasks} /> : null}
-      {showTickets && onOpenTicket ? (
-        <RecentTickets onOpen={onOpenTicket} onOpenAll={onOpenTickets} />
-      ) : null}
-    </>
+    <DashboardActionsProvider handlers={handlers}>
+      <View style={{ gap: theme.spacing.section }}>
+        {canSeeOperations ? (
+          <Segmented label="Dashboard view" options={PANELS} value={active} onChange={setPanel} />
+        ) : null}
+        {onOpenAlerts ? <AlertsTile onOpen={onOpenAlerts} /> : null}
+        {active === 'operations' ? (
+          <Loaded query={operations}>{(data) => <OperationsBoard data={data} />}</Loaded>
+        ) : (
+          <Loaded query={dashboard}>{(data) => <DashboardBody data={data} />}</Loaded>
+        )}
+      </View>
+    </DashboardActionsProvider>
   );
 }
 
+/**
+ * A dashboard query's three states, sized for the middle of Home. What was loaded earlier stays on
+ * screen when a refresh fails — Home has to be readable offline — and only a first load that
+ * failed shows the retry card.
+ */
+function Loaded<T>({
+  query,
+  children,
+}: {
+  query: UseQueryResult<T>;
+  children: (data: T) => ReactNode;
+}) {
+  const theme = useTheme();
+  if (query.data) {
+    return <>{children(query.data)}</>;
+  }
+  if (query.isLoading) {
+    return (
+      <View
+        accessible
+        accessibilityLabel="Loading your dashboard"
+        style={{ gap: theme.spacing.md }}
+      >
+        <TileSkeleton />
+        <TileSkeleton />
+      </View>
+    );
+  }
+  if (!query.error) {
+    return null;
+  }
+  return (
+    <View
+      style={[
+        cardStyle(theme),
+        { alignItems: 'center', flexDirection: 'row', gap: theme.spacing.md },
+      ]}
+    >
+      <Icon name="cloud-offline-outline" size={22} color={theme.colors.warning} />
+      <AppText size="sm" tone="muted" style={{ flex: 1 }}>
+        Your dashboard could not be loaded.
+      </AppText>
+      <Button
+        label="Try again"
+        variant="ghost"
+        size="sm"
+        icon="refresh"
+        onPress={() => void query.refetch()}
+      />
+    </View>
+  );
+}
+
+/** Only while something is unread: the header's bell is always there, this is the nudge. */
 function AlertsTile({ onOpen }: { onOpen: () => void }) {
   const inbox = useInbox();
-  if (inbox.isLoading || inbox.error) {
+  if (inbox.isLoading || inbox.error || inbox.unreadCount === 0) {
     return null;
   }
   return (
@@ -63,111 +136,12 @@ function AlertsTile({ onOpen }: { onOpen: () => void }) {
       <StatTile
         label="Unread alerts"
         value={inbox.unreadCount}
-        caption={inbox.unreadCount > 0 ? 'Waiting for you' : 'You are up to date'}
-        tone={inbox.unreadCount > 0 ? 'primary' : 'default'}
+        caption="Waiting for you"
+        tone="primary"
+        icon="notifications"
+        iconTone="danger"
         onPress={onOpen}
       />
     </TileGrid>
-  );
-}
-
-function UpNext({ onOpen, onOpenAll }: { onOpen: (id: string) => void; onOpenAll?: () => void }) {
-  const theme = useTheme();
-  // The Tasks tab's own query, key for key, so the two share one answer.
-  const list = usePagedResource<TaskSummary>(['tasks', TASK_LIST_VIEW.MY], '/tasks', {
-    view: TASK_LIST_VIEW.MY,
-    limit: 20,
-  });
-  const tasks = list.items.filter(Boolean).slice(0, PREVIEW);
-
-  if (list.isLoading) {
-    return <TileSkeleton />;
-  }
-  if (list.error || tasks.length === 0) {
-    return null;
-  }
-
-  return (
-    <View style={{ gap: theme.spacing.sm }}>
-      <SectionHeader
-        title="Up next"
-        action={
-          onOpenAll ? (
-            <Button label="All tasks" variant="ghost" size="sm" onPress={onOpenAll} />
-          ) : null
-        }
-      />
-      {tasks.map((task) => {
-        const timing = timingPill(task.timing);
-        return (
-          <PressableCard
-            key={task.id}
-            accessibilityLabel={`${task.key} ${task.title}`}
-            onPress={() => onOpen(task.id)}
-          >
-            <AppText size="xs" tone="faint" numberOfLines={1}>
-              {task.key} · {task.project.name}
-            </AppText>
-            <AppText weight="medium" numberOfLines={2}>
-              {task.title}
-            </AppText>
-            <PillRow>
-              <Pill label={TASK_STATUS_LABELS[task.status]} tone={taskTone(task.status)} />
-              {timing ? <Pill label={timing.label} tone={timing.tone} /> : null}
-            </PillRow>
-          </PressableCard>
-        );
-      })}
-    </View>
-  );
-}
-
-function RecentTickets({
-  onOpen,
-  onOpenAll,
-}: {
-  onOpen: (id: string) => void;
-  onOpenAll?: () => void;
-}) {
-  const theme = useTheme();
-  // The Tickets tab's own query.
-  const list = usePagedResource<TicketSummary>(['tickets'], '/tickets', { limit: 20 });
-  const tickets = list.items.filter(Boolean).slice(0, PREVIEW);
-
-  if (list.isLoading || list.error || tickets.length === 0) {
-    return null;
-  }
-
-  return (
-    <View style={{ gap: theme.spacing.sm }}>
-      <SectionHeader
-        title="Tickets"
-        action={
-          onOpenAll ? (
-            <Button label="All tickets" variant="ghost" size="sm" onPress={onOpenAll} />
-          ) : null
-        }
-      />
-      {tickets.map((ticket) => (
-        <PressableCard
-          key={ticket.id}
-          accessibilityLabel={`${ticket.key} ${ticket.title}`}
-          onPress={() => onOpen(ticket.id)}
-        >
-          <AppText size="xs" tone="faint" numberOfLines={1}>
-            {ticket.key} · {ticket.clientOrganization.name}
-          </AppText>
-          <AppText weight="medium" numberOfLines={2}>
-            {ticket.title}
-          </AppText>
-          <PillRow>
-            <Pill label={TICKET_STATUS_LABELS[ticket.status]} tone={ticketTone(ticket.status)} />
-            {ticket.sla?.overall === 'BREACHED' ? (
-              <Pill label="SLA breached" tone="danger" />
-            ) : null}
-          </PillRow>
-        </PressableCard>
-      ))}
-    </View>
   );
 }

@@ -1,15 +1,16 @@
 import { INVOICE_STATUS_LABELS, type PortalInvoiceDetail } from '@ashniva/types';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
-import { KeyValueRow, StatTile, TileGrid } from '../../shared/components/data-display';
-import { Hero, Section } from '../../shared/components/layout';
+import { KeyValueRow, MetaLine, StatTile, TileGrid } from '../../shared/components/data-display';
+import { Hero, Section, SectionHeader } from '../../shared/components/layout';
 import { AppText, Card, Divider, Pill, PillRow, Screen } from '../../shared/components/primitives';
 import { ErrorState, LoadingState } from '../../shared/components/states';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { invoiceDate } from './invoice-dates';
-import { invoiceTone } from './invoice-display';
+import { invoiceIconTone, invoiceTone } from './invoice-display';
+import { PullRefresh } from '../../shared/components/PullRefresh';
 
 /**
  * One invoice, as the client sees it.
@@ -70,14 +71,18 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
           paddingBottom: theme.spacing.xxl,
         }}
         refreshControl={
-          <RefreshControl
-            refreshing={query.isRefetching}
+          <PullRefresh
+            busy={query.isRefetching}
             onRefresh={() => void query.refetch()}
             tintColor={theme.colors.primary}
           />
         }
       >
-        <Hero title={invoice.numberLabel}>
+        <Hero
+          title={invoice.numberLabel}
+          icon="receipt"
+          iconTone={invoiceIconTone(invoice.status, invoice.isOverdue)}
+        >
           <PillRow>
             <Pill
               label={INVOICE_STATUS_LABELS[invoice.status]}
@@ -86,24 +91,31 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
             {invoice.isOverdue ? <Pill label="Overdue" tone="danger" /> : null}
             {invoice.reverseCharge ? <Pill label="Reverse charge" tone="warning" /> : null}
           </PillRow>
-          <AppText size="xs" tone="muted">
+          <MetaLine icon="calendar-outline" danger={invoice.isOverdue}>
             Issued {invoiceDate(invoice.issueDate)} · due {invoiceDate(invoice.dueDate)}
-          </AppText>
+          </MetaLine>
         </Hero>
 
         {/* The figure somebody opened the invoice to find, before the arithmetic behind it. */}
         <TileGrid>
-          <StatTile label="Total" value={`${invoice.currency} ${invoice.total}`} />
+          <StatTile
+            label="Total"
+            value={`${invoice.currency} ${invoice.total}`}
+            icon="cash-outline"
+            iconTone="teal"
+          />
           {paid ? (
             <StatTile
               label="Balance due"
               value={invoice.balanceDue}
               tone={invoice.isOverdue ? 'danger' : 'default'}
+              icon="wallet-outline"
+              iconTone={invoice.isOverdue ? 'danger' : 'warning'}
             />
           ) : null}
         </TileGrid>
 
-        <Section title={`Lines (${invoice.lineItems.length})`}>
+        <Section title={`Lines (${invoice.lineItems.length})`} icon="list-outline">
           {invoice.lineItems.map((line, index) => (
             <View key={line.id} style={{ gap: theme.spacing.sm }}>
               {index > 0 ? <Divider /> : null}
@@ -123,6 +135,7 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
         </Section>
 
         <Card style={{ gap: theme.spacing.xs }}>
+          <SectionHeader title="Summary" icon="calculator-outline" />
           {rows.map(([label, value]) => (
             <KeyValueRow key={label} label={label} value={value} />
           ))}
@@ -142,7 +155,7 @@ export function InvoiceDetailScreen({ invoiceId }: { invoiceId: string }) {
         </Card>
 
         {invoice.notes ? (
-          <Section title="Notes">
+          <Section title="Notes" icon="document-text-outline">
             <AppText size="sm">{invoice.notes}</AppText>
           </Section>
         ) : null}

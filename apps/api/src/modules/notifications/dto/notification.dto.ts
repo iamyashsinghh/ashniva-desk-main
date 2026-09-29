@@ -2,8 +2,12 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   NOTIFICATION_CHANNEL,
   NOTIFICATION_TYPE,
+  PUSH_DEVICE_PLATFORMS,
   type NotificationChannel,
   type NotificationType,
+  type PushDevicePlatform,
+  type RegisterPushDeviceRequest,
+  type UnregisterPushDeviceRequest,
 } from '@ashniva/types';
 import { Transform, Type } from 'class-transformer';
 import {
@@ -12,7 +16,9 @@ import {
   IsBoolean,
   IsIn,
   IsOptional,
+  IsString,
   Matches,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 
@@ -100,4 +106,26 @@ export class UnsubscribePushDto {
   @ApiProperty()
   @Matches(/^https:\/\//, { message: 'endpoint must be an https URL' })
   endpoint!: string;
+}
+
+const EXPO_PUSH_TOKEN = /^Expo(nent)?PushToken\[.+\]$/;
+
+export class RegisterPushDeviceDto implements RegisterPushDeviceRequest {
+  @ApiProperty({ example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]' })
+  @IsString()
+  @MaxLength(255)
+  @Matches(EXPO_PUSH_TOKEN, { message: 'token must be an Expo push token' })
+  token!: string;
+
+  @ApiProperty({ enum: PUSH_DEVICE_PLATFORMS })
+  @IsIn(PUSH_DEVICE_PLATFORMS)
+  platform!: PushDevicePlatform;
+}
+
+export class UnregisterPushDeviceDto implements UnregisterPushDeviceRequest {
+  @ApiProperty({ example: 'ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]' })
+  @IsString()
+  @MaxLength(255)
+  @Matches(EXPO_PUSH_TOKEN, { message: 'token must be an Expo push token' })
+  token!: string;
 }

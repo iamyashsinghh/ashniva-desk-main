@@ -1,58 +1,102 @@
-import { CONVERSATION_KIND, PAIR_MEMBERSHIP_KINDS, type ConversationDetail } from '@ashniva/types';
+import {
+  CONVERSATION_KIND,
+  PAIR_MEMBERSHIP_KINDS,
+  TAGGED_PRIVATE_KINDS,
+  type ConversationDetail,
+  type MessageSummary,
+} from '@ashniva/types';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { apiRequest, errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
-import { AppText, Screen } from '../../shared/components/primitives';
-import { ErrorState, LoadingState } from '../../shared/components/states';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
-import { useTheme } from '../../shared/theme/ThemeProvider';
+import { Screen } from '../../shared/components/primitives';
+import { LoadingState } from '../../shared/components/states';
 import { useSession } from '../auth/SessionProvider';
-import { useThread } from './chat-api';
-import { ConversationCalls } from './ConversationCalls';
-import { ConversationHeader } from './ConversationHeader';
+import { useChatWallpaper, WallpaperBackground } from '../chat-wallpaper';
+import { useConversationAudience, useThread } from './chat-api';
+import {
+  ConversationDetailsSheet,
+  type ConversationDestinations,
+} from './ConversationDetailsSheet';
+import { ConversationHeader, PlainConversationBar } from './ConversationHeader';
+import { ConversationUnavailable, EmptyThread } from './ConversationStates';
+import { namesOf } from './MessageBody';
 import { MessageComposer } from './MessageComposer';
 import { MessageThread } from './MessageThread';
+import { ThreadSearchBar } from './ThreadSearchBar';
+import { useFrozenUnreadMarker } from './unread-divider';
+import { useKeyboardVisible, useWindowTop } from './use-keyboard';
+import { useLiveConversation } from './use-live-conversation';
+import { useMarkRead } from './use-mark-read';
+
+export interface ConversationScreenProps extends ConversationDestinations {
+  conversationId: string;
+  /** Opens the group's own screen. Absent: a group's members open in the details sheet instead. */
+  onOpenGroup?: (conversationId: string) => void;
+  /** Leaves the conversation. The screen draws its own top bar, so the back arrow is its own. */
+  onBack?: () => void;
+  /** Opens the wallpaper picker for this conversation. */
+  onOpenWallpaper?: (conversationId: string) => void;
+}
 
 /**
  * One internal conversation.
  *
- * One column: a title bar, the thread filling everything between, and the composer pinned to the
- * bottom above the home indicator. The keyboard lifts the composer rather than covering it, and
- * the thread is a list of its own rather than a page that scrolls as a whole — a composer that
- * scrolls away with the messages is a composer somebody has to hunt for.
+ * One column: the brand-coloured top bar, the thread over the conversation's wallpaper, and the
+ * composer pinned to the bottom above the home indicator. The keyboard lifts the composer rather
+ * than covering it.
  *
- * What may be done here is `abilities`, and it comes from the server on every read. A thread
- * somebody has left the project of still loads — they were a participant — and the composer is
- * replaced by the API's own reason rather than a silence.
+ * **Live while the socket is up.** The thread subscribes to its conversation, arriving lines are
+ * spliced in, and the poll is switched off; without a socket it polls. Reading marks read — each
+ * time the newest message changes while this screen is the one in front, never from a screen left
+ * open underneath another.
+ *
+ * What may be done here is `abilities`, and it comes from the server on every read.
  *
  * **A 404 is not an error worth shouting about.** A task conversation is visible only to somebody
  * with a real relationship to the task, and the API answers an unrelated caller with 404 rather
- * than 403 deliberately: a 403 would confirm that the task *has* a discussion. So a 404 is drawn
- * as "not here", plainly, and without a retry button that would only ask again.
+ * than 403 deliberately: a 403 would confirm that the task *has* a discussion.
+ *
+ * **Everything on screen belongs to one conversation.** Opening another from a toast while this
+ * screen is in front re-uses the route with a new id rather than pushing a new one, so the view is
+ * keyed by the id: the reply being written, the search, the details sheet and the frozen unread
+ * divider are the old thread's, and carrying them across answered the wrong person.
  */
-export function ConversationScreen({
+export function ConversationScreen(props: ConversationScreenProps) {
+  return <ConversationView key={props.conversationId} {...props} />;
+}
+
+function ConversationView({
   conversationId,
   onOpenGroup,
-}: {
-  conversationId: string;
-  /** Opens the group's own screen. Absent where the caller has nowhere to send somebody. */
-  onOpenGroup?: (conversationId: string) => void;
-}) {
-  const theme = useTheme();
+  onBack,
+  onOpenWallpaper,
+  onOpenProject,
+  onOpenTask,
+  onOpenTicket,
+}: ConversationScreenProps) {
   const insets = useSafeAreaInsets();
+  const keyboardUp = useKeyboardVisible();
+  const frame = useWindowTop();
+  const wallpaper = useChatWallpaper(conversationId);
   const { user } = useSession();
+  const viewerId = user?.id ?? null;
   const [focused, setFocused] = useState(true);
+  const [search, setSearch] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<MessageSummary | null>(null);
 
   const detail = useResource<ConversationDetail>(
     ['conversations', conversationId],
     `/conversations/${conversationId}`,
   );
-  const thread = useThread(conversationId, focused);
+  const live = useLiveConversation(conversationId, focused);
+  const thread = useThread(conversationId, focused && !live);
+  const audience = useConversationAudience(conversationId);
   const conversation = detail.data ?? null;
+  const marker = useFrozenUnreadMarker(thread.messages, viewerId, conversation);
 
   useFocusEffect(
     useCallback(() => {
@@ -61,130 +105,119 @@ export function ConversationScreen({
     }, []),
   );
 
-  /**
-   * How many were unread when the thread was opened.
-   *
-   * Frozen on the first load and kept for the life of the screen, because the read cursor is
-   * moved a moment later: without freezing it, the divider would appear and then vanish on the
-   * next read of the conversation, which is the one thing a "you were here" line must not do. It
-   * must not move while somebody reads either — a divider that walks down the screen as messages
-   * arrive is worse than no divider.
-   *
-   * Adjusted during render rather than in an effect, which is the React documentation's pattern
-   * for state derived from something that has just arrived: the divider is then drawn on the same
-   * pass as the first messages instead of one frame later.
-   */
-  const [openedWithUnread, setOpenedWithUnread] = useState<number | null>(null);
-  if (openedWithUnread === null && conversation) {
-    setOpenedWithUnread(conversation.unreadCount);
-  }
+  useMarkRead(conversationId, thread.messages.at(-1)?.id ?? null, focused);
 
-  // The read cursor moves once the thread has actually been shown, not when the screen mounted:
-  // a request that failed to load anything has not been read.
-  const messageCount = thread.messages.length;
-  useEffect(() => {
-    if (messageCount === 0) {
-      return;
-    }
-    // A failure is swallowed. An unread badge that is one refresh out of date is not worth an
-    // error dialog over something the person did not ask for.
-    void apiRequest(`/conversations/${conversationId}/read`, { method: 'POST' }).catch(
-      () => undefined,
-    );
-  }, [conversationId, messageCount]);
+  const needle = (search ?? '').trim().toLowerCase();
+  const visible = useMemo(
+    () =>
+      needle
+        ? thread.messages.filter((message) => message.body.toLowerCase().includes(needle))
+        : thread.messages,
+    [thread.messages, needle],
+  );
+  const names = useMemo(
+    () => namesOf([...audience, ...(conversation?.participants ?? [])]),
+    [audience, conversation],
+  );
 
-  if (!conversation && detail.error) {
-    return <ConversationUnavailable error={detail.error} onRetry={() => void detail.refetch()} />;
-  }
   if (!conversation) {
     return (
       <Screen>
-        <LoadingState label="Loading the conversation" />
+        <PlainConversationBar onBack={onBack} />
+        {detail.error ? (
+          <ConversationUnavailable error={detail.error} onRetry={() => void detail.refetch()} />
+        ) : (
+          <LoadingState label="Loading the conversation" />
+        )}
       </Screen>
     );
   }
 
   const isGroup = conversation.kind === CONVERSATION_KIND.GROUP;
-  // A pair has exactly one other person, named at the top of the screen; anywhere else the name
-  // over a bubble is the only thing that says who wrote it.
-  const showSenderNames = !PAIR_MEMBERSHIP_KINDS.includes(conversation.kind);
+  const openDetails =
+    isGroup && onOpenGroup ? () => onOpenGroup(conversationId) : () => setShowDetails(true);
+  const canPost = conversation.abilities.canPost;
 
   return (
-    <Screen>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        // The stack header already occupies the top inset; without this the keyboard lifts the
-        // composer by that much too far and leaves a gap above it.
-        keyboardVerticalOffset={insets.top + TOUCH_TARGET}
-        style={{ flex: 1 }}
-      >
-        <ConversationHeader
-          conversation={conversation}
-          onOpenGroup={isGroup && onOpenGroup ? () => onOpenGroup(conversationId) : undefined}
-        />
-
-        {thread.isLoading ? <LoadingState label="Loading messages" /> : null}
-        {!thread.isLoading && thread.messages.length === 0 ? (
-          <View style={{ flex: 1, justifyContent: 'center', padding: theme.spacing.xl }}>
-            <AppText tone="muted" align="center">
-              {thread.error
-                ? errorMessage(thread.error)
-                : 'Nothing said yet. The first message is yours.'}
-            </AppText>
-          </View>
-        ) : null}
-        {thread.messages.length > 0 ? (
-          <View style={{ flex: 1 }}>
-            <MessageThread
-              messages={thread.messages}
-              viewerId={user?.id ?? null}
-              participants={conversation.participants}
-              showSenderNames={showSenderNames}
-              unreadCount={openedWithUnread ?? 0}
-              hasEarlier={thread.hasEarlier}
-              isLoadingEarlier={thread.isLoadingEarlier}
-              onLoadEarlier={thread.loadEarlier}
-              bottomSlot={<ConversationCalls conversation={conversation} />}
-            />
-          </View>
-        ) : null}
-
-        <View style={{ paddingBottom: insets.bottom }}>
-          <MessageComposer
-            conversationId={conversationId}
-            canPost={conversation.abilities.canPost}
-            reason={conversation.abilities.reason}
-            onSent={thread.refresh}
-          />
-        </View>
-      </KeyboardAvoidingView>
-    </Screen>
-  );
-}
-
-/**
- * The conversation did not load.
- *
- * A 404 gets its own words and no retry. It is the API's deliberate answer to somebody with no
- * relationship to the task or the thread — chosen over a 403 so that a refusal does not confirm a
- * discussion exists — and "try again" would only ask the same question twice.
- */
-function ConversationUnavailable({ error, onRetry }: { error: unknown; onRetry: () => void }) {
-  const notThere = error instanceof Error && (error as { status?: number }).status === 404;
-  if (notThere) {
-    return (
+    <View onLayout={frame.onLayout} style={{ flex: 1 }}>
       <Screen>
-        <ErrorState message="This conversation is not available to you." />
+        {/* No stack header above this screen, so the measured top is where the screen begins and
+            the offset follows whatever the navigator puts above it. */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={frame.top}
+          style={{ flex: 1 }}
+        >
+          <ConversationHeader
+            conversation={conversation}
+            viewerId={viewerId}
+            onBack={onBack}
+            onOpenDetails={openDetails}
+            onSearch={() => setSearch((current) => current ?? '')}
+            onOpenWallpaper={onOpenWallpaper ? () => onOpenWallpaper(conversationId) : undefined}
+          />
+          {search !== null ? (
+            <ThreadSearchBar
+              value={search}
+              onChange={setSearch}
+              matches={visible.length}
+              onClose={() => setSearch(null)}
+            />
+          ) : null}
+
+          <WallpaperBackground wallpaper={wallpaper}>
+            {thread.isLoading ? <LoadingState label="Loading messages" /> : null}
+            {!thread.isLoading && visible.length === 0 ? (
+              <EmptyThread
+                kind={conversation.kind}
+                error={thread.error}
+                searching={needle.length > 0 && thread.messages.length > 0}
+              />
+            ) : null}
+            {visible.length > 0 ? (
+              <MessageThread
+                messages={visible}
+                viewerId={viewerId}
+                participants={conversation.participants}
+                audience={audience}
+                // A pair has exactly one other person, named in the top bar; anywhere else the
+                // name over a bubble is the only thing that says who wrote it.
+                showSenderNames={!PAIR_MEMBERSHIP_KINDS.includes(conversation.kind)}
+                unreadCount={marker.count}
+                firstUnreadId={marker.messageId}
+                highlight={needle}
+                hasEarlier={thread.hasEarlier}
+                isLoadingEarlier={thread.isLoadingEarlier}
+                onLoadEarlier={thread.loadEarlier}
+                {...(canPost ? { onReply: setReplyingTo } : {})}
+                canSeeRevisions={conversation.abilities.viaOversight}
+              />
+            ) : null}
+
+            <MessageComposer
+              conversationId={conversationId}
+              canPost={canPost}
+              reason={conversation.abilities.reason}
+              replyingTo={replyingTo}
+              onCancelReply={() => setReplyingTo(null)}
+              tagsArePrivate={TAGGED_PRIVATE_KINDS.includes(conversation.kind)}
+              names={names}
+              viewerId={viewerId}
+              // The keyboard covers the home indicator, so its inset would only be a gap between
+              // the composer and the keyboard while the keyboard is up.
+              bottomInset={keyboardUp ? 0 : insets.bottom}
+            />
+          </WallpaperBackground>
+        </KeyboardAvoidingView>
+
+        {showDetails ? (
+          <ConversationDetailsSheet
+            conversation={conversation}
+            onClose={() => setShowDetails(false)}
+            destinations={{ onOpenProject, onOpenTask, onOpenTicket }}
+          />
+        ) : null}
       </Screen>
-    );
-  }
-  return (
-    <Screen>
-      <ErrorState
-        message={errorMessage(error)}
-        offline={error instanceof Error && error.name === 'NetworkError'}
-        onRetry={onRetry}
-      />
-    </Screen>
+    </View>
   );
 }

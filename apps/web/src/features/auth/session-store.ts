@@ -35,6 +35,15 @@ export function setAuthenticated(accessToken: string, user: SessionUser): void {
   emit();
 }
 
+/** Replaces who is signed in without touching the token, after they changed something about themselves. */
+export function setSessionUser(user: SessionUser): void {
+  if (state.status !== 'authenticated') {
+    return;
+  }
+  state = { ...state, user };
+  emit();
+}
+
 export function setAnonymous(): void {
   state = { status: 'anonymous', accessToken: null, user: null };
   emit();

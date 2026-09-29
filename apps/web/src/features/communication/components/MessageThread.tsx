@@ -11,6 +11,7 @@ import { useMemo, useRef } from 'react';
 
 import { formatDate } from '../../../shared/lib/format';
 import { MessageItem } from './MessageItem';
+import { useReplyJump } from './reply-jump';
 import { useThreadScroll } from './thread-scroll';
 
 export interface MessageThreadProps {
@@ -67,6 +68,7 @@ export function MessageThread({
   const sections = useMemo(() => groupMessagesByDay(messages), [messages]);
   const scroller = useRef<HTMLDivElement>(null);
   const scroll = useThreadScroll(scroller, messages.at(-1)?.id, messages[0]?.id);
+  const jump = useReplyJump(scroller);
   const newest = messages.at(-1);
   const announcement =
     newest && newest.sender && newest.sender.id !== viewerId && !newest.deletedAt
@@ -79,8 +81,13 @@ export function MessageThread({
           need their own message read back to them. Outside the scroller so that re-rendering the
           thread does not re-announce what is already on screen. */}
       <p className="sr-only" role="status" aria-live="polite">
-        {announcement}
+        {jump.notice ?? announcement}
       </p>
+      {jump.notice ? (
+        <p className="chat-thread__notice" aria-hidden="true">
+          {jump.notice}
+        </p>
+      ) : null}
       <div className="chat-thread" ref={scroller} onScroll={scroll.onScroll}>
         {hasEarlier ? (
           <div className="chat-thread__earlier">
@@ -116,6 +123,8 @@ export function MessageThread({
                     // Only the first line of a run carries the name and the time; the rest of the
                     // run is the same person still talking.
                     continuesRun={index > 0 && message.id !== firstUnreadId}
+                    flashing={message.id === jump.flashId}
+                    onJumpToReply={jump.jumpTo}
                     onEdit={onEdit}
                     {...(onReply ? { onReply } : {})}
                     {...(onLoadRevisions ? { onLoadRevisions } : {})}

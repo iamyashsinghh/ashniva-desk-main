@@ -214,6 +214,26 @@ describe('the refresh flow', () => {
     expect(getAccessToken()).toBeNull();
   });
 
+  it.each([
+    ['the server is unreachable', () => Promise.reject(new TypeError('Network request failed'))],
+    ['the refresh is rate limited', async () => jsonResponse(429, { message: 'Slow down' })],
+    ['the server fails', async () => jsonResponse(503, { message: 'Restarting' })],
+  ])('keeps the stored session when %s', async (_case, refreshReply) => {
+    await setSession('stale-token', user, 'refresh-1');
+    fetchMock.mockImplementation((url: string) =>
+      String(url).endsWith('/auth/refresh')
+        ? refreshReply()
+        : Promise.resolve(jsonResponse(401, { statusCode: 401, message: 'Expired' })),
+    );
+
+    // Said as being offline rather than as losing access, and nothing is thrown away: none of
+    // these answers says the refresh token is no good.
+    await expect(apiRequest('/tasks')).rejects.toBeInstanceOf(NetworkError);
+    expect(getAccessToken()).toBe('stale-token');
+    expect(await readSecure(SECURE_KEYS.refreshToken)).toBe('refresh-1');
+    await clearSession();
+  });
+
   it('does not try to refresh when there is no stored token', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(401, { statusCode: 401, message: 'No session' }));
 

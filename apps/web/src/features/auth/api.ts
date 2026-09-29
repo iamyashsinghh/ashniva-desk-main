@@ -6,8 +6,8 @@ import type {
   SessionUser,
 } from '@ashniva/types';
 
-import { apiRequest, refreshSession } from '../../shared/lib/api-client';
-import { setAnonymous, setAuthenticated } from './session-store';
+import { apiRequest, refreshSessionOutcome } from '../../shared/lib/api-client';
+import { getSessionState, setAnonymous, setAuthenticated, setSessionUser } from './session-store';
 
 export async function login(input: LoginRequest): Promise<SessionUser> {
   const session = await apiRequest<SessionResponse>('/auth/login', {
@@ -19,9 +19,29 @@ export async function login(input: LoginRequest): Promise<SessionUser> {
   return session.user;
 }
 
-/** Recovers the session from the refresh cookie on page load. */
-export function restoreSession(): Promise<boolean> {
-  return refreshSession();
+const RESTORE_RETRY_MAX_MS = 15_000;
+
+/**
+ * Recovers the session from the refresh cookie on page load.
+ *
+ * While the API cannot be reached — no network, or the server restarting — the page keeps its
+ * loading state and tries again, backing off to every fifteen seconds, rather than showing the
+ * sign-in form to somebody whose session is perfectly good. Only a refused cookie ends in the
+ * sign-in form.
+ */
+export async function restoreSession(): Promise<boolean> {
+  for (let attempt = 0; ; attempt += 1) {
+    const outcome = await refreshSessionOutcome();
+    if (outcome !== 'unreachable') {
+      return outcome === 'refreshed';
+    }
+    if (getSessionState().status === 'authenticated') {
+      return true;
+    }
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(1000 * 2 ** attempt, RESTORE_RETRY_MAX_MS)),
+    );
+  }
 }
 
 export async function logout(): Promise<void> {
@@ -30,6 +50,16 @@ export async function logout(): Promise<void> {
   } finally {
     setAnonymous();
   }
+}
+
+/**
+ * Re-reads the signed-in person from `GET /auth/me` into the session, so everything drawing them —
+ * the header first of all — shows what the server now holds. The token is left as it is.
+ */
+export async function refreshSessionUser(): Promise<SessionUser> {
+  const user = await apiRequest<SessionUser>('/auth/me');
+  setSessionUser(user);
+  return user;
 }
 
 export async function switchOrganization(organizationId: string): Promise<SessionUser> {

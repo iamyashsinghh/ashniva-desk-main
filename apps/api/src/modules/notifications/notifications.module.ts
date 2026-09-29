@@ -8,8 +8,11 @@ import {
   EmailNotificationChannel,
   WhatsAppNotificationChannel,
 } from '../messaging/messaging-notification.channel';
+import { ExpoPushNotificationChannel } from './channels/expo-push.channel';
 import { NOTIFICATION_CHANNELS } from './channels/notification-channel.interface';
 import { WebPushNotificationChannel } from './channels/web-push.channel';
+import { DevicePushTokensRepository } from './device-push-tokens.repository';
+import { DevicePushTokensService } from './device-push-tokens.service';
 import { NotificationDispatcher } from './notification-dispatcher.service';
 import { NotificationRemindersService } from './notification-reminders.service';
 import { NotificationsController } from './notifications.controller';
@@ -21,7 +24,8 @@ import { NotificationRecipientsService } from './recipients.service';
 
 /**
  * In-app notifications: one dispatcher applying preferences, de-duplication, grouping, quiet
- * hours and rate limits; Socket.IO delivery; Web Push to subscribed browsers; the notification
+ * hours and rate limits; Socket.IO delivery; Web Push to subscribed browsers and Expo push to
+ * registered phones (both under the one PUSH preference); the notification
  * center and preferences API; the queue jobs for deferred delivery and daily reminders. Email and
  * WhatsApp go out through the messaging module, which decides per tenant whether either is
  * configured at all.
@@ -37,15 +41,24 @@ import { NotificationRecipientsService } from './recipients.service';
     NotificationsRepository,
     NotificationRecipientsService,
     PushSubscriptionsService,
+    DevicePushTokensRepository,
+    DevicePushTokensService,
     WebPushNotificationChannel,
+    ExpoPushNotificationChannel,
     {
       provide: NOTIFICATION_CHANNELS,
-      inject: [EmailNotificationChannel, WhatsAppNotificationChannel, WebPushNotificationChannel],
+      inject: [
+        EmailNotificationChannel,
+        WhatsAppNotificationChannel,
+        WebPushNotificationChannel,
+        ExpoPushNotificationChannel,
+      ],
       useFactory: (
         email: EmailNotificationChannel,
         whatsapp: WhatsAppNotificationChannel,
-        push: WebPushNotificationChannel,
-      ) => [email, whatsapp, push],
+        webPush: WebPushNotificationChannel,
+        expoPush: ExpoPushNotificationChannel,
+      ) => [email, whatsapp, webPush, expoPush],
     },
     NotificationDispatcher,
     NotificationsService,

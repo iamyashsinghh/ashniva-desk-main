@@ -20,8 +20,8 @@ import { InternalApprovalDetailScreen } from './InternalApprovalDetailScreen';
  * The provider's side of one request.
  *
  * Every button on this screen came from `approval.actions`, which the API computed for this
- * caller on this request. What the screen adds is words and an order — and one refusal: it never
- * draws Edit, whatever the API offers.
+ * caller on this request. What the screen adds is words, an order, and the two sheets that ask
+ * for wording or a reason before anything is sent.
  */
 
 jest.mock('../auth/auth-api', () => ({
@@ -69,6 +69,20 @@ function approval(actions: ApprovalActionAvailability[]): ApprovalDetail {
   };
 }
 
+/** The JSON body of the first request to `suffix` with `method`, or null if none was sent. */
+function sent(suffix: string, method: string): unknown {
+  const call = fetchMock.mock.calls.find(
+    ([url, init]) =>
+      String(url).endsWith(suffix) &&
+      ((init as RequestInit | undefined)?.method ?? 'GET') === method,
+  );
+  if (!call) {
+    return null;
+  }
+  const body = (call[1] as RequestInit).body;
+  return typeof body === 'string' ? JSON.parse(body) : {};
+}
+
 beforeEach(() => {
   fetchMock.mockReset();
   globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -112,15 +126,65 @@ describe('a request in internal review', () => {
     expect(requestedPaths(fetchMock).some((path) => path.includes('/publish'))).toBe(false);
   });
 
-  it('never offers to edit the wording, whatever the API says', async () => {
+  it('rewords the request through PATCH, with the trimmed wording', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(approval([{ action: APPROVAL_ACTION.EDIT, enabled: true }])),
     );
     const view = await renderScreen(<InternalApprovalDetailScreen approvalId="a1" />);
 
-    expect(
-      await view.findByText('Nothing to do from here. Editing the wording stays on the web app.'),
-    ).toBeTruthy();
+    await fireEvent.press(await view.findByRole('button', { name: 'Edit the wording' }));
+    await fireEvent.changeText(view.getByLabelText('Title'), '  Phase 2 sign-off  ');
+    await fireEvent.press(view.getByRole('button', { name: 'Save' }));
+
+    const patch = sent('/approvals/a1', 'PATCH');
+    expect(patch).toMatchObject({
+      title: 'Phase 2 sign-off',
+      summary: 'Everything in phase two is finished.',
+      internalNotes: 'Chase Priya about the invoice.',
+    });
+  });
+
+  it('will not save a title too short for the API', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(approval([{ action: APPROVAL_ACTION.EDIT, enabled: true }])),
+    );
+    const view = await renderScreen(<InternalApprovalDetailScreen approvalId="a1" />);
+
+    await fireEvent.press(await view.findByRole('button', { name: 'Edit the wording' }));
+    await fireEvent.changeText(view.getByLabelText('Title'), 'ok');
+    const save = view.getByRole('button', { name: 'Save' });
+    expect(save.props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(save);
+    expect(sent('/approvals/a1', 'PATCH')).toBeNull();
+  });
+
+  it('withdraws with the reason that was written', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(approval([{ action: APPROVAL_ACTION.WITHDRAW, enabled: true }])),
+    );
+    const view = await renderScreen(<InternalApprovalDetailScreen approvalId="a1" />);
+
+    await fireEvent.press(await view.findByRole('button', { name: 'Withdraw' }));
+    await fireEvent.changeText(view.getByLabelText('Reason for withdrawing'), 'Client cancelled');
+    const buttons = view.getAllByRole('button', { name: 'Withdraw' });
+    await fireEvent.press(buttons[buttons.length - 1]!);
+
+    expect(sent('/approvals/a1/withdraw', 'POST')).toEqual({ comment: 'Client cancelled' });
+  });
+
+  it('does not offer to attach files once the request has left draft', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(approval([])));
+    const view = await renderScreen(<InternalApprovalDetailScreen approvalId="a1" />);
+
+    await view.findByText('Everything in phase two is finished.');
+    expect(view.queryByRole('button', { name: 'Attach a photo' })).toBeNull();
+  });
+
+  it('offers to attach files while the request is a draft', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ...approval([]), status: APPROVAL_STATUS.DRAFT }));
+    const view = await renderScreen(<InternalApprovalDetailScreen approvalId="a1" />);
+
+    expect(await view.findByRole('button', { name: 'Attach a photo' })).toBeTruthy();
   });
 
   it('shows the internal notes to the provider, marked as internal', async () => {

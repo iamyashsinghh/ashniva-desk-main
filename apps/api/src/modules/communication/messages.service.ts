@@ -21,6 +21,7 @@ import { ConversationMentionsService } from './conversation-mentions.service';
 import { toMessageSummary } from './communication.mapper';
 import { abilitiesOf } from './message-abilities';
 import { UnadoptableAttachmentsError } from './message-attachments';
+import { MessageRepliesService } from './message-replies.service';
 import {
   ConversationsRepository,
   messageViewerOf,
@@ -58,6 +59,7 @@ export class MessagesService {
     private readonly notifications: CommunicationNotificationsService,
     private readonly audience: ConversationAudienceService,
     private readonly mentions: ConversationMentionsService,
+    private readonly replies: MessageRepliesService,
     private readonly auditLog: AuditLogService,
   ) {}
 
@@ -99,11 +101,12 @@ export class MessagesService {
       this.conversationsService.contextOf(row, actor.userId),
     );
     const now = new Date();
+    const viewer = messageViewerOf(actor);
     return {
       // Oldest first for display; the query walks backwards so a cursor can page into history.
       items: page
         .map((message) =>
-          toMessageSummary(message, abilitiesOf(resolver, message, actor.userId, now)),
+          toMessageSummary(message, abilitiesOf(resolver, message, actor.userId, now), viewer),
         )
         .reverse(),
       nextCursor: rows.length > limit ? (page.at(-1)?.id ?? null) : null,
@@ -143,6 +146,7 @@ export class MessagesService {
     // record for every renderer that resolves mentions, whatever the notification path then
     // decides to do with it.
     await this.mentions.assertMentionsAreReachable(actor, row, body);
+    const viewer = messageViewerOf(actor);
 
     if (dto.clientMessageId) {
       const existing = await this.conversations.findMessage(row.id, dto.clientMessageId);
@@ -152,8 +156,14 @@ export class MessagesService {
         return toMessageSummary(
           existing,
           abilitiesOf(resolver, existing, actor.userId, new Date()),
+          viewer,
         );
       }
+    }
+    // After the retry check, so a send that already landed is not refused because the message it
+    // answered was withdrawn in the meantime.
+    if (dto.replyToId) {
+      await this.replies.assertReplyable(actor, row, dto.replyToId);
     }
 
     const created =
@@ -168,6 +178,7 @@ export class MessagesService {
           body,
           clientMessageId: dto.clientMessageId ?? null,
           restrictedToUserIds: taggedAudienceOf(row.kind as ConversationKind, body, actor.userId),
+          replyToId: dto.replyToId ?? null,
         },
         attachmentIds,
       )) ??
@@ -203,12 +214,14 @@ export class MessagesService {
     }
 
     const audience = await this.audience.forMessage(actor, row, created.restrictedToUserIds);
-    // The fan-out payload carries no abilities: every recipient would get a different answer and
-    // none of them is the sender. Their client refetches, which asks the question properly.
+    // The fan-out payload carries no abilities, and quotes a tagged original as unavailable: every
+    // recipient would get a different answer and none of them is the sender. Their client
+    // refetches, which asks the question properly.
     this.realtime.messagePosted(row, toMessageSummary(created), audience);
     const summary = toMessageSummary(
       created,
       abilitiesOf(resolver, created, actor.userId, new Date()),
+      viewer,
     );
     await this.notifications.messagePosted(row, summary, actor, audience);
     return summary;

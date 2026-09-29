@@ -25,6 +25,7 @@ function message(over: Partial<MessageSummary> & { id: string }): MessageSummary
     deletedAt: null,
     canEdit: false,
     canDelete: false,
+    restrictedToUserIds: [],
     ...over,
   };
 }

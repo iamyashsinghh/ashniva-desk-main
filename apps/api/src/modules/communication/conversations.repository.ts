@@ -1,29 +1,43 @@
 import { Injectable } from '@nestjs/common';
-import {
-  DERIVED_MEMBERSHIP_KINDS,
-  readsEveryTaggedMessage,
-  type AuthenticatedUser,
-  type ConversationKind,
-} from '@ashniva/types';
+import { DERIVED_MEMBERSHIP_KINDS, type ConversationKind } from '@ashniva/types';
 
 import { PrismaService } from '../../database/prisma.service';
 import type { Prisma } from '../../generated/prisma/client';
+import { USER_REF_WITH_AVATAR_SELECT } from '../users/user-avatar';
 // `message-attachments` imports only a *type* from this file, so the cycle is erased at compile
 // time and there is no runtime require back into here.
 import { UnadoptableAttachmentsError } from './message-attachments';
+import { visibleMessagesWhere, type MessageViewer } from './message-visibility';
 
 const USER_REF = { select: { id: true, name: true, email: true } };
+/** For the people chat draws. Mappers turn it into a `UserRef`, so the storage key goes no further. */
+const PERSON_REF = { select: USER_REF_WITH_AVATAR_SELECT };
 
 const CONVERSATION_INCLUDE = {
   project: { select: { id: true, code: true, name: true } },
   task: { select: { id: true, number: true, title: true } },
   ticket: { select: { id: true, number: true, title: true } },
-  members: { include: { user: USER_REF }, orderBy: { joinedAt: 'asc' } },
+  members: { include: { user: PERSON_REF }, orderBy: { joinedAt: 'asc' } },
 } satisfies Prisma.ConversationInclude;
 
+/**
+ * The quoted original, in the same query as the reply so a page of fifty replies is not fifty
+ * more lookups. Carries what the quote needs and what deciding its visibility needs, nothing more.
+ */
+const REPLY_TO_SELECT = {
+  id: true,
+  senderId: true,
+  body: true,
+  restrictedToUserIds: true,
+  deletedAt: true,
+  sender: PERSON_REF,
+  _count: { select: { attachments: { where: { deletedAt: null } } } },
+} satisfies Prisma.MessageSelect;
+
 const MESSAGE_INCLUDE = {
-  sender: USER_REF,
+  sender: PERSON_REF,
   attachments: { where: { deletedAt: null }, include: { uploadedBy: USER_REF } },
+  replyTo: { select: REPLY_TO_SELECT },
 } satisfies Prisma.MessageInclude;
 
 const REVISION_INCLUDE = { editedBy: USER_REF } satisfies Prisma.MessageRevisionInclude;
@@ -32,34 +46,18 @@ export type ConversationRow = Prisma.ConversationGetPayload<{
   include: typeof CONVERSATION_INCLUDE;
 }>;
 export type MessageRow = Prisma.MessageGetPayload<{ include: typeof MESSAGE_INCLUDE }>;
+export type ReplyToRow = NonNullable<MessageRow['replyTo']>;
 export type MessageRevisionRow = Prisma.MessageRevisionGetPayload<{
   include: typeof REVISION_INCLUDE;
 }>;
 
-/** Who is reading, as far as tagged group messages are concerned. */
-export interface MessageViewer {
-  userId: string;
-  /** Holds a tagged-message reader role, so no restricted message is hidden from them. */
-  readsEveryTagged: boolean;
-}
-
-export function messageViewerOf(actor: AuthenticatedUser): MessageViewer {
-  return { userId: actor.userId, readsEveryTagged: readsEveryTaggedMessage(actor.roleKey) };
-}
-
-/** The messages this viewer may see: unrestricted ones, their own, and those that tag them. */
-export function visibleMessagesWhere(viewer: MessageViewer): Prisma.MessageWhereInput {
-  if (viewer.readsEveryTagged) {
-    return {};
-  }
-  return {
-    OR: [
-      { restrictedToUserIds: { isEmpty: true } },
-      { senderId: viewer.userId },
-      { restrictedToUserIds: { has: viewer.userId } },
-    ],
-  };
-}
+// Re-exported so the services that already import them from here keep one import line.
+export {
+  mayViewMessage,
+  messageViewerOf,
+  visibleMessagesWhere,
+  type MessageViewer,
+} from './message-visibility';
 
 /**
  * Data access for internal conversations.
@@ -419,8 +417,7 @@ export class ConversationsRepository {
               conversationId: row.id,
               createdAt: {
                 gt:
-                  row.members.find((member) => member.userId === userId)?.lastReadAt ??
-                  new Date(0),
+                  row.members.find((member) => member.userId === userId)?.lastReadAt ?? new Date(0),
               },
             })),
           },

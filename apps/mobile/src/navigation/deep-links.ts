@@ -22,6 +22,7 @@ export const linkingConfig: NonNullable<LinkingOptions<RootStackParamList>['conf
         Home: 'home',
         Tasks: 'tasks',
         Tickets: 'tickets',
+        Messages: 'messages',
         Notifications: 'notifications',
         Updates: 'updates',
         Invoices: 'invoices',
@@ -47,6 +48,16 @@ export const linkingConfig: NonNullable<LinkingOptions<RootStackParamList>['conf
     SignOff: 'uat/:id',
     MyTime: 'my-time',
     ReleaseNote: 'release-notes/:id',
+    // The paths the API writes into its e-mails, so the link in a reset or invitation mail
+    // opens the app's own screen when the app is installed.
+    ResetPassword: 'reset-password/:token',
+    AcceptInvitation: 'invite/:token',
+    ProjectSummary: 'projects/:projectId/summary',
+    InternWork: 'intern-work',
+    InternWorkForm: 'intern-work/new',
+    CompletedToday: 'completed-today',
+    SessionLogs: 'team/session-logs',
+    SupportQueue: 'support-queue',
   },
 };
 

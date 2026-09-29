@@ -1,11 +1,16 @@
-import type { ConversationSummary, NotificationListResponse } from '@ashniva/types';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, type RenderResult } from '@testing-library/react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import type { NotificationListResponse } from '@ashniva/types';
+import { fireEvent } from '@testing-library/react-native';
 
-import { jsonResponse, testQueryClient } from '../../shared/testing/harness';
-import { ThemeProvider } from '../../shared/theme/ThemeProvider';
-import { ConversationsScreen } from './ConversationsScreen';
+import { jsonResponse } from '../../shared/testing/harness';
+import {
+  NO_NOTIFICATIONS,
+  conversationCalls,
+  fetchMock,
+  installFetch,
+  renderList,
+  respond,
+  summary,
+} from './conversations-test-data';
 
 /**
  * The conversation list on the phone.
@@ -27,39 +32,6 @@ import { ConversationsScreen } from './ConversationsScreen';
  */
 jest.mock('@react-navigation/native', () => ({ useFocusEffect: () => undefined }));
 
-const fetchMock = jest.fn();
-
-function summary(over: Partial<ConversationSummary> & { id: string }): ConversationSummary {
-  return {
-    kind: 'SCOPE_DIRECT',
-    title: 'Direct message',
-    project: null,
-    task: null,
-    ticket: null,
-    counterpart: { id: 'priya', name: 'Priya S', email: 'priya@example.com' },
-    imageFileId: null,
-    lastMessageAt: '2026-09-13T09:00:00.000Z',
-    lastMessagePreview: 'Morning',
-    unreadCount: 0,
-    createdAt: '2026-09-13T08:00:00.000Z',
-    ...over,
-  };
-}
-
-const ROWS: ConversationSummary[] = [
-  summary({ id: 'a' }),
-  summary({
-    id: 'b',
-    kind: 'GROUP',
-    title: 'Release crew',
-    counterpart: null,
-    unreadCount: 3,
-    lastMessagePreview: 'Cutting the build tonight',
-  }),
-];
-
-const NO_NOTIFICATIONS: NotificationListResponse = { items: [], nextCursor: null, unreadCount: 0 };
-
 /** A mention of the reader, waiting in the group. This is what puts the `@ you` badge on a row. */
 const MENTION_IN_GROUP: NotificationListResponse = {
   items: [
@@ -80,45 +52,7 @@ const MENTION_IN_GROUP: NotificationListResponse = {
   unreadCount: 1,
 };
 
-function respond(options: { rows?: ConversationSummary[]; inbox?: NotificationListResponse } = {}) {
-  fetchMock.mockImplementation((url: string) =>
-    Promise.resolve(
-      String(url).includes('/notifications')
-        ? jsonResponse(options.inbox ?? NO_NOTIFICATIONS)
-        : jsonResponse(options.rows ?? ROWS),
-    ),
-  );
-}
-
-function renderList(props: { onStart?: () => void; personalChat?: boolean } = {}): Promise<RenderResult> {
-  return render(
-    <SafeAreaProvider
-      initialMetrics={{
-        frame: { x: 0, y: 0, width: 390, height: 844 },
-        insets: { top: 47, left: 0, right: 0, bottom: 34 },
-      }}
-    >
-      <ThemeProvider>
-        <QueryClientProvider client={testQueryClient()}>
-          <ConversationsScreen onOpen={jest.fn()} {...props} />
-        </QueryClientProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>,
-  );
-}
-
-/** The conversation requests only, with their query strings. */
-function conversationCalls(): string[] {
-  return fetchMock.mock.calls
-    .map((call) => String(call[0]))
-    .filter((url) => url.includes('/conversations'));
-}
-
-beforeEach(() => {
-  fetchMock.mockReset();
-  globalThis.fetch = fetchMock as unknown as typeof fetch;
-  respond();
-});
+beforeEach(installFetch);
 
 describe('ConversationsScreen', () => {
   it('draws every row without asking about a single conversation', async () => {
@@ -150,13 +84,14 @@ describe('ConversationsScreen', () => {
   it('finds a conversation by its preview, without another request', async () => {
     const view = await renderList();
     await view.findByText('Release crew');
-    const before = fetchMock.mock.calls.length;
+    const before = conversationCalls().length;
 
     await fireEvent.changeText(view.getByLabelText('Search your conversations'), 'tonight');
 
     expect(view.getByText('Release crew')).toBeTruthy();
     expect(view.queryByText('Priya S')).toBeNull();
-    expect(fetchMock.mock.calls.length).toBe(before);
+    // The threads are searched on the device; only the directory of people asks the server.
+    expect(conversationCalls().length).toBe(before);
   });
 
   it('narrows on the server for a chip the endpoint can express', async () => {
@@ -226,12 +161,5 @@ describe('ConversationsScreen', () => {
     const view = await renderList();
     await view.findByText('Release crew');
     expect(view.queryByRole('button', { name: 'New conversation' })).toBeNull();
-  });
-
-  it('hides people and the Direct chip when personal chat is off', async () => {
-    const view = await renderList({ personalChat: false });
-    expect(await view.findByText('Release crew')).toBeTruthy();
-    expect(view.queryByText('Priya S')).toBeNull();
-    expect(view.queryByLabelText('Direct conversations')).toBeNull();
   });
 });

@@ -11,6 +11,8 @@ import { formatDateTime, formatTime } from '../../../shared/lib/format';
 import { MessageAttachments } from './MessageAttachments';
 import { MessageBody } from './MessageBody';
 import { MessageEditor } from './MessageEditor';
+import { MessageHead, PrivateLabel, Revisions } from './MessageItemParts';
+import { MessageQuote } from './MessageQuote';
 
 export interface MessageItemProps {
   message: MessageSummary;
@@ -31,8 +33,12 @@ export interface MessageItemProps {
    * the message changes with it.
    */
   continuesRun?: boolean;
+  /** Briefly marks the line somebody just followed a quote to. */
+  flashing?: boolean;
+  /** Follows the quote on a reply back to the line it answers. */
+  onJumpToReply?: (messageId: string) => void;
   onEdit: (input: { messageId: string; body: string }) => Promise<void>;
-  /** Addresses this person in the composer. Absent where the viewer cannot post. */
+  /** Starts a reply to this line in the composer. Absent where the viewer cannot post. */
   onReply?: (message: MessageSummary) => void;
   /** Only offered to an administrator reading somebody else's conversation. */
   onLoadRevisions?: (messageId: string) => Promise<MessageRevisionSummary[]>;
@@ -53,6 +59,8 @@ export interface MessageItemProps {
  * **There is no delivered or read tick**, and there is no data for one: the schema has no delivery
  * state at all, and another person's read cursor is deliberately not broadcast — `conversation.read`
  * goes to that person's own devices and nowhere else. A tick here would be decoration.
+ *
+ * Every row carries `data-message-id`, which is how a quote finds the line it answers.
  */
 export function MessageItem({
   message,
@@ -62,6 +70,8 @@ export function MessageItem({
   highlight = '',
   startsUnread = false,
   continuesRun = false,
+  flashing = false,
+  onJumpToReply,
   onEdit,
   onReply,
   onLoadRevisions,
@@ -79,9 +89,11 @@ export function MessageItem({
     }
   }
 
+  const flash = flashing ? ' chat-message--flash' : '';
+
   if (message.systemKind) {
     return (
-      <li className="chat-message chat-message--system">
+      <li className={`chat-message chat-message--system${flash}`} data-message-id={message.id}>
         <span>{message.body}</span>
         <span className="timeline__note"> · {formatDateTime(message.createdAt)}</span>
       </li>
@@ -92,7 +104,7 @@ export function MessageItem({
     // The row keeps its place so the conversation still reads correctly. The body and the
     // attachments never left the server.
     return (
-      <li className="chat-message chat-message--deleted">
+      <li className={`chat-message chat-message--deleted${flash}`} data-message-id={message.id}>
         <p className="chat-message__body muted">Message deleted</p>
       </li>
     );
@@ -103,12 +115,13 @@ export function MessageItem({
     'chat-message',
     isMine ? 'chat-message--mine' : 'chat-message--theirs',
     continuesRun ? 'chat-message--continued' : '',
+    flashing ? 'chat-message--flash' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <li className={classes}>
+    <li className={classes} data-message-id={message.id}>
       {startsUnread ? (
         <p className="chat-unread-line">
           <span>New messages</span>
@@ -117,33 +130,31 @@ export function MessageItem({
 
       <div className="chat-message__bubble">
         {continuesRun ? null : (
-          <div className="chat-message__head">
-            {showSenderName && !isMine ? (
-              <strong className="chat-message__sender">{message.sender?.name ?? 'Somebody'}</strong>
-            ) : null}
-            <span className="timeline__note">{formatTime(message.createdAt)}</span>
-            {message.editedAt ? (
-              <span className="timeline__note" title={formatDateTime(message.editedAt)}>
-                · edited
-              </span>
-            ) : null}
-          </div>
+          <MessageHead message={message} showSender={showSenderName && !isMine} />
         )}
 
         {message.restrictedToUserIds.length > 0 ? (
-          <p
-            className="chat-message__private"
-            title="Only the sender, the people tagged, Super Admins and Project Managers can see this"
-          >
-            Private · to {privateAudienceLabel(message.restrictedToUserIds, viewerId, audience)}
-          </p>
+          <PrivateLabel
+            userIds={message.restrictedToUserIds}
+            viewerId={viewerId}
+            audience={audience}
+          />
         ) : null}
 
         {error ? <Alert tone="danger">{error}</Alert> : null}
 
+        {message.replyTo && !editing ? (
+          <MessageQuote
+            replyTo={message.replyTo}
+            audience={audience}
+            {...(onJumpToReply ? { onJump: onJumpToReply } : {})}
+          />
+        ) : null}
+
         {editing ? (
           <MessageEditor
             initialBody={message.body}
+            audience={audience}
             onCancel={() => setEditing(false)}
             onSave={(body) =>
               run(async () => {
@@ -200,34 +211,5 @@ export function MessageItem({
         )}
       </div>
     </li>
-  );
-}
-
-/** The tagged people by name, the viewer as "you", in the order they were tagged. */
-function privateAudienceLabel(
-  userIds: readonly string[],
-  viewerId: string,
-  audience: readonly ConversationAudienceMember[],
-): string {
-  const names = new Map(audience.map((person) => [person.id, person.name]));
-  return userIds
-    .map((userId) => (userId === viewerId ? 'you' : (names.get(userId) ?? 'somebody')))
-    .join(', ');
-}
-
-function Revisions({ revisions }: { revisions: readonly MessageRevisionSummary[] }) {
-  return (
-    <ul className="chat-message__revisions">
-      {revisions.length === 0 ? (
-        <li className="muted">No earlier version was recorded.</li>
-      ) : (
-        revisions.map((revision) => (
-          <li key={revision.id}>
-            <span className="timeline__note">{formatDateTime(revision.createdAt)} · </span>
-            {revision.body}
-          </li>
-        ))
-      )}
-    </ul>
   );
 }

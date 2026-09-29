@@ -1,6 +1,7 @@
 import type { MentionablePage } from '@ashniva/types';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, type RenderResult } from '@testing-library/react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { jsonResponse, testQueryClient } from '../../shared/testing/harness';
 import { ThemeProvider } from '../../shared/theme/ThemeProvider';
@@ -76,15 +77,22 @@ function renderComposer(
   props: { canPost?: boolean; reason?: 'CHAT_DISABLED' | null } = {},
 ): Promise<RenderResult> {
   return render(
-    <ThemeProvider>
-      <QueryClientProvider client={testQueryClient()}>
-        <MessageComposer
-          conversationId={CONVERSATION}
-          canPost={props.canPost ?? true}
-          reason={props.reason ?? null}
-        />
-      </QueryClientProvider>
-    </ThemeProvider>,
+    <SafeAreaProvider
+      initialMetrics={{
+        frame: { x: 0, y: 0, width: 390, height: 844 },
+        insets: { top: 47, left: 0, right: 0, bottom: 34 },
+      }}
+    >
+      <ThemeProvider>
+        <QueryClientProvider client={testQueryClient()}>
+          <MessageComposer
+            conversationId={CONVERSATION}
+            canPost={props.canPost ?? true}
+            reason={props.reason ?? null}
+          />
+        </QueryClientProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>,
   );
 }
 
@@ -141,15 +149,18 @@ describe('MessageComposer', () => {
     expect(new Set(ids).size).toBe(1);
   });
 
-  it('offers only the people the endpoint returned, and inserts the id rather than the name', async () => {
+  it('shows the picked name in the field and sends the id', async () => {
+    serve(() => jsonResponse({ id: 'm1' }, 201));
     const view = await renderComposer();
 
     await fireEvent.changeText(view.getByLabelText('Your message'), 'ready @');
     await fireEvent.press(await view.findByLabelText('Mention Priya S'));
 
-    expect(view.getByLabelText('Your message').props.value).toBe(`ready @[${PRIYA}] `);
+    expect(view.getByLabelText('Your message').props.value).toBe('ready @Priya S ');
+    await fireEvent.press(view.getByRole('button', { name: 'Send' }));
+    await view.findByLabelText('Your message');
     // The name is never what goes in the body: a name is not stable and is not an identity.
-    expect(view.getByLabelText('Your message').props.value).not.toContain('Priya');
+    expect(sentBodies().at(-1)?.body).toBe(`ready @[${PRIYA}]`);
   });
 
   it('asks nobody but the conversation’s own audience endpoint', async () => {
@@ -170,7 +181,7 @@ describe('MessageComposer', () => {
     // what the rewritten sentence keeps.
     await fireEvent.changeText(view.getByLabelText('Your message'), 'ready @');
     await fireEvent.press(await view.findByLabelText('Mention Priya S'));
-    await fireEvent.changeText(view.getByLabelText('Your message'), `ready @[${PRIYA}] for review`);
+    await fireEvent.changeText(view.getByLabelText('Your message'), 'ready @Priya S for review');
 
     serve(() =>
       jsonResponse({ message: 'You cannot mention somebody who is not in this conversation' }, 400),
@@ -183,7 +194,8 @@ describe('MessageComposer', () => {
     // The refusal names who it is about rather than saying "that person".
     expect(view.getByText(/Priya S can no longer be mentioned here/)).toBeTruthy();
     // The words somebody typed are still there. That is the property this test exists for.
-    expect(view.getByLabelText('Your message').props.value).toBe(`ready @[${PRIYA}] for review`);
+    expect(view.getByLabelText('Your message').props.value).toBe('ready @Priya S for review');
+    expect(sentBodies().at(-1)?.body).toBe(`ready @[${PRIYA}] for review`);
 
     serve(() => jsonResponse({ id: 'm2' }, 201));
     await fireEvent.press(view.getByRole('button', { name: 'Send without the mention' }));
@@ -265,7 +277,8 @@ describe('MessageComposer', () => {
     await fireEvent.press(view.getByRole('button', { name: 'Send' }));
     await view.findByText('Network is down');
 
-    await fireEvent.press(view.getByRole('button', { name: 'Attach a file' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Attach' }));
+    await fireEvent.press(await view.findByRole('button', { name: 'Document' }));
     // The precondition. Without it this would pass just as well against a picker that returned
     // nothing, where the key is deliberately kept.
     expect(await view.findByText('evidence.pdf')).toBeTruthy();
@@ -276,6 +289,16 @@ describe('MessageComposer', () => {
     const ids = sentBodies().map((sent) => sent.clientMessageId ?? '');
     expect(ids).toHaveLength(2);
     expect(new Set(ids).size).toBe(2);
+  });
+
+  it('offers the camera, the photo library and a document from one button', async () => {
+    const view = await renderComposer();
+
+    await fireEvent.press(view.getByRole('button', { name: 'Attach' }));
+
+    for (const choice of ['Camera', 'Photos', 'Document']) {
+      expect(await view.findByRole('button', { name: choice })).toBeTruthy();
+    }
   });
 
   it('draws the API’s own reason instead of a field nobody may use', async () => {

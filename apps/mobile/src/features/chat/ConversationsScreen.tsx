@@ -1,39 +1,40 @@
-import type { ConversationSummary } from '@ashniva/types';
+import type { MessagingScopeContact } from '@ashniva/types';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
-import { FlatList, View, type ListRenderItemInfo } from 'react-native';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { FlatList, RefreshControl, View, type ListRenderItemInfo } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { errorMessage } from '../../shared/api/client';
-import { ListFooterLoader } from '../../shared/components/feedback';
-import { Button, Divider, Input, Screen } from '../../shared/components/primitives';
-import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
+import { Banner, ListFooterLoader } from '../../shared/components/feedback';
+import { Divider, Screen } from '../../shared/components/primitives';
+import { ErrorState, LoadingState } from '../../shared/components/states';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { useConversationList } from './chat-api';
-import { AVATAR_SIZE, ConversationRow } from './ConversationRow';
+import { MENTION_DEBOUNCE_MS, useConversationList, useDebounced } from './chat-api';
+import { AVATAR_SIZE, ConversationRow, PersonRow } from './ConversationRow';
 import {
   CONVERSATION_FILTER,
-  inboxFiltersFor,
+  serverQueryFor,
   type ConversationFilter,
 } from './conversation-filters';
-import { FilterChips } from './FilterChips';
+import { inboxEntryKey, mergeInbox, unreadChipCount, type InboxEntry } from './inbox';
+import { InboxEmpty } from './InboxEmpty';
+import { InboxHeader } from './InboxHeader';
+import { OversightInbox } from './OversightInbox';
+import { useMessagingDirectory, useOpenDirectMessage } from './scope-api';
 
 /**
- * Your conversations.
+ * Your conversations, and the people you may start one with.
  *
- * One column, one request per window, and nothing that asks about a conversation one at a time:
- * every field a row draws is on the summary the list endpoint returned, and a per-row fetch is
- * the N+1 the backend spent work removing. The one extra request the screen makes is for the
- * unread notifications, which is where a mention badge can be known from — see `useUnreadMentions`
- * — and it is one request for the whole list rather than one per row.
+ * The web's inbox on a phone: existing threads first, then everybody the directory says this
+ * person may reach, the Unread chip's figure, and — for somebody holding `conversation:inspect` —
+ * the audited administrator view. One request for the window of threads and one for the
+ * directory; nothing asks about a conversation one at a time, because every field a row draws is
+ * on the summary the list endpoint returned.
  *
- * **There is a "new conversation" button, and there did not used to be.** Every conversation used
- * to be attached to a project, a task or a ticket, so it was opened from the thing it was about.
- * That is still true of those kinds. A direct message and a group are attached to *people*, and
- * there is nowhere else in the app to start one from.
- *
- * Refreshed when the screen comes back into view rather than held open on a socket. See
- * `chat-api.ts` for why the first release polls.
+ * **The spinner is only for a pull.** The list refetches whenever the tab comes back into view,
+ * and on iOS a refresh control told to spin by code rather than by a finger leaves the scroll view
+ * offset down the screen — which is how the search bar ended up half-way down the tab. The
+ * focus refetch is silent; only a pull shows the spinner.
  */
 
 export interface ConversationsScreenProps {
@@ -45,63 +46,114 @@ export interface ConversationsScreenProps {
    * Defaults on so existing tests of the people inbox keep their Direct chip.
    */
   personalChat?: boolean;
+  /** `conversation:inspect`. Offers the administrator view; the API refuses it to anyone else. */
+  canInspect?: boolean;
 }
 
 export function ConversationsScreen({
   onOpen,
   onStart,
   personalChat = true,
+  canInspect = false,
 }: ConversationsScreenProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<ConversationFilter>(CONVERSATION_FILTER.ALL);
+  const [oversight, setOversight] = useState(false);
+  const [pulling, setPulling] = useState(false);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   const list = useConversationList(filter, search, personalChat);
+  const settledSearch = useDebounced(search, MENTION_DEBOUNCE_MS);
+  const directory = useMessagingDirectory(settledSearch, personalChat && !oversight);
+  const openDirect = useOpenDirectMessage();
   const { refresh } = list;
 
   useFocusEffect(
     useCallback(() => {
-      refresh();
+      void refresh();
     }, [refresh]),
   );
 
-  // Stable across renders, so `ConversationRow`'s memo actually holds while somebody scrolls.
-  const renderItem = useCallback(
-    ({ item }: ListRenderItemInfo<ConversationSummary>) => (
-      <ConversationRow row={item} mentioned={list.mentioned.has(item.id)} onOpen={onOpen} />
-    ),
-    [list.mentioned, onOpen],
+  const needle = search.trim().toLowerCase();
+  const entries = useMemo(
+    () =>
+      mergeInbox(
+        list.window,
+        personalChat ? (directory.data ?? []) : [],
+        filter,
+        needle,
+        personalChat,
+      ),
+    [list.window, directory.data, filter, needle, personalChat],
   );
-  const keyExtractor = useCallback((row: ConversationSummary) => row.id, []);
+  const unread = unreadChipCount(list.window, serverQueryFor(filter), personalChat);
 
-  if (list.isLoading) {
-    return (
-      <Screen>
-        <LoadingState label="Loading your conversations" />
-      </Screen>
+  const pull = () => {
+    setPulling(true);
+    void Promise.all([refresh(), personalChat ? directory.refetch() : null]).finally(() =>
+      setPulling(false),
     );
-  }
+  };
 
-  if (list.error) {
-    return (
-      <Screen>
-        <ErrorState
-          message={errorMessage(list.error)}
-          offline={list.error instanceof Error && list.error.name === 'NetworkError'}
-          onRetry={refresh}
+  const { run: startDirect } = openDirect;
+  const openPerson = useCallback(
+    async (contact: MessagingScopeContact) => {
+      if (contact.conversationId) {
+        onOpen(contact.conversationId);
+        return;
+      }
+      setOpeningId(contact.id);
+      const opened = await startDirect({ userId: contact.id });
+      setOpeningId(null);
+      if (opened) {
+        onOpen(opened.id);
+      }
+    },
+    [onOpen, startDirect],
+  );
+
+  // Stable across renders, so the rows' memo actually holds while somebody scrolls.
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<InboxEntry>) =>
+      item.type === 'thread' ? (
+        <ConversationRow
+          row={item.row}
+          mentioned={list.mentioned.has(item.row.id)}
+          onOpen={onOpen}
         />
-      </Screen>
-    );
-  }
+      ) : (
+        <PersonRow
+          contact={item.contact}
+          opening={openingId === item.contact.id}
+          onOpen={(contact) => void openPerson(contact)}
+        />
+      ),
+    [list.mentioned, onOpen, openingId, openPerson],
+  );
 
-  return (
-    <Screen>
+  let body: ReactNode;
+  if (oversight) {
+    body = <OversightInbox onOpen={onOpen} />;
+  } else if (list.isLoading) {
+    body = <LoadingState label="Loading your conversations" />;
+  } else if (list.error) {
+    body = (
+      <ErrorState
+        message={errorMessage(list.error)}
+        offline={list.error instanceof Error && list.error.name === 'NetworkError'}
+        onRetry={() => void refresh()}
+      />
+    );
+  } else {
+    body = (
       <FlatList
-        data={list.items}
-        keyExtractor={keyExtractor}
+        data={entries}
+        keyExtractor={inboxEntryKey}
         renderItem={renderItem}
         contentContainerStyle={{
+          flexGrow: 1,
           // The home indicator sits over the last row otherwise.
           paddingBottom: theme.spacing.lg + insets.bottom,
         }}
@@ -109,63 +161,48 @@ export function ConversationsScreen({
         // an inbox is read by scanning names down one edge, and a card per row breaks that edge.
         ItemSeparatorComponent={RowSeparator}
         keyboardShouldPersistTaps="handled"
-        refreshing={list.isRefreshing}
-        onRefresh={refresh}
+        keyboardDismissMode="on-drag"
+        refreshControl={
+          <RefreshControl refreshing={pulling} onRefresh={pull} tintColor={theme.colors.primary} />
+        }
         // Widen the window before the person reaches the bottom rather than after: a list that
         // stops dead and then loads is a list that felt broken for half a second.
         onEndReachedThreshold={0.4}
         onEndReached={list.loadMore}
-        // Windowed rendering. The defaults keep about ten screens of rows mounted, which on a
-        // hundred-row list is a hundred mounted cards; these keep it to a few screens either way.
         initialNumToRender={12}
         maxToRenderPerBatch={12}
         windowSize={7}
-        removeClippedSubviews
-        ListHeaderComponent={
-          <View
-            style={{
-              gap: theme.spacing.sm,
-              padding: theme.spacing.screen,
-              paddingBottom: theme.spacing.xs,
-            }}
-          >
-            <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
-              <View style={{ flex: 1 }}>
-                <Input
-                  accessibilityLabel="Search your conversations"
-                  placeholder="Search conversations"
-                  value={search}
-                  onChangeText={setSearch}
-                />
-              </View>
-              {onStart ? (
-                <Button
-                  label="New conversation"
-                  accessibilityHint="Start a direct message or a group"
-                  onPress={onStart}
-                  size="sm"
-                  icon="plus"
-                />
-              ) : null}
-            </View>
-            <FilterChips
-              value={filter}
-              onChange={setFilter}
-              filters={inboxFiltersFor(personalChat)}
-            />
-          </View>
-        }
         ListEmptyComponent={
-          <EmptyList
-            filter={filter}
-            searching={search.trim().length > 0}
-            personalChat={personalChat}
-          />
+          <InboxEmpty filter={filter} searching={needle.length > 0} personalChat={personalChat} />
         }
         ListFooterComponent={
           list.isLoadingMore ? <ListFooterLoader label="Loading more conversations" /> : null
         }
       />
+    );
+  }
+
+  return (
+    <Screen>
+      <InboxHeader
+        search={search}
+        onSearch={setSearch}
+        filter={filter}
+        onFilter={setFilter}
+        personalChat={personalChat}
+        unreadCount={unread}
+        onStart={onStart}
+        oversight={oversight}
+        onToggleOversight={canInspect ? () => setOversight((on) => !on) : undefined}
+      />
+      {openDirect.error ? (
+        <View style={{ paddingHorizontal: theme.spacing.screen, paddingBottom: theme.spacing.sm }}>
+          <Banner tone="danger" role="alert">
+            {openDirect.error}
+          </Banner>
+        </View>
+      ) : null}
+      {body}
     </Screen>
   );
 }
@@ -173,42 +210,4 @@ export function ConversationsScreen({
 function RowSeparator() {
   const theme = useTheme();
   return <Divider inset={theme.spacing.screen + AVATAR_SIZE + theme.spacing.md} />;
-}
-
-/**
- * Nothing to show, and why.
- *
- * Three different reasons, because "No conversations" under an active filter is a lie about the
- * account rather than an answer about the filter.
- */
-function EmptyList({
-  filter,
-  searching,
-  personalChat,
-}: {
-  filter: ConversationFilter;
-  searching: boolean;
-  personalChat: boolean;
-}) {
-  if (searching) {
-    return <EmptyState title="Nothing matches" description="Try a different search." />;
-  }
-  if (filter !== CONVERSATION_FILTER.ALL) {
-    return (
-      <EmptyState
-        title="Nothing here"
-        description="Nothing under this filter. Try All to see everything you are in."
-      />
-    );
-  }
-  return (
-    <EmptyState
-      title={personalChat ? 'No conversations' : 'No team group yet'}
-      description={
-        personalChat
-          ? 'Start a direct message or a group with anybody on your projects and teams.'
-          : 'The group for your project team will show up here. You can write there, not in a private chat.'
-      }
-    />
-  );
 }

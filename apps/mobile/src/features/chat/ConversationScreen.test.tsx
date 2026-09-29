@@ -1,6 +1,6 @@
 import type { ConversationDetail, MessagePage, MessageSummary } from '@ashniva/types';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, type RenderResult } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, type RenderResult } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { jsonResponse, sessionUser, testQueryClient } from '../../shared/testing/harness';
@@ -22,7 +22,10 @@ import { ConversationScreen } from './ConversationScreen';
  * you", with no retry button to ask the same question again.
  */
 
-jest.mock('@react-navigation/native', () => ({ useFocusEffect: () => undefined }));
+jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: () => undefined,
+  useIsFocused: () => true,
+}));
 
 jest.mock('../auth/SessionProvider', () => ({
   useSession: () => ({ user: mockViewer, status: 'signed-in', can: () => false }),
@@ -47,6 +50,7 @@ function ownMessage(): MessageSummary {
     // The server's own answer, and for a normal user it is false even on their own message.
     canEdit: true,
     canDelete: false,
+    restrictedToUserIds: [],
   };
 }
 
@@ -77,20 +81,28 @@ const DETAIL: ConversationDetail = {
 
 function serve(options: { detail?: () => Response; page?: MessagePage } = {}) {
   const page: MessagePage = options.page ?? { items: [ownMessage()], nextCursor: null };
-  fetchMock.mockImplementation((url: string) => {
+  fetchMock.mockImplementation((url: string, init?: { method?: string }) => {
     const path = String(url);
+    if (path.includes('/messages') && init?.method === 'POST') {
+      return Promise.resolve(jsonResponse({ ...ownMessage(), id: 'm-sent', body: 'Answer' }, 201));
+    }
     if (path.includes('/messages')) {
       return Promise.resolve(jsonResponse(page));
     }
     if (path.includes('/read')) {
       return Promise.resolve(jsonResponse({}));
     }
+    if (path.includes('/audience')) {
+      return Promise.resolve(jsonResponse([]));
+    }
     return Promise.resolve(options.detail ? options.detail() : jsonResponse(DETAIL));
   });
 }
 
-function renderConversation(): Promise<RenderResult> {
-  return render(
+const client = { current: testQueryClient() };
+
+function tree(conversationId: string, onBack?: () => void) {
+  return (
     <SafeAreaProvider
       initialMetrics={{
         frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -98,15 +110,27 @@ function renderConversation(): Promise<RenderResult> {
       }}
     >
       <ThemeProvider>
-        <QueryClientProvider client={testQueryClient()}>
-          <ConversationScreen conversationId={CONVERSATION} />
+        <QueryClientProvider client={client.current}>
+          <ConversationScreen conversationId={conversationId} onBack={onBack} />
         </QueryClientProvider>
       </ThemeProvider>
-    </SafeAreaProvider>,
+    </SafeAreaProvider>
   );
 }
 
+function renderConversation(onBack?: () => void): Promise<RenderResult> {
+  return render(tree(CONVERSATION, onBack));
+}
+
+/** The JSON of every message POST, in order. */
+function sent(): { body?: string; replyToId?: string }[] {
+  return fetchMock.mock.calls
+    .filter(([url, init]) => String(url).includes('/messages') && init?.method === 'POST')
+    .map(([, init]) => JSON.parse(String(init.body)) as { body?: string; replyToId?: string });
+}
+
 beforeEach(() => {
+  client.current = testQueryClient();
   fetchMock.mockReset();
   globalThis.fetch = fetchMock as unknown as typeof fetch;
   serve();
@@ -120,7 +144,7 @@ describe('ConversationScreen', () => {
     expect(view.getByText('Priya S')).toBeTruthy();
   });
 
-  it('opens on three requests, whatever the thread holds', async () => {
+  it('opens on four requests, whatever the thread holds', async () => {
     const many = Array.from({ length: 50 }, (_, index) => ({
       ...ownMessage(),
       id: `m${index}`,
@@ -131,10 +155,11 @@ describe('ConversationScreen', () => {
     const view = await renderConversation();
     await view.findByText('Line 49');
 
-    // The conversation, its first page of messages, and the read cursor. Nothing per message and
-    // nothing per sender: a request per line is what a thread of a thousand would turn into.
+    // The conversation, its first page of messages, the read cursor, and the audience that names
+    // the people a mention points at. Nothing per message and nothing per sender: a request per
+    // line is what a thread of a thousand would turn into.
     const paths = new Set(fetchMock.mock.calls.map(([url]) => String(url).split('?')[0]));
-    expect(paths.size).toBe(3);
+    expect(paths.size).toBe(4);
   });
 
   it('offers no way to withdraw a message, not even your own', async () => {
@@ -160,6 +185,52 @@ describe('ConversationScreen', () => {
 
     expect(await view.findByText('This conversation is not available to you.')).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  it('draws its own brand bar, named for the person, with a way back', async () => {
+    const onBack = jest.fn();
+    const view = await renderConversation(onBack);
+    await view.findByText('Mine, and it stays');
+
+    // The API titles this thread "Direct message"; the bar names who it is with instead.
+    expect(view.queryByText('Direct message')).toBeNull();
+    await fireEvent.press(view.getByLabelText('Back'));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws the thread over the conversation’s wallpaper', async () => {
+    const view = await renderConversation();
+    await view.findByText('Mine, and it stays');
+    expect(view.getByTestId('wallpaper-plain')).toBeTruthy();
+  });
+
+  it('answers a line by quoting it: the reply carries its id and no mention', async () => {
+    const view = await renderConversation();
+    await fireEvent(await view.findByLabelText(/Mine, and it stays/), 'longPress');
+    await fireEvent.press(view.getByLabelText('Reply'));
+    expect(view.getByLabelText('Stop replying to You')).toBeTruthy();
+
+    await fireEvent.changeText(view.getByLabelText('Your message'), 'Answer');
+    await fireEvent.press(view.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(sent()).toHaveLength(1));
+
+    expect(sent()[0]).toMatchObject({ body: 'Answer', replyToId: 'm1' });
+    expect(sent()[0]?.body).not.toContain('@[');
+  });
+
+  it('forgets the reply and the search when another conversation opens in its place', async () => {
+    const view = await renderConversation();
+    await fireEvent(await view.findByLabelText(/Mine, and it stays/), 'longPress');
+    await fireEvent.press(view.getByLabelText('Reply'));
+    await fireEvent.press(view.getByLabelText('More options'));
+    await fireEvent.press(view.getByLabelText('Search'));
+    expect(view.getByLabelText('Search this conversation')).toBeTruthy();
+
+    await view.rerender(tree('44444444-4444-4444-8444-444444444444'));
+    await view.findByText('Mine, and it stays');
+
+    expect(view.queryByLabelText('Stop replying to You')).toBeNull();
+    expect(view.queryByLabelText('Search this conversation')).toBeNull();
   });
 
   it('shows the API’s own words for any other failure, and offers to try again', async () => {

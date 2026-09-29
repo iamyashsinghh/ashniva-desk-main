@@ -262,6 +262,70 @@ export function labelMentions(
 }
 
 /**
+ * A person picked from the mention list while writing: what the field shows (`@name`) and the id
+ * the body carries (`@[uuid]`).
+ */
+export interface MentionPick {
+  userId: string;
+  name: string;
+}
+
+function escapeForPattern(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * A draft as the person typed it — `@Priya S` for each pick — turned into the body the API takes,
+ * with each picked name written as `@[uuid]`.
+ *
+ * **Only picks become mentions.** A name typed by hand is left as text, so a mention still cannot
+ * be forged by typing a colleague's name: the id comes from the picker, which offered only the
+ * conversation's audience. Longer names are matched first, so `@Priya Sharma` is not read as
+ * `@Priya` followed by "Sharma" when both were picked; a name must end at a word boundary, so
+ * `@Sam` does not claim the start of `@Samantha`.
+ */
+export function encodeMentions(draft: string, picks: readonly MentionPick[]): string {
+  const byName = new Map<string, string>();
+  for (const pick of picks) {
+    const name = pick.name.trim();
+    if (name.length > 0 && !byName.has(name)) {
+      byName.set(name, pick.userId);
+    }
+  }
+  if (byName.size === 0) {
+    return draft;
+  }
+  const names = [...byName.keys()].sort((a, b) => b.length - a.length).map(escapeForPattern);
+  const pattern = new RegExp(`@(${names.join('|')})(?![\\p{L}\\p{N}])`, 'gu');
+  return draft.replace(pattern, (match, name: string) => {
+    const userId = byName.get(name);
+    return userId ? `@[${userId}]` : match;
+  });
+}
+
+/**
+ * A stored body turned back into what the field shows, for editing a message that already names
+ * people: each `@[uuid]` becomes `@name`, and the picks it came from are returned so saving writes
+ * the same ids back. A mention whose person is not in `names` keeps its token, because rewriting it
+ * as `@someone` would silently drop the mention on save.
+ */
+export function decodeMentions(
+  body: string,
+  names: ReadonlyMap<string, string>,
+): { text: string; picks: MentionPick[] } {
+  const picks = new Map<string, MentionPick>();
+  const text = body.replace(MENTION_PATTERN, (match, userId: string) => {
+    const name = names.get(userId)?.trim();
+    if (!name) {
+      return match;
+    }
+    picks.set(userId, { userId, name });
+    return `@${name}`;
+  });
+  return { text, picks: [...picks.values()] };
+}
+
+/**
  * A body split into text and mentions, for a renderer that has names to substitute.
  *
  * Returned as parts rather than as HTML so the caller decides the markup; nothing in this package

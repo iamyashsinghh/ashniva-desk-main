@@ -22,8 +22,8 @@ import { usePermission } from '../auth/SessionProvider';
  */
 
 const DECISIONS: readonly SegmentOption<UatDecision>[] = [
-  { value: UAT_DECISION.APPROVED, label: 'It works' },
-  { value: UAT_DECISION.CHANGES_REQUESTED, label: 'Not yet' },
+  { value: UAT_DECISION.APPROVED, label: 'It works', icon: 'thumbs-up-outline' },
+  { value: UAT_DECISION.CHANGES_REQUESTED, label: 'Not yet', icon: 'thumbs-down-outline' },
 ];
 
 export function SignOffDecisionForm({
@@ -53,7 +53,7 @@ export function SignOffDecisionForm({
 
   if (!mayDecide) {
     return (
-      <Section title="Your answer">
+      <Section title="Your answer" icon="lock-closed-outline">
         <AppText size="sm" tone="muted">
           Somebody with sign-off rights at your organization has to answer this one. You can still
           ask a question below.
@@ -68,7 +68,7 @@ export function SignOffDecisionForm({
   const valid = !changesWanted || note.trim().length >= 3;
 
   return (
-    <Section title="Your answer">
+    <Section title="Your answer" icon="chatbox-ellipses-outline">
       <Segmented
         options={DECISIONS}
         value={decision}
@@ -103,6 +103,7 @@ export function SignOffDecisionForm({
 
       <Button
         label={changesWanted ? 'Ask for changes' : 'Sign it off'}
+        icon={changesWanted ? 'thumbs-down-outline' : 'thumbs-up-outline'}
         loading={decide.busy}
         disabled={!valid}
         accessibilityHint="Sends your answer to your team"
@@ -159,6 +160,7 @@ export function SignOffQuestionForm({
       <Button
         label="Send the question"
         variant="secondary"
+        icon="paper-plane-outline"
         loading={ask.busy}
         disabled={body.trim().length < 2}
         onPress={() => void ask.run()}

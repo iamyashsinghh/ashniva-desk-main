@@ -1,15 +1,14 @@
-import type { ReactNode } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useTheme } from '../theme/ThemeProvider';
+import type { IconName } from './Icon';
 
 /**
- * The app's handful of small marks, drawn from plain views.
+ * The small marks inside controls: a chevron, a plus, a tick.
  *
- * There is no icon font here by decision: the brand's own mark is the only picture the app
- * carries, and the few glyphs a screen needs — a chevron, a plus, a tick — are strokes simple
- * enough to draw. Square line caps and 45° angles echo the chamfered corners of the mark, so the
- * glyphs read as part of the same family rather than borrowed from a set.
+ * A short list of names the app has always used, mapped onto Ionicons, and any Ionicons name as
+ * well — so a button can carry `check` or `paper-plane-outline` through the same prop.
  *
  * Always decorative. Every control that shows one also has words, or an accessibility label
  * that says what it does.
@@ -26,149 +25,44 @@ export type GlyphName =
   | 'dot'
   | 'clock';
 
+const GLYPH_ICONS: Record<GlyphName, IconName> = {
+  'chevron-right': 'chevron-forward',
+  'chevron-left': 'chevron-back',
+  'chevron-down': 'chevron-down',
+  'chevron-up': 'chevron-up',
+  plus: 'add',
+  close: 'close',
+  check: 'checkmark',
+  'arrow-up': 'arrow-up',
+  dot: 'ellipse',
+  clock: 'time-outline',
+};
+
+export function glyphIcon(name: GlyphName | IconName): IconName {
+  return name in GLYPH_ICONS ? GLYPH_ICONS[name as GlyphName] : (name as IconName);
+}
+
 export function Glyph({
   name,
   color,
   size = 14,
-  strokeWidth = 2,
 }: {
-  name: GlyphName;
+  name: GlyphName | IconName;
   color?: string;
   size?: number;
+  /** Kept for older call sites; the icon font sets its own weight. */
   strokeWidth?: number;
 }) {
   const theme = useTheme();
-  const tint = color ?? theme.colors.textMuted;
+  // Ionicons draw inside their em box with some padding, so a touch larger reads the same size.
+  const drawn = Math.round(size * 1.25);
   return (
     <View
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={{ alignItems: 'center', height: size, justifyContent: 'center', width: size }}
     >
-      {draw(name, tint, size, strokeWidth)}
-    </View>
-  );
-}
-
-function draw(name: GlyphName, color: string, size: number, stroke: number): ReactNode {
-  const arm = size * 0.52;
-  const chevron = (rotate: string, nudge: ViewStyle) => (
-    <View
-      style={{
-        borderBottomWidth: stroke,
-        borderColor: color,
-        borderRightWidth: stroke,
-        height: arm,
-        transform: [{ rotate }],
-        width: arm,
-        ...nudge,
-      }}
-    />
-  );
-
-  switch (name) {
-    case 'chevron-right':
-      return chevron('-45deg', { marginLeft: -arm * 0.3 });
-    case 'chevron-left':
-      return chevron('135deg', { marginLeft: arm * 0.3 });
-    case 'chevron-down':
-      return chevron('45deg', { marginTop: -arm * 0.3 });
-    case 'chevron-up':
-      return chevron('-135deg', { marginTop: arm * 0.3 });
-    case 'plus':
-      return <Cross color={color} size={size} stroke={stroke} />;
-    case 'close':
-      return (
-        <View style={{ transform: [{ rotate: '45deg' }] }}>
-          <Cross color={color} size={size * 1.1} stroke={stroke} />
-        </View>
-      );
-    case 'check':
-      return (
-        <View
-          style={{
-            borderBottomWidth: stroke,
-            borderColor: color,
-            borderRightWidth: stroke,
-            height: size * 0.62,
-            marginTop: -size * 0.15,
-            transform: [{ rotate: '45deg' }],
-            width: size * 0.34,
-          }}
-        />
-      );
-    case 'arrow-up':
-      return (
-        <View style={{ alignItems: 'center', height: size, width: size }}>
-          <View
-            style={{
-              borderColor: color,
-              borderLeftWidth: stroke,
-              borderTopWidth: stroke,
-              height: arm,
-              marginTop: size * 0.12,
-              transform: [{ rotate: '45deg' }],
-              width: arm,
-            }}
-          />
-          <View
-            style={{
-              backgroundColor: color,
-              height: size * 0.62,
-              position: 'absolute',
-              top: size * 0.16,
-              width: stroke,
-            }}
-          />
-        </View>
-      );
-    case 'dot':
-      return (
-        <View
-          style={{ backgroundColor: color, borderRadius: size / 2, height: size, width: size }}
-        />
-      );
-    case 'clock':
-      return (
-        <View
-          style={{
-            borderColor: color,
-            borderRadius: size / 2,
-            borderWidth: stroke * 0.8,
-            height: size,
-            width: size,
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: color,
-              height: size * 0.32,
-              left: size / 2 - stroke * 0.8 - stroke / 2,
-              position: 'absolute',
-              top: size * 0.14,
-              width: stroke,
-            }}
-          />
-          <View
-            style={{
-              backgroundColor: color,
-              height: stroke,
-              left: size / 2 - stroke * 0.8 - stroke / 2,
-              position: 'absolute',
-              top: size / 2 - stroke * 0.8 - stroke / 2,
-              width: size * 0.26,
-            }}
-          />
-        </View>
-      );
-  }
-}
-
-function Cross({ color, size, stroke }: { color: string; size: number; stroke: number }) {
-  return (
-    <View style={{ alignItems: 'center', height: size, justifyContent: 'center', width: size }}>
-      <View style={{ backgroundColor: color, height: stroke, position: 'absolute', width: size }} />
-      <View style={{ backgroundColor: color, height: size, position: 'absolute', width: stroke }} />
+      <Ionicons name={glyphIcon(name)} size={drawn} color={color ?? theme.colors.textMuted} />
     </View>
   );
 }
@@ -176,9 +70,8 @@ function Cross({ color, size, stroke }: { color: string; size: number; stroke: n
 /**
  * A square tile with the brand's chamfered top-left corner, holding a letter or two.
  *
- * Where another app would put a pictogram — a destination on Home, an empty state, a group
- * avatar — this app puts a tile in the language of its own mark. The corner is cut by a
- * triangle in the colour behind the tile, so `cutColor` must match what the tile sits on.
+ * Used for a group's avatar, so a group and a person are told apart at a glance. The corner is
+ * cut by a triangle in the colour behind the tile, so `cutColor` must match what the tile sits on.
  */
 export function ChamferTile({
   label,

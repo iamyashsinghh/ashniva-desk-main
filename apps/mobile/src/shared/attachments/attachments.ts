@@ -109,6 +109,19 @@ export async function pickImage(): Promise<PickedFile | null> {
     allowsMultipleSelection: false,
     quality: 0.8,
   });
+  return pickedPhoto(result);
+}
+
+/** A photo taken now with the camera. Null when cancelled or when camera access was refused. */
+export async function takePhoto(): Promise<PickedFile | null> {
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) {
+    return null;
+  }
+  return pickedPhoto(await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 }));
+}
+
+function pickedPhoto(result: ImagePicker.ImagePickerResult): PickedFile | null {
   const asset = result.canceled ? null : result.assets[0];
   if (!asset) {
     return null;

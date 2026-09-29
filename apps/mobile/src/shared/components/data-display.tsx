@@ -4,7 +4,10 @@ import { Pressable, View } from 'react-native';
 import { TOUCH_TARGET } from '../theme/theme';
 import { useTheme } from '../theme/ThemeProvider';
 import { Glyph } from './glyph';
+import { IconTile, type IconName, type IconTone } from './Icon';
 import { AppText, cardStyle } from './primitives';
+
+export { CountBadge, MetaLine } from './badges';
 
 /**
  * Showing numbers and facts: a headline figure, a bar, a label beside its value, a row in a
@@ -26,6 +29,8 @@ export function StatTile({
   tone = 'default',
   onPress,
   accessibilityLabel,
+  icon,
+  iconTone,
   children,
 }: {
   label: string;
@@ -34,15 +39,27 @@ export function StatTile({
   tone?: StatTone;
   onPress?: () => void;
   accessibilityLabel?: string;
+  icon?: IconName;
+  /** The tile's colour; follows `tone` when absent. */
+  iconTone?: IconTone;
   children?: ReactNode;
 }) {
   const theme = useTheme();
   const textTone = tone === 'default' ? 'default' : tone;
   const body = (
     <>
-      <AppText size="sm" tone="muted" numberOfLines={1}>
-        {label}
-      </AppText>
+      <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
+        {icon ? (
+          <IconTile
+            name={icon}
+            tone={iconTone ?? (tone === 'default' ? 'primary' : tone)}
+            size={30}
+          />
+        ) : null}
+        <AppText size="sm" tone="muted" numberOfLines={1} style={{ flex: 1 }}>
+          {label}
+        </AppText>
+      </View>
       <AppText variant="display" tone={textTone} tabular>
         {value}
       </AppText>
@@ -57,7 +74,7 @@ export function StatTile({
 
   const style = [
     cardStyle(theme),
-    { flexBasis: 0, flexGrow: 1, gap: 2, minWidth: 140 },
+    { flexBasis: 0, flexGrow: 1, gap: 4, minWidth: 140 },
     tone === 'danger' || tone === 'warning'
       ? { borderLeftColor: theme.colors[tone], borderLeftWidth: 3 }
       : null,
@@ -93,7 +110,11 @@ export function StatTile({
 /** A two-column grid of tiles that reflows to one on a very narrow or very large-text screen. */
 export function TileGrid({ children }: { children: ReactNode }) {
   const theme = useTheme();
-  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md }}>{children}</View>;
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md }}>
+      {children}
+    </View>
+  );
 }
 
 /** A bar from 0 to 100. */
@@ -160,7 +181,11 @@ export function KeyValueRow({
         paddingVertical: 2,
       }}
     >
-      <AppText size={emphasis ? 'body' : 'sm'} tone="muted" weight={emphasis ? 'medium' : undefined}>
+      <AppText
+        size={emphasis ? 'body' : 'sm'}
+        tone="muted"
+        weight={emphasis ? 'medium' : undefined}
+      >
         {label}
       </AppText>
       {typeof value === 'string' || typeof value === 'number' ? (
@@ -195,6 +220,8 @@ export function ListRow({
   accessibilityLabel,
   accessibilityHint,
   destructive = false,
+  icon,
+  iconTone,
 }: {
   title: string;
   subtitle?: string | null;
@@ -204,11 +231,17 @@ export function ListRow({
   accessibilityLabel?: string;
   accessibilityHint?: string;
   destructive?: boolean;
+  /** A leading icon tile, when there is no other `leading`. */
+  icon?: IconName;
+  iconTone?: IconTone;
 }) {
   const theme = useTheme();
   const content = (
     <>
-      {leading}
+      {leading ??
+        (icon ? (
+          <IconTile name={icon} tone={iconTone ?? (destructive ? 'danger' : 'primary')} size={36} />
+        ) : null)}
       <View style={{ flex: 1, gap: 2 }}>
         <AppText weight="medium" tone={destructive ? 'danger' : 'default'}>
           {title}
@@ -219,7 +252,8 @@ export function ListRow({
           </AppText>
         ) : null}
       </View>
-      {trailing ?? (onPress ? <Glyph name="chevron-right" color={theme.colors.textFaint} size={12} /> : null)}
+      {trailing ??
+        (onPress ? <Glyph name="chevron-right" color={theme.colors.textFaint} size={14} /> : null)}
     </>
   );
   const rowStyle = {
@@ -243,27 +277,5 @@ export function ListRow({
     >
       {content}
     </Pressable>
-  );
-}
-
-/** A small count bubble: unread messages, approvals waiting. */
-export function CountBadge({ count, tone = 'primary' }: { count: number; tone?: 'primary' | 'danger' }) {
-  const theme = useTheme();
-  return (
-    <View
-      style={{
-        alignItems: 'center',
-        backgroundColor: tone === 'danger' ? theme.colors.danger : theme.colors.primary,
-        borderRadius: theme.radius.pill,
-        justifyContent: 'center',
-        minWidth: 22,
-        paddingHorizontal: 6,
-        paddingVertical: 1,
-      }}
-    >
-      <AppText size="xs" weight="bold" tone="inverse" tabular>
-        {count > 99 ? '99+' : count}
-      </AppText>
-    </View>
   );
 }

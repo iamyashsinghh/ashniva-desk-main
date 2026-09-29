@@ -89,7 +89,7 @@ The API needs `apps/api/.env`; e2e tests need running Postgres, Redis and S3 (se
 | New API feature | `apps/api/src/modules/<feature>/` (`*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.repository.ts`, `dto/`), then add it to `src/modules/domain-modules.ts` |
 | New database table | `apps/api/prisma/schema.prisma` → `pnpm db:migrate --name <change>` |
 | New web screen | `apps/web/src/features/<feature>/pages/`, route in `apps/web/src/app/router.tsx`, nav in `app/layout/navigation.ts` |
-| New mobile screen | `apps/mobile/src/features/<feature>/`, route in `src/navigation/RootNavigator.tsx`, tab in `src/navigation/tabs.ts`. Administration screens stay on the web — see `apps/mobile/README.md` |
+| New mobile screen | `apps/mobile/src/features/<feature>/`, route in the area's `src/navigation/<area>-routes.tsx` with its params in `src/navigation/params/`, side-menu entry in `src/navigation/menu-sections.ts` (or `menu-items.ts`), tab only for everyday work in `src/navigation/tabs.ts` — see `apps/mobile/README.md` |
 | Reusable component | `packages/ui/src/components/<name>/` |
 | Anything a customer's browser runs | `packages/support-sdk/src/` — browser globals only, no Node ones |
 | Shared enum / type / API contract | `packages/types/src/…` (then `pnpm build:packages`) |

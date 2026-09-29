@@ -1,3 +1,4 @@
+import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -11,11 +12,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { mobileEnv } from '../../config/env';
 import { errorMessage } from '../../shared/api/client';
-import { BrandMark } from '../../shared/components/brand';
 import { Banner } from '../../shared/components/feedback';
+import { Icon } from '../../shared/components/Icon';
 import { AppText, Button, Card, Field, Input, Screen } from '../../shared/components/primitives';
 import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
+import { LoginHeader } from './LoginHeader';
+import { PasswordInput } from './PasswordInput';
 import { useSession } from './SessionProvider';
 
 /**
@@ -24,7 +27,7 @@ import { useSession } from './SessionProvider';
  * The keyboard covers the lower half of a phone, so the form lifts out of the way rather than
  * leaving the button under it — the single most common way a mobile sign-in screen fails.
  */
-export function LoginScreen() {
+export function LoginScreen({ onForgotPassword }: { onForgotPassword?: () => void }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { signIn } = useSession();
@@ -32,7 +35,6 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const passwordRef = useRef<TextInput>(null);
 
   const valid = email.includes('@') && password.length >= 8;
@@ -55,28 +57,34 @@ export function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
+        <StatusBar style={theme.isDark ? 'dark' : 'light'} />
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
-            gap: theme.spacing.xl,
-            justifyContent: 'center',
             paddingBottom: insets.bottom + theme.spacing.xl,
-            paddingHorizontal: theme.spacing.xl,
-            paddingTop: insets.top + theme.spacing.xl,
           }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ gap: theme.spacing.lg }}>
-            <BrandMark size={48} />
-            <View style={{ gap: theme.spacing.xs }}>
-              <AppText variant="display">Ashniva Desk</AppText>
-              <AppText tone="muted">Sign in to see your work.</AppText>
-            </View>
-          </View>
+          <LoginHeader />
 
-          <Card style={{ gap: theme.spacing.lg, padding: theme.spacing.xl - 4 }}>
+          <Card
+            style={{
+              gap: theme.spacing.lg,
+              marginHorizontal: theme.spacing.xl - 4,
+              marginTop: -56,
+              padding: theme.spacing.xl - 4,
+              ...theme.shadow.raised,
+            }}
+          >
+            <View style={{ gap: theme.spacing.xs }}>
+              <AppText variant="title">Welcome back</AppText>
+              <AppText tone="muted" size="sm">
+                Sign in to see your work.
+              </AppText>
+            </View>
             <Field label="Email">
               <Input
+                icon="mail-outline"
                 accessibilityLabel="Email address"
                 autoCapitalize="none"
                 autoComplete="email"
@@ -98,36 +106,38 @@ export function LoginScreen() {
                 password.length > 0 && password.length < 8 ? 'At least 8 characters' : undefined
               }
             >
-              <Input
+              <PasswordInput
                 ref={passwordRef}
                 accessibilityLabel="Password"
-                autoCapitalize="none"
                 autoComplete="current-password"
                 onChangeText={setPassword}
                 onSubmitEditing={() => valid && void submit()}
                 returnKeyType="go"
-                secureTextEntry={!showPassword}
                 textContentType="password"
                 value={password}
-                right={
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                    hitSlop={8}
-                    onPress={() => setShowPassword((value) => !value)}
-                    style={{
-                      justifyContent: 'center',
-                      minHeight: TOUCH_TARGET,
-                      paddingHorizontal: theme.spacing.sm,
-                    }}
-                  >
-                    <AppText size="sm" tone="primary" weight="medium">
-                      {showPassword ? 'Hide' : 'Show'}
-                    </AppText>
-                  </Pressable>
-                }
               />
             </Field>
+
+            {onForgotPassword ? (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel="Forgot password?"
+                accessibilityHint="Sends a link to reset your password"
+                hitSlop={8}
+                onPress={onForgotPassword}
+                style={({ pressed }) => ({
+                  alignSelf: 'flex-end',
+                  justifyContent: 'center',
+                  marginTop: -theme.spacing.sm,
+                  minHeight: TOUCH_TARGET,
+                  opacity: pressed ? 0.6 : 1,
+                })}
+              >
+                <AppText size="sm" tone="primary" weight="medium">
+                  Forgot password?
+                </AppText>
+              </Pressable>
+            ) : null}
 
             {error ? (
               <Banner tone="danger" role="alert">
@@ -137,6 +147,7 @@ export function LoginScreen() {
 
             <Button
               label="Sign in"
+              icon="log-in-outline"
               loading={busy}
               disabled={!valid}
               accessibilityHint="Signs you in and opens your work"
@@ -144,11 +155,26 @@ export function LoginScreen() {
             />
           </Card>
 
-          {mobileEnv.isDevelopment ? (
-            <AppText size="xs" tone="faint" align="center">
-              Development build — talking to {mobileEnv.apiBaseUrl}
-            </AppText>
-          ) : null}
+          <View
+            style={{
+              alignItems: 'center',
+              gap: theme.spacing.sm,
+              marginTop: theme.spacing.xl,
+              paddingHorizontal: theme.spacing.xl,
+            }}
+          >
+            <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.xs }}>
+              <Icon name="shield-checkmark-outline" size={14} color={theme.colors.textFaint} />
+              <AppText size="xs" tone="faint">
+                Your session is stored securely on this device
+              </AppText>
+            </View>
+            {mobileEnv.isDevelopment ? (
+              <AppText size="xs" tone="faint" align="center">
+                Development build — talking to {mobileEnv.apiBaseUrl}
+              </AppText>
+            ) : null}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>

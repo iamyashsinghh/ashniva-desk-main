@@ -120,6 +120,34 @@ export interface MessageSummary {
    */
   canEdit: boolean;
   canDelete: boolean;
+  /**
+   * The message this one answers, as it reads to this caller *now* — an edit to the original
+   * shows in the quote, and a withdrawn original quotes as withdrawn. Null when it answers
+   * nothing. Optional only so older fixtures still type-check; the API always sets it.
+   */
+  replyTo?: MessageReplyRef | null;
+}
+
+/** Longest quote of the original a reply carries. The thread shows two lines of it at most. */
+export const MESSAGE_REPLY_PREVIEW_LENGTH = 200;
+
+/**
+ * The quoted original on a reply.
+ *
+ * Built by the same visibility rule as the message itself: a caller who could not read the
+ * original (a tagged-private line they are not on) gets `unavailable` and nothing else — not its
+ * sender, not a word of its body. Quoting must never be a way to read around a restriction.
+ */
+export interface MessageReplyRef {
+  id: string;
+  /** Null when unavailable, or when the sender's account is gone. */
+  sender: UserRef | null;
+  /** The start of the body, up to `MESSAGE_REPLY_PREVIEW_LENGTH`. Empty when withdrawn or hidden. */
+  bodyPreview: string;
+  /** How many files it carried, so a photo-only message still quotes as something. */
+  attachmentCount: number;
+  deleted: boolean;
+  unavailable: boolean;
 }
 
 /**
@@ -216,6 +244,11 @@ export interface SendMessageInput {
    * posting it twice, which is what makes a flaky connection safe to retry.
    */
   clientMessageId?: string;
+  /**
+   * The message this answers. Must be in the same conversation and readable by the sender;
+   * anything else is refused as not found, so the refusal says nothing about the other thread.
+   */
+  replyToId?: string;
 }
 
 /** Rewriting one of your own messages, inside the edit window. */

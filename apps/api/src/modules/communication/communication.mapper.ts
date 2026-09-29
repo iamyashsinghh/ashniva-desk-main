@@ -14,9 +14,16 @@ import {
 } from '@ashniva/types';
 import { randomUUID } from 'node:crypto';
 
+import { toUserRefWithAvatar } from '../users/user-avatar';
 import { toMessageFileSummary } from './message-attachments';
 import { messagePreview } from './message-preview';
-import type { ConversationRow, MessageRevisionRow, MessageRow } from './conversations.repository';
+import { toMessageReplyRef } from './message-reply';
+import type {
+  ConversationRow,
+  MessageRevisionRow,
+  MessageRow,
+  MessageViewer,
+} from './conversations.repository';
 
 /**
  * Rows into API shapes.
@@ -108,7 +115,7 @@ export function toConversationDetail(
   return {
     ...toConversationSummary(row, viewerId, extras),
     participants: row.members.map((member) => ({
-      ...member.user,
+      ...toUserRefWithAvatar(member.user),
       // Their role *now*, not when they joined. Somebody who has left the project shows as null
       // here, which is the honest answer and the same one the policy gives.
       projectRole: extras.roles.get(member.userId) ?? null,
@@ -136,14 +143,20 @@ export interface MessageAbilities {
 
 export const NO_MESSAGE_ABILITIES: MessageAbilities = { canEdit: false, canDelete: false };
 
+/**
+ * `viewer` is who the payload is for, and decides how a quoted original reads (see
+ * `toMessageReplyRef`). Null — the default, so a caller that forgets gets the safe answer — is a
+ * payload shared by a whole audience.
+ */
 export function toMessageSummary(
   row: MessageRow,
   abilities: MessageAbilities = NO_MESSAGE_ABILITIES,
+  viewer: MessageViewer | null = null,
 ): MessageSummary {
   return {
     id: row.id,
     conversationId: row.conversationId,
-    sender: row.sender,
+    sender: row.sender ? toUserRefWithAvatar(row.sender) : null,
     // A deleted message keeps its place in the thread so the conversation still reads correctly,
     // but its body does not survive into the response.
     body: row.deletedAt ? '' : row.body,
@@ -154,6 +167,8 @@ export function toMessageSummary(
     deletedAt: row.deletedAt?.toISOString() ?? null,
     restrictedToUserIds: row.restrictedToUserIds,
     ...abilities,
+    // A withdrawn reply keeps no quote: what it answered is as gone as what it said.
+    replyTo: row.deletedAt ? null : toMessageReplyRef(row.replyTo, viewer),
   };
 }
 
@@ -196,7 +211,8 @@ function counterpartOf(row: ConversationRow, viewerId: string) {
   if (!PAIR_MEMBERSHIP_KINDS.includes(row.kind as ConversationKind)) {
     return null;
   }
-  return row.members.find((member) => member.userId !== viewerId)?.user ?? null;
+  const other = row.members.find((member) => member.userId !== viewerId)?.user;
+  return other ? toUserRefWithAvatar(other) : null;
 }
 
 function previewOf(message: MessageRow): string {

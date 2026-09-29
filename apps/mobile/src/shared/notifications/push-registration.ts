@@ -1,14 +1,20 @@
+import type { RegisterPushDeviceRequest, UnregisterPushDeviceRequest } from '@ashniva/types';
 import * as Notifications from 'expo-notifications';
 
+import { apiRequest } from '../api/client';
+import { expoPushToken, pushPlatform } from './push-token';
+
 /**
- * Asking this device for permission to show notifications.
+ * Asking this device for permission to show notifications, and filing its push token with the API.
  *
- * Permission is requested when it will make sense to the person — after they have seen a ticket
- * or a task — not on first launch, when the answer is usually no and the platform never asks
- * again.
+ * Permission is requested once somebody has signed in — they know by then what the app is for —
+ * and again from the Profile screen's "enable" button, not on the login screen, where the answer
+ * is usually no and the platform never asks again. `registerIfPermitted` files the token when
+ * permission was granted earlier and never shows a prompt.
  *
- * The token stops here. Registering a device with the API needs a device table and a push channel
- * that do not exist yet; see the note further down for what is owed.
+ * The token is filed against the signed-in caller (`POST /notifications/push/devices`) and
+ * forgotten on sign-out (`unregisterPushDevice`), so a shared phone stops receiving the previous
+ * person's alerts. The API upserts on the token, so registering again for a new user moves it.
  */
 
 export type PushPermission = 'granted' | 'denied' | 'undetermined' | 'unavailable';
@@ -17,7 +23,15 @@ export interface PushRegistration {
   permission: PushPermission;
   /** The token, when one could be obtained. Never logged. */
   token: string | null;
+  /** Whether the API accepted the token. False on simulators and before `eas init`. */
+  registered: boolean;
 }
+
+/** Sign-out must not wait on a slow network; the server drops dead tokens on its own anyway. */
+const UNREGISTER_TIMEOUT_MS = 4_000;
+
+/** The token the API last accepted from this process, so sign-out knows what to forget. */
+let registeredToken: string | null = null;
 
 /** What the platform currently thinks, without asking the person anything. */
 export async function currentPushPermission(): Promise<PushPermission> {
@@ -30,46 +44,90 @@ export async function currentPushPermission(): Promise<PushPermission> {
 }
 
 /**
- * Asks for permission and, if granted, gets a token.
+ * Asks for permission and, if granted, registers the device.
  *
  * Never throws. Push is a nicety: an app that fails to start because a simulator has no push
  * support is worse than an app with no notifications.
  */
 export async function registerForPush(): Promise<PushRegistration> {
   try {
-    const existing = await Notifications.getPermissionsAsync();
-    let status = toPermission(existing.status);
-
+    let status = await currentPushPermission();
     if (status === 'undetermined') {
       const asked = await Notifications.requestPermissionsAsync();
       status = toPermission(asked.status);
     }
     if (status !== 'granted') {
-      return { permission: status, token: null };
+      return { permission: status, token: null, registered: false };
     }
-
-    const token = await Notifications.getExpoPushTokenAsync();
-    return { permission: 'granted', token: token.data };
+    return await registerGranted();
   } catch {
-    return { permission: 'unavailable', token: null };
+    return { permission: 'unavailable', token: null, registered: false };
   }
 }
 
-/*
- * There is deliberately nothing here that sends the token anywhere.
+/** Registers the device only if permission was already granted. Never prompts, never throws. */
+export async function registerIfPermitted(): Promise<PushRegistration> {
+  const status = await currentPushPermission();
+  if (status !== 'granted') {
+    return { permission: status, token: null, registered: false };
+  }
+  return registerGranted();
+}
+
+/**
+ * Tells the API to stop pushing to this device. Call it *before* signing out — the request needs
+ * the caller's access token.
  *
- * `sendPushTokenToApi` used to POST the token to `/notifications/devices`, a route the API has
- * never had, and swallowed the 404 — so every launch quietly failed to register and the app said
- * "This device will receive alerts" about a device the server had never heard of. Pretending is
- * worse than not doing it: nobody investigates a feature they believe is working.
- *
- * What the API would need before this comes back: a device table keyed on (user, token) with the
- * platform and a last-seen timestamp; a route to register and to forget one, scoped to the caller
- * so a token cannot be filed against somebody else; a push channel in `NOTIFICATION_CHANNELS`
- * beside the e-mail and WhatsApp ones, so a person's per-type preferences decide what is pushed;
- * and expiry handling, because a token that stops working has to be dropped rather than retried.
- * The mobile app is another workstream's, so that lands with it rather than here.
+ * Never throws and never takes longer than a few seconds: sign-out must always complete, and a
+ * token the server keeps by mistake is dropped the first time Expo reports it undeliverable.
  */
+export async function unregisterPushDevice(): Promise<void> {
+  const token = registeredToken;
+  registeredToken = null;
+  if (!token) {
+    return;
+  }
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve();
+    }, UNREGISTER_TIMEOUT_MS);
+  });
+  const body: UnregisterPushDeviceRequest = { token };
+  const request = apiRequest<void>('/notifications/push/devices/unregister', {
+    method: 'POST',
+    body,
+    signal: controller.signal,
+  }).catch(() => undefined);
+  try {
+    await Promise.race([request, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function registerGranted(): Promise<PushRegistration> {
+  const token = await expoPushToken();
+  const platform = pushPlatform();
+  if (!token || !platform) {
+    return { permission: 'granted', token: null, registered: false };
+  }
+  const body: RegisterPushDeviceRequest = { token, platform };
+  try {
+    await apiRequest<void>('/notifications/push/devices', { method: 'POST', body });
+    registeredToken = token;
+    return { permission: 'granted', token, registered: true };
+  } catch {
+    return { permission: 'granted', token, registered: false };
+  }
+}
+
+/** Test hook: resets module state between cases. Never called by the app. */
+export function resetPushRegistrationForTests(): void {
+  registeredToken = null;
+}
 
 function toPermission(status: string): PushPermission {
   if (status === 'granted') {

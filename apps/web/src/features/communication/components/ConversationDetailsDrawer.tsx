@@ -4,8 +4,9 @@ import {
   membershipOf,
   type ConversationDetail,
 } from '@ashniva/types';
-import { Avatar, Drawer } from '@ashniva/ui';
+import { Drawer } from '@ashniva/ui';
 
+import { PersonAvatar } from '../../../shared/components/PersonAvatar';
 import { formatDateTime } from '../../../shared/lib/format';
 import { GroupPanel } from './GroupPanel';
 
@@ -45,7 +46,12 @@ export function ConversationDetailsDrawer({
       {membership === CONVERSATION_MEMBERSHIP.PAIR ? (
         <ul className="chat-list">
           <li className="chat-list__person">
-            <Avatar name={conversation.counterpart?.name ?? 'Somebody'} size="sm" />
+            <PersonAvatar
+              name={conversation.counterpart?.name ?? 'Somebody'}
+              userId={conversation.counterpart?.id}
+              avatar={conversation.counterpart?.avatar}
+              size="sm"
+            />
             <span>
               <strong>{conversation.counterpart?.name ?? 'Somebody'}</strong>
               <span className="timeline__note"> · {conversation.counterpart?.email}</span>

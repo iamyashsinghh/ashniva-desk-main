@@ -1,4 +1,4 @@
-import type { MentionableUser } from '@ashniva/types';
+import { encodeMentions, type MentionableUser } from '@ashniva/types';
 import { useCallback, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 /**
@@ -11,6 +11,7 @@ import { useCallback, useRef, useState, type KeyboardEvent as ReactKeyboardEvent
 const TRAILING_MENTION = /(?:^|\s)@([\p{L}\p{N}. '-]*)$/u;
 /** The same word, for cutting it back out when a name is chosen. */
 const MENTION_WORD = /@[\p{L}\p{N}. '-]*$/u;
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 
 /** The picker's state the composer drives — conversation or task, same shape. */
 export type MentionSearchControls = {
@@ -28,6 +29,10 @@ export type MentionSearchControls = {
 /**
  * The composer's half of the mention picker: when it is open, what goes into the draft, and which
  * keys it takes before the textarea does.
+ *
+ * The textarea shows a picked person as `@Name`; `toBody` turns the draft into what is sent, with
+ * each picked name written as `@[uuid]` (`encodeMentions`). Only picks are converted, so typing a
+ * colleague's name by hand does not tag them.
  */
 export function useComposerMentions(
   search: MentionSearchControls,
@@ -43,12 +48,28 @@ export function useComposerMentions(
   function reactToDraft(value: string, caret: number): void {
     draft.current = value;
     const match = TRAILING_MENTION.exec(value.slice(0, caret));
-    search.setTerm(match ? (match[1] ?? '') : null);
+    const term = match ? (match[1] ?? '') : null;
+    // The word pattern allows spaces, so a name just chosen would otherwise reopen the picker.
+    const alreadyPicked =
+      term !== null &&
+      [...names.values()].some(
+        (name) => term.startsWith(name) && !WORD_CHARACTER.test(term.charAt(name.length)),
+      );
+    search.setTerm(alreadyPicked ? null : term);
   }
+
+  const toBody = (value: string): string =>
+    encodeMentions(
+      value,
+      [...names].map(([userId, name]) => ({ userId, name })),
+    );
+
+  /** Forgets the picks, so the draft's names go out as plain text. */
+  const forget = useCallback(() => setNames(new Map()), []);
 
   function insert(person: MentionableUser, caret: number): string {
     const before = draft.current.slice(0, caret).replace(MENTION_WORD, '');
-    const next = `${before}@[${person.userId}] ${draft.current.slice(caret)}`;
+    const next = `${before}@${person.name.trim()} ${draft.current.slice(caret)}`;
     setNames((current) => new Map(current).set(person.userId, person.name));
     draft.current = next;
     search.setTerm(null);
@@ -77,5 +98,5 @@ export function useComposerMentions(
     return null;
   }
 
-  return { search, names, noteDraft, reactToDraft, insert, handleKey };
+  return { search, names, noteDraft, reactToDraft, insert, handleKey, toBody, forget };
 }

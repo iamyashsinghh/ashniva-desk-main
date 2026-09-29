@@ -16,6 +16,12 @@ import { TasksScreen } from './TasksScreen';
 
 const fetchMock = jest.fn();
 
+// Signed in with no permissions: the timing verdict is shown to everyone, so the least-privileged
+// session is the one that proves it.
+jest.mock('../auth/SessionProvider', () => ({
+  useSession: () => ({ user: null, status: 'signed-in', can: () => false }),
+}));
+
 /** A client that keeps nothing after the screen goes away, so the jest worker can exit. */
 function testClient(): QueryClient {
   return new QueryClient({

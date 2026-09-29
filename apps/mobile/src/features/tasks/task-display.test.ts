@@ -1,6 +1,11 @@
-import { TASK_ACTION, type TaskActionAvailability } from '@ashniva/types';
+import {
+  TASK_ACTION,
+  TASK_STATUS,
+  type TaskActionAvailability,
+  type TaskStatus,
+} from '@ashniva/types';
 
-import { actionState } from './task-display';
+import { actionState, taskSteps } from './task-display';
 
 /**
  * What the screen does with the API's answer.
@@ -71,5 +76,24 @@ describe('an action the API did not mention', () => {
     expect(actionState([], TASK_ACTION.START, { showReasonWhenDisabled: true }).offered).toBe(
       false,
     );
+  });
+});
+
+describe('taskSteps', () => {
+  const states = (status: TaskStatus) => taskSteps(status).steps.map((step) => step.state);
+
+  it('marks the steps behind as done and the current one as current', () => {
+    expect(states(TASK_STATUS.IN_REVIEW)).toEqual(['done', 'done', 'current', 'todo']);
+    expect(taskSteps(TASK_STATUS.IN_REVIEW).offPath).toBeNull();
+  });
+
+  it('keeps work already begun as done when the task is off the main path', () => {
+    const returned = taskSteps(TASK_STATUS.RETURNED_TO_DEV);
+    expect(returned.offPath).toBe(TASK_STATUS.RETURNED_TO_DEV);
+    expect(returned.steps.map((step) => step.state)).toEqual(['done', 'todo', 'todo', 'todo']);
+  });
+
+  it('shows a draft with nothing reached yet', () => {
+    expect(states(TASK_STATUS.DRAFT)).toEqual(['todo', 'todo', 'todo', 'todo']);
   });
 });

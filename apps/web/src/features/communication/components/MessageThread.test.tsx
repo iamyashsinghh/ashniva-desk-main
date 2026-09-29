@@ -160,4 +160,50 @@ describe('MessageThread', () => {
     renderThread([message({ id: 'a', body: 'Mine', sender: DEV })]);
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
+
+  // -------------------------------------------------------------------------------------------
+  // Quoted replies
+  // -------------------------------------------------------------------------------------------
+
+  const replyTo = (id: string) => ({
+    id,
+    sender: PRIYA,
+    bodyPreview: 'The original',
+    attachmentCount: 0,
+    deleted: false,
+    unavailable: false,
+  });
+
+  it('draws the quote above the reply and follows it to a loaded original', () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    renderThread([
+      message({ id: 'a', body: 'The original', createdAt: at('2026-09-13T09:00:00') }),
+      message({
+        id: 'b',
+        body: 'The answer',
+        sender: DEV,
+        createdAt: at('2026-09-13T09:01:00'),
+        replyTo: replyTo('a'),
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: /Show the message from Priya S/ }));
+
+    const original = screen.getAllByText('The original')[0]?.closest('li');
+    expect(original).toHaveAttribute('data-message-id', 'a');
+    expect(original).toHaveClass('chat-message--flash');
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
+
+  it('says so, and stays put, when the original is further back than what is loaded', () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    renderThread([message({ id: 'b', body: 'The answer', sender: DEV, replyTo: replyTo('gone') })]);
+
+    fireEvent.click(screen.getByRole('button', { name: /Show the message from Priya S/ }));
+
+    expect(screen.getByRole('status')).toHaveTextContent(/further back in the conversation/);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
 });

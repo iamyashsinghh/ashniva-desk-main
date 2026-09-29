@@ -56,46 +56,84 @@ export function buildQuery(params: QueryParams | undefined): string {
   return encoded ? `?${encoded}` : '';
 }
 
-let refreshInFlight: Promise<boolean> | null = null;
+/**
+ * What a refresh came to. Only `refused` — a 401 or 403 — says anything about the session; a
+ * network failure, a 429 or a 5xx (the dev proxy answers 502 while the API restarts) is the API
+ * not answering, and is never a reason to sign anybody out.
+ */
+export type RefreshOutcome = 'refreshed' | 'refused' | 'unreachable';
+
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
 /**
- * Rotates the refresh cookie and stores the new access token. Concurrent 401s share one
- * refresh call. Returns false (and clears the session) when the cookie is gone or revoked.
+ * Runs a refresh under a lock shared by every tab of this origin.
+ *
+ * The refresh cookie is one cookie for all tabs, and the API rotates it on each use and treats a
+ * second presentation of a spent one as theft. Two tabs refreshing at once — both woken from
+ * sleep, say — would otherwise sign the person out of every tab. Behind the lock the second tab
+ * sends the cookie the first one just received. Browsers without Web Locks run it unlocked.
  */
-export function refreshSession(): Promise<boolean> {
-  if (!refreshInFlight) {
-    refreshInFlight = (async () => {
-      try {
-        const response = await fetch(`${webEnv.apiBaseUrl}/auth/refresh`, {
-          method: 'POST',
-          headers: { Accept: 'application/json' },
-          credentials: 'include',
-        });
-        if (!response.ok) {
-          // A login that finished while this refresh was in flight already has a session;
-          // do not wipe it because the anonymous page-load refresh returned 401.
-          if (getSessionState().status !== 'authenticated') {
-            setAnonymous();
-          }
-          return false;
-        }
-        const session = (await response.json()) as {
-          accessToken: string;
-          user: Parameters<typeof setAuthenticated>[1];
-        };
-        setAuthenticated(session.accessToken, session.user);
-        return true;
-      } catch {
-        if (getSessionState().status !== 'authenticated') {
-          setAnonymous();
-        }
-        return false;
-      } finally {
-        refreshInFlight = null;
-      }
-    })();
+async function underRefreshLock(
+  work: () => Promise<RefreshOutcome>,
+): Promise<RefreshOutcome> {
+  if (typeof navigator !== 'undefined' && 'locks' in navigator && navigator.locks) {
+    return await navigator.locks.request('ashniva-session-refresh', work);
   }
+  return work();
+}
+
+async function exchangeRefreshCookie(): Promise<RefreshOutcome> {
+  let response: Response;
+  try {
+    response = await fetch(`${webEnv.apiBaseUrl}/auth/refresh`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+    });
+  } catch {
+    return 'unreachable';
+  }
+  if (response.status === 401 || response.status === 403) {
+    return 'refused';
+  }
+  if (!response.ok) {
+    return 'unreachable';
+  }
+  try {
+    const session = (await response.json()) as {
+      accessToken: string;
+      user: Parameters<typeof setAuthenticated>[1];
+    };
+    setAuthenticated(session.accessToken, session.user);
+    return 'refreshed';
+  } catch {
+    return 'unreachable';
+  }
+}
+
+/**
+ * Rotates the refresh cookie and stores the new access token, reporting what happened.
+ * Concurrent callers in this tab share one call; other tabs wait their turn behind the lock.
+ */
+export function refreshSessionOutcome(): Promise<RefreshOutcome> {
+  refreshInFlight ??= underRefreshLock(exchangeRefreshCookie)
+    .then((outcome) => {
+      // A login that finished while this refresh was in flight already has a session; do not
+      // wipe it because the anonymous page-load refresh was refused.
+      if (outcome === 'refused' && getSessionState().status !== 'authenticated') {
+        setAnonymous();
+      }
+      return outcome;
+    })
+    .finally(() => {
+      refreshInFlight = null;
+    });
   return refreshInFlight;
+}
+
+/** True when a fresh access token is now in the session store. */
+export async function refreshSession(): Promise<boolean> {
+  return (await refreshSessionOutcome()) === 'refreshed';
 }
 
 /**

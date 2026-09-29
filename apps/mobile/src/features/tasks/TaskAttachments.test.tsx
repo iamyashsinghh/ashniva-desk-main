@@ -38,6 +38,7 @@ const screenshot: FileSummary = {
   sizeBytes: 2048,
   visibility: VISIBILITY.INTERNAL,
   uploadedBy: { id: 'u1', name: 'A' } as FileSummary['uploadedBy'],
+  caption: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 

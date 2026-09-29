@@ -1,5 +1,6 @@
 import { UAT_DECISION, type UatDecision } from '@ashniva/types';
 
+import type { IconName, IconTone } from '../../shared/components/Icon';
 import type { PillTone } from '../../shared/components/primitives';
 
 /**
@@ -22,6 +23,21 @@ const TONES: Record<UatDecision, PillTone> = {
   [UAT_DECISION.APPROVED]: 'success',
   [UAT_DECISION.CHANGES_REQUESTED]: 'danger',
 };
+
+interface StatusMark {
+  icon: IconName;
+  iconTone: IconTone;
+}
+
+const MARKS: Record<UatDecision, StatusMark> = {
+  [UAT_DECISION.PENDING]: { icon: 'ribbon', iconTone: 'warning' },
+  [UAT_DECISION.APPROVED]: { icon: 'thumbs-up', iconTone: 'success' },
+  [UAT_DECISION.CHANGES_REQUESTED]: { icon: 'thumbs-down', iconTone: 'danger' },
+};
+
+export function uatStatusMark(status: UatDecision): StatusMark {
+  return MARKS[status] ?? { icon: 'ribbon', iconTone: 'neutral' };
+}
 
 export function uatStatusLabel(status: UatDecision): string {
   return LABELS[status] ?? status;

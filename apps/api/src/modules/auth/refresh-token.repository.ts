@@ -26,10 +26,20 @@ export class RefreshTokenRepository {
     return this.prisma.refreshToken.findUnique({ where: { tokenHash } });
   }
 
-  async markReplaced(id: string, replacedByTokenId: string, revokedAt: Date): Promise<void> {
+  findById(id: string): Promise<RefreshToken | null> {
+    return this.prisma.refreshToken.findUnique({ where: { id } });
+  }
+
+  /** `presented`: the token being retired is the one the client sent, not the end of its chain. */
+  async markReplaced(
+    id: string,
+    replacedByTokenId: string,
+    revokedAt: Date,
+    presented: boolean,
+  ): Promise<void> {
     await this.prisma.refreshToken.update({
       where: { id },
-      data: { revokedAt, replacedByTokenId },
+      data: { revokedAt, replacedByTokenId, ...(presented ? { presentedAt: revokedAt } : {}) },
     });
   }
 

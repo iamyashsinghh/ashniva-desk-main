@@ -2,8 +2,7 @@ import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import { useEffect } from 'react';
 
-import { resolveDeepLink } from './deep-links';
-import { followTarget, targetFor } from './notification-router';
+import { followTarget, targetForPayload } from './notification-router';
 import type { RootStackParamList } from './param-lists';
 import type { TabName } from './tabs';
 
@@ -15,8 +14,9 @@ import type { TabName } from './tabs';
  * launched it, where the response was delivered before this hook existed. Without the second one,
  * the notification people actually tap — the one on a locked phone — opens the home screen.
  *
- * The payload comes from a push service, so it goes through `resolveDeepLink` before anything is
- * done with it, exactly as the API treats a webhook body.
+ * The payload comes from a push service (or from our own local echo of a realtime event, which
+ * carries the same shape), so `targetForPayload` checks every field before anything is done with
+ * it, exactly as the API treats a webhook body.
  *
  * `tabs` must be a stable array; the caller memoises it. Re-subscribing on every render would
  * follow the cold-start response again each time.
@@ -29,7 +29,7 @@ export function useNotificationTaps(tabs: readonly TabName[]): void {
 
     const open = (data: unknown) => {
       if (live) {
-        followTarget(navigation, targetFor(resolveDeepLink(data), tabs));
+        followTarget(navigation, targetForPayload(data, tabs));
       }
     };
 

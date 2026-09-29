@@ -27,20 +27,32 @@ development build is using, so nobody wonders why their data is missing.
 jailbroken device and present in a plain device backup, and a refresh token sitting there is a
 long-lived credential in clear text.
 
-| Value | Where | Why |
-| --- | --- | --- |
-| Access token | Memory only | Fifteen minutes of life. Writing it down would outlive its usefulness and its safety. |
-| Refresh token | Keychain / Keystore, via `expo-secure-store` | Encrypted by the operating system, `WHEN_UNLOCKED_THIS_DEVICE_ONLY` |
-| Cached user | Keychain / Keystore | So a cold start paints the right shell before the API answers |
+| Value         | Where                                        | Why                                                                                   |
+| ------------- | -------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Access token  | Memory only                                  | Fifteen minutes of life. Writing it down would outlive its usefulness and its safety. |
+| Refresh token | Keychain / Keystore, via `expo-secure-store` | Encrypted by the operating system, `WHEN_UNLOCKED_THIS_DEVICE_ONLY`                   |
+| Cached user   | Keychain / Keystore                          | So a cold start paints the right shell before the API answers                         |
 
 The refresh token needs one thing the web does not. On the web the API sets it as an httpOnly
 cookie and the browser sends it back; a native app has no cookie jar it can rely on, so the client
 reads the token out of the `Set-Cookie` header and presents it as a `Cookie` header on refresh.
 The API is unchanged — it reads the same header a browser sends.
 
-Concurrent 401s share one refresh call. Two would present the same token, and the API rotates it:
-the second presentation is a reuse of a spent token, which it treats as theft and revokes the
-whole family.
+Every exchange of the refresh token — the cold-start restore as well as a 401 mid-use — goes
+through one single-flight call, `exchangeRefreshToken` in `shared/api/client.ts`. Two would
+present the same token, and the API rotates it: the second presentation is a reuse of a spent
+token, which it treats as theft and revokes the whole family. The API also gives a rotated token
+thirty seconds' grace (`ROTATION_GRACE_MS`), so a reply lost to a reload mid-refresh is a retry
+rather than a sign-out.
+
+**A session ends only when the person signs out, the API refuses the token, or the app is
+deleted.** Only a 401 or 403 from the refresh is a refusal; no network, a timeout, a 429 or a 5xx
+keeps the stored session and the app carries on offline. The iOS Keychain outlives the app, so
+`shared/storage/install-marker.ts` keeps a marker file in the app's documents folder — which does
+go with the app — and a launch without it clears whatever a previous install left in secure
+storage. The refresh token's own lifetime (`JWT_REFRESH_TTL_SECONDS`, thirty days by default)
+restarts at every rotation, so it only runs out for somebody who has not opened the app in that
+long.
 
 ## Session states
 
@@ -49,42 +61,69 @@ Four, not a boolean, because the difference changes what is drawn:
 - **restoring** — the splash screen. We do not yet know.
 - **signed-in** — the stored token was exchanged with the API just now.
 - **offline** — there is a stored session that could not be checked. The app works from cache and
-  says so. Losing your session because you opened the app in a lift is not a security improvement.
-- **signed-out** — no session, or the API *refused* the stored one. Refused and unreachable are
+  says so, and becomes signed-in the first time a refresh gets through. Losing your session
+  because you opened the app in a lift is not a security improvement.
+- **signed-out** — no session, or the API _refused_ the stored one. Refused and unreachable are
   different answers and are treated differently.
 
 ## What is on the phone, and what is not
 
-The phone carries the work that happens away from a desk. Administration is not here and is not
-planned to be: users, roles, SLA policies, integrations, billing settings, audit history and
-reports are dense, consequential and rarely urgent, and a cramped version of one of those screens
-is worse than no version.
+The phone follows the web: every area the web has is here too, each behind the same permission
+the web checks, laid out for a small screen rather than shrunk. Dense editors — the invoice
+editor, the role permission matrix, billing settings — are cards and sheets rather than tables,
+and every consequential change (a role's permissions, a void, an hours adjustment, an invitation)
+asks for the password the web asks for.
 
-| Internal | Client |
-| --- | --- |
-| Home, and the five areas behind it | Home, and the two areas behind it |
-| My tasks — now and upcoming → detail: start, block, unblock, log time, attach, send for review | Tickets → detail → raise → reply |
-| Tickets → detail: reply, start, wait for the client, resume, resolve, call | Updates: progress summaries and releases → what changed in a release |
-| Notifications | Invoices → detail |
-| Projects, read-only → detail | Approvals → detail → approve, ask for changes, reject |
-| Approvals → detail: send for review, publish, return to draft, withdraw | Sign-offs → detail → approve, ask for changes, ask a question |
-| My time: what you have logged, by day | Profile, notification settings |
-| Messages: project, task, ticket, direct and group conversations, with calls | |
-| Testing: the tester queue → assignment → start → pass or fail | |
-| Profile, notification settings | |
+| Internal                                                                                                                                                                                       | Client                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Home: the role dashboard from `GET /dashboard` (and the Operations board for managers); every tile opens the list it counted                                                                   | Home, and the two areas behind it                                    |
+| My tasks — every list view, search, filters → detail: steps, comments with mentions, every action the API allows (review, assign, reopen, cancel, log time, send to testing) → create and edit | Tickets → detail → raise → reply, confirm and close, reopen          |
+| Tickets — every list view, search, filters → detail: SLA, routing, internal notes, linked tasks, related tickets, every action the API allows                                                  | Updates: progress summaries and releases → what changed in a release |
+| Alerts: unread / all, mark read, live alerts and push                                                                                                                                          | Invoices → detail                                                    |
+| Projects: search → create and edit → team → detail tabs (overview, plan, tasks, tickets, client updates, members) → Project Summary (the work plan and its editor)                             | Approvals → detail → approve, ask for changes, reject                |
+| Approvals → detail: send for review, publish, return to draft, withdraw                                                                                                                        | Sign-offs → detail → approve, ask for changes, ask a question        |
+| My time: what you have logged, by day                                                                                                                                                          | Profile, notification settings                                       |
+| Messages: project, task, ticket, direct and group conversations, with calls                                                                                                                    |                                                                      |
+| Testing: the tester queue → assignment → start → pass or fail                                                                                                                                  |                                                                      |
+| Profile: organization switch, change password, work schedule, notification settings with push and quiet hours                                                                                  |                                                                      |
 
-### Why those are not tabs
+Signed out: sign in, forgot password, reset password and accept an invitation — the last two are
+opened by the links in the API's e-mails (`reset-password/:token`, `invite/:token`).
 
-A bottom bar holds five entries comfortably; past that the labels truncate, and at a large text
-size they truncate sooner. The internal bar was already at five — Home, Tasks, Tickets, Alerts,
-You — so Projects, Messages, Testing, Approvals and My time each had to displace one, live behind
-Home, or be reached from a screen. The client's bar is full too: Home, Tickets, Updates, Invoices,
-You.
+Also in the side menu for the people whose permissions reach them: intern work (list and assign),
+completed today (publish, edit and withdraw client updates), the login and break log, and the
+support queue with team availability and routing. Beyond those, each area in its own folder:
 
-They live behind Home, as named rows with a sentence saying what is behind each. Nobody opens this
-app more often for a project than for the tasks on it, and an unlabelled sixth icon is not a better
-answer than one tap. They are also reached from the thing they are about: a task and a ticket each
-open their own conversation, and a project opens its channel.
+| Area                                   | Screens                                                                                                                  | Folder                                          |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| Contracts, change requests, milestones | lists, detail with every action, create and edit forms; hours adjustments; payment milestones; documents                 | `contracts/`, `change-requests/`, `milestones/` |
+| Releases and release notes             | readiness, included work, approvals, client sign-off, publish, roll back; notes generated, edited, reviewed, published   | `releases/`, `release-notes/`                   |
+| Problems, RCA, incidents               | problem lifecycle and RCA, recurring issues, incidents with emergency fixes and client summaries                         | `problems/`                                     |
+| Billing                                | invoices (editor, issue, payments, void), payments, billing settings                                                     | `billing/`                                      |
+| Reports and AI summaries               | the report builder and advanced reports, summaries and usage                                                             | `reports/`, `ai-summaries/`                     |
+| Administration                         | companies, users and teams, invitations, roles and the permission matrix, audit history, system status                   | `admin/`                                        |
+| Settings                               | SLA policies, support routing, products (keys, callbacks, call policy, tiers), branding, e-mail, WhatsApp, communication | `settings/`                                     |
+| Search and quick create                | search across every entity the web searches; the "+" offers what the topbar offers                                       | `search/`                                       |
+| Client portal                          | projects, contracts, change requests (raise and decide), reports, progress summaries                                     | `client-portal/`                                |
+
+Routes live in one file per area (`navigation/<area>-routes.tsx`, params in `navigation/params/`),
+and the side menu's sections in `navigation/menu-sections.ts`.
+
+### The bottom bar and the side menu
+
+The bottom bar is short on purpose — four buttons: Home, the main work list (tasks, or tickets
+for somebody without tasks), Messages and Alerts; a client gets Home, Tickets, Updates and
+Invoices. There is no Menu button on it.
+
+Everything else is in the **side menu**, which mirrors the web's sidebar section for section and
+is filtered by the same permissions (`navigation/menu-items.ts`). It opens from the ☰ button at
+the top left of every tab — Home and You draw theirs in their own header — or by swiping right from
+the left edge of a tab. The swipe is only on the tabs: on a pushed screen the same gesture is iOS's
+"back". Tabs that are not on the bar (Tickets for a developer, the profile) are still registered,
+so a menu entry or a notification opens them with the bar still underneath.
+
+Home keeps its named rows too, and things are still reached from what they are about: a task and a
+ticket each open their own conversation, and a project opens its channel.
 
 The client's Approvals row carries a count, from `GET /portal/home`. It is deliberately additive:
 Home has to paint on a cold start with no network, so there is no loading state and no error state
@@ -104,15 +143,18 @@ endpoints return only published records scoped to the caller's own organization,
 renders what it is given. There is no organization id in any URL this app builds, so a modified
 app cannot ask for another tenant's data.
 
-Three deliberate narrowings on the phone:
+The phone now does what the web does for tasks, tickets and projects — including internal ticket
+notes, task review, reassignment and cancel, and project editing. Two rules keep that safe:
 
-- A ticket reply from here is **always public**. The internal-note toggle exists on the web; the
-  difference between the two is one switch, and getting it wrong on a phone means an internal
-  remark reaching a customer. The internal discussion has its own place — the conversation attached
-  to the ticket — where there is no toggle to get wrong, because nothing in it ever reaches a client.
-- Task review, reassignment, override and cancel are not here. They are decisions taken with the
-  full history in front of you. Start, block, unblock and send-for-review are here: they are
-  statements about your own work, and you know the answer without a screen full of history.
+- **Internal is chosen, never defaulted.** A ticket reply starts as a client reply; the internal
+  note tab only exists for somebody holding `comment:internal`, and a note is sent as internal only
+  after that tab is picked. A client's ticket screen reads only the portal endpoints, and nothing is
+  fetched until the session knows which of the two the person is.
+- **Every action button is the API's answer.** Task, ticket and work-plan actions come from what the
+  detail response says this caller may do; the phone decides layout, not permission.
+
+Deliberate narrowings that remain:
+
 - **Editing an approval request's wording is not here.** A request is a title and up to five
   thousand characters of client-visible summary; rewriting that on a phone, with the client's copy
   of the old wording already in their inbox, is the edit that gets regretted. Moving the request —
@@ -125,7 +167,7 @@ Three deliberate narrowings on the phone:
   widens it: a phone list of who logged how much is a ranking whatever it is titled.
 - Internal conversations are refused to a client by the API at the first check of every route, and
   the app does not offer them the door. `canUseInternalChat` repeats both halves of the API's own
-  test — the role key *and* whether the organization is the service provider — so a custom role in
+  test — the role key _and_ whether the organization is the service provider — so a custom role in
   a client organization is caught as well as a seeded client role.
 
 ## Design
@@ -195,21 +237,41 @@ Anything that is not an image is a row with its name and size; opening it would 
 client's file to the device and handing it to another app, and that decision belongs on the web
 until somebody has taken it deliberately.
 
-## Chat, and why it polls
+## Chat, and how it stays live
 
-Conversations are refetched when the screen comes into focus, and polled every fifteen seconds
-while a thread is open. There is no Socket.IO connection, and that is a decision rather than an
-omission.
+One Socket.IO connection, `shared/realtime/RealtimeProvider.tsx`, the same gateway and the same
+event-to-query map as the web. The awkward parts of a socket on a phone are each handled there:
 
-A socket on a phone is not the object it is in a browser tab. It has to be torn down when the app
-backgrounds and rebuilt when it returns, reauthenticated against a token that rotates every fifteen
-minutes, backed off across a radio that comes and goes, and reconciled with whatever was missed
-while it was down. Every part of that which is wrong shows up as a conversation that has silently
-stopped updating — which is worse than one that is fifteen seconds behind, because the second is at
-least honest about what it is.
+- **Background.** It is closed while the app is in the background and reopened on return, with
+  one catch-up refetch for whatever was said in between; push covers the gap.
+- **Token rotation.** The gateway checks the access token only as a connection opens, and closes
+  one it refuses without Socket.IO retrying. `auth` is a function read at every handshake, so a
+  reconnect presents the current token, and a connection the gateway turns away prompts one
+  refresh (at most every thirty seconds), which reopens it. Without that, a quiet thread stopped
+  updating fifteen minutes after the token was issued.
+- **Arrivals elsewhere.** A message in another conversation shows as an in-app card
+  (`LiveMessageToasts`) that opens it; a message in the conversation on screen shows only in the
+  thread. The system banner is not also shown for a chat message while the app is open.
 
-So the socket stays in "not done here" until it is worth building properly, rather than sitting
-half-built in the app.
+The Messages tab and the side menu's entry carry the unread count from `useChatUnreadCount`, the
+same rows the inbox lists.
+
+**Replying** is WhatsApp's: swipe any message right (your own too), or long-press it and choose
+Reply. The composer shows who and what you are answering until you send or cancel, and the send
+carries `replyToId`. The bubble then quotes the original as the server builds it for _this_
+reader — withdrawn, or "unavailable" to somebody who could not read a tagged original — and
+tapping the quote scrolls to it. The server notifies the person answered, so a reply no longer
+starts with an `@mention`.
+
+**The title bar** is the conversation's own, in the brand colour: back, picture, the person's or
+group's name (a task's key and title, a project's name) and a line under it, then call and a menu
+with search, wallpaper, calls and details. The stack header is hidden for this one screen.
+
+**Pictures and wallpaper.** People are drawn with `PersonAvatar` (`shared/components/`): their
+photo, fetched with the bearer token from `GET /users/:id/avatar?v=`, a built-in preset in theme
+colours, or initials. Each person sets theirs from the profile screen. The wallpaper is a
+per-device choice, as it is in WhatsApp — one for every chat and optionally one per chat — kept
+in the app's documents folder by `features/chat-wallpaper/` and never sent to the server.
 
 ### The three screens
 
@@ -224,7 +286,7 @@ that cannot: it is two kinds, `DIRECT` and `SCOPE_DIRECT`, and the parameter tak
 order; there is no `nextCursor` on the response and no `cursor` on the DTO. So reaching further
 back widens the window — 25 rows at a time to the endpoint's ceiling of 100 — rather than fetching
 a page, and it is named as that in `chat-api.ts` rather than dressed up as paging. The message
-history *is* cursor-paged, and that is what `onEndReached` does in the thread.
+history _is_ cursor-paged, and that is what `onEndReached` does in the thread.
 
 **The mention badge is derived from the notification inbox**, because the conversation list cannot
 answer the question: `ConversationSummary` carries an unread total and a preview whose mentions are
@@ -240,7 +302,7 @@ the far end of the list. Inversion also makes `onEndReached` mean "reached the t
 older history belongs. Days and runs come from `groupMessagesByDay` in `@ashniva/types`, the same
 function the web app calls, so the two cannot disagree about which side of midnight a line fell on.
 
-The unread divider is drawn from the unread *count* rather than a read timestamp, walking back over
+The unread divider is drawn from the unread _count_ rather than a read timestamp, walking back over
 other people's messages the way the API counts them, and it is frozen when the thread opens: the
 read cursor moves a moment later, and a "you were here" line that vanishes or walks down the screen
 is worse than none.
@@ -248,7 +310,7 @@ is worse than none.
 **The composer never loses what was typed.** A dropped connection, a refused mention or an
 oversized attachment leaves the draft exactly where it was, with a sentence above it. Every send
 carries a `clientMessageId` held in a ref from the first attempt until one succeeds, so a retry is
-the *same* send and the API returns the message the first attempt created rather than posting a
+the _same_ send and the API returns the message the first attempt created rather than posting a
 second copy — generating that id at the moment of the press, which this screen used to do, makes a
 retry a new send and duplicates the message it was meant to save. That id is a uuid, because the
 DTO bounds it at 64 characters and the shape this used to build — conversation id, epoch
@@ -270,15 +332,14 @@ limits from `@ashniva/types` rather than numbers of its own — and it writes `@
 name. Keyboard navigation is a desktop concern; what replaces it is a 44-point row and an explicit
 Dismiss, because with the keyboard up there is often nothing behind the list to tap.
 
-**Push notifications are not part of any of this.** There is no device table, no registration
-endpoint and no push channel; `push-registration.ts` obtains an Expo token and stops. Notification
-taps reach a conversation through `notification-router.ts` like every other deep link.
+A new message also arrives as an alert (see "Push notifications"); a tap reaches the conversation
+through `notification-router.ts` like every other deep link.
 
 ### Direct messages and groups
 
 A project, task or ticket conversation is opened from the thing it is about, which is why this app
 had no "new conversation" button for a long time. A **scope direct message** and a **group** are
-attached to *people* instead, so there is nowhere else to start one from and Messages now carries
+attached to _people_ instead, so there is nowhere else to start one from and Messages now carries
 the button.
 
 Who may be reached comes from `GET /conversations/directory` — the messaging question, not
@@ -298,7 +359,7 @@ it would be the only thing on that screen needing an image picker.
 **A message can be edited, and cannot be withdrawn.** Those are two different decisions and the
 API takes both of them.
 
-`message.canEdit` says whether *this* line may be rewritten — the sender, inside
+`message.canEdit` says whether _this_ line may be rewritten — the sender, inside
 `MESSAGE_EDIT_WINDOW_MINUTES`, answered per message on every read because the window closes on one
 line of a thread while the next is still fresh. The phone renders that answer and computes none of
 its own: a window measured against the device's clock would drift from the one the server enforces.
@@ -331,7 +392,7 @@ Every gate is the server's answer, never a local guess.
   on. The API issues a short-lived URL and audits every playback and every refusal; the phone hands
   that URL to the system rather than shipping an audio player of its own.
 
-The one place a permission held on the device is consulted is whether to *ask* for a ticket's call
+The one place a permission held on the device is consulted is whether to _ask_ for a ticket's call
 history. `call:read-internal` is a hard requirement on that route, so without it the request is a
 guaranteed 403, and asking anyway would put a red error on the screen of every developer who opens
 a ticket. The API still decides the answer; this only avoids the question.
@@ -342,9 +403,35 @@ a ticket. The API still decides the answer; this only avoids the question.
 reason the API's AI and messaging modules have one: the service is a deployment choice. The app
 asks for a token and hands it to the API.
 
-Permission is requested from the profile screen, not on launch. Asked at the wrong moment the
-answer is usually no, and on both platforms no is permanent until somebody goes into system
-settings.
+Permission is requested once, right after signing in — by then the person knows what the app is
+for — and again from the profile screen's "enable" button. Never on the login screen: asked at the
+wrong moment the answer is usually no, and on both platforms no is permanent until somebody goes
+into system settings. The platform shows the question only while the answer is undetermined, so
+signing in again never nags.
+
+A remote push that lands while the app is open is presented the way a phone chat presents it: a
+message in another conversation plays the sound and leaves the banner to the in-app message card,
+anything about the conversation on screen stays silent, and every other alert shows normally.
+
+Two paths, so alerts work before push credentials exist:
+
+- **Live, while the app is open.** `RealtimeProvider` (`shared/realtime/`) holds one Socket.IO
+  connection to the API's `/ws` gateway, authenticated with the access token and reopened when a
+  refresh replaces it; it closes in the background and refetches everything on return. Each event
+  invalidates the same query keys the web app does, and `PushBootstrap` turns every
+  `notification.new` into a local notification — so alerts show in Expo Go and the simulator.
+- **Remote, when it is closed.** With permission granted, the Expo token is filed with
+  `POST /notifications/push/devices` and forgotten with `…/unregister` before sign-out, so a phone
+  handed to somebody else stops receiving the previous person's alerts. The API sends through its
+  `PUSH` channel, beside Web Push, under the same per-type preference. A recent-id set stops the
+  same alert showing twice when the live and the remote copy both arrive.
+
+Remote push needs `extra.eas.projectId` in `app.json` (run `eas init`) and APNs / FCM credentials
+in EAS; until then token lookup returns nothing and only the live path runs. Android Expo Go
+cannot receive remote push at all — use a development build.
+
+Tapping an alert follows its `link` first (the same web route the in-app notification carries),
+then an older `screen` payload, then the Alerts tab. Work-plan notifications open Project Summary.
 
 ## Deep links
 
@@ -378,46 +465,46 @@ of the context, through `shared/testing/harness.tsx`: what a screen is given has
 gives it, or the test proves something about a double. The harness is imported only by tests and is
 not reachable from `App.tsx`, so nothing in it reaches a bundle.
 
-| File | What it proves |
-| --- | --- |
-| `secure-store.test.ts` | Tokens go to secure storage; the wrapper survives a platform failure |
-| `session-store.test.ts` | The access token is never written down; the cookie parsing holds |
-| `auth-api.test.ts` | Refused and unreachable are different; sign-out is local-first |
-| `client.test.ts` | Bearer token, one shared refresh, 4xx not retried, no tenant id in a URL |
-| `tabs.test.ts` | All nine roles get a usable bar; clients get no internal tab |
-| `deep-links.test.ts` | An untrusted payload cannot reach a screen or carry a bad id |
-| `notification-router.test.ts` | A checked payload lands on a screen this person actually has |
-| `use-notification-taps.test.tsx` | A tap — including the one that launched the app — navigates |
-| `chat-access.test.ts` | No client gets a chat entry point, permission or not |
-| `MessageThread.test.tsx` | Own on the right and others left, a separator per day, an unread divider, a mention drawn as a name, Edit only where `canEdit` says so and no withdraw for anybody |
-| `thread-rows.test.ts` | The divider counts back the way the API counts, and stops rather than lie about unloaded history |
-| `mention-draft.test.ts` | An email address opens no picker, and what is written into the body is an id |
-| `mention-refusal.test.ts` | A 400 about a body's length or an attachment is not a refused mention, and the remedy keeps the name |
-| `client-message-id.test.ts` | The send key is a uuid inside the API's 64 characters, on a platform with Web Crypto and on one without |
-| `MessageEditor.test.tsx` | An edit reaches that one message, an emptied one is never sent, and a refusal stays open |
-| `conversation-filters.test.ts` | Direct is two kinds, so it is never sent as the endpoint's one |
-| `MessageComposer.test.tsx` | It sends and clears; a failure keeps every word; a retry cannot post twice; a refused mention is recoverable |
-| `ConversationScreen.test.tsx` | No withdraw control for anybody, and a 404 reads as "not there for you" |
-| `ConversationCalls.test.tsx` | No call action on a group or a scope direct message, with the API's own refusal in its place |
-| `ConversationsScreen.test.tsx` | Search costs no request, the list never asks per conversation, and a mention badges its row |
-| `NewConversationScreen.test.tsx` | The directory says why, and each action sends what the API documents |
-| `GroupScreen.test.tsx` | Manage and leave are the server's answers; the owner cannot be removed |
-| `mutations.test.tsx` | A refusal shows the API's words, frees the button and throws nothing |
-| `attachments.test.ts` | Multipart with the bearer token; an oversized or unaccepted file never leaves the device |
-| `TaskAttachments.test.tsx` | A picker that fails says so; an attachment image follows the session token |
-| `task-display.test.ts` | A refusal about timing is explained; one about the person is hidden |
-| `TaskActions.test.tsx` | Upcoming shows Start disabled with its reason, and sends nothing |
-| `LoginScreen.test.tsx` | The form is reachable by label and shows why a sign-in failed |
-| `queries.test.tsx` | A cursor-paged list asks for the next page and keeps the first |
-| `HomeScreen.test.tsx` | Every row is offered on a permission, and a provider never asks the portal |
-| `approval-display.test.ts` | Edit and the client's own decision are never drawn on the provider's screen |
-| `ApprovalsScreen.test.tsx` | Each audience reads its own endpoint, and an empty view names itself |
-| `InternalApprovalDetailScreen.test.tsx` | A refused transition is greyed with its reason and sends nothing |
-| `ClientApprovalDetailScreen.test.tsx` | No form without `canDecide`; a refusal needs its comment |
-| `SignOffScreen.test.tsx` | Reading and answering are separate; only `uat:decide` sees the form |
-| `work-log-display.test.ts` | The day totals and the seven-day range, including across a month |
-| `MyTimeScreen.test.tsx` | Only the signed-in person's time, with no control that widens it |
-| `UpdatesScreen.test.tsx` | Each list pages, and a release opens what changed rather than a version |
+| File                                    | What it proves                                                                                                                                                     |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `secure-store.test.ts`                  | Tokens go to secure storage; the wrapper survives a platform failure                                                                                               |
+| `session-store.test.ts`                 | The access token is never written down; the cookie parsing holds                                                                                                   |
+| `auth-api.test.ts`                      | Refused and unreachable are different; sign-out is local-first                                                                                                     |
+| `client.test.ts`                        | Bearer token, one shared refresh, 4xx not retried, no tenant id in a URL                                                                                           |
+| `tabs.test.ts`                          | All nine roles get a usable bar; clients get no internal tab                                                                                                       |
+| `deep-links.test.ts`                    | An untrusted payload cannot reach a screen or carry a bad id                                                                                                       |
+| `notification-router.test.ts`           | A checked payload lands on a screen this person actually has                                                                                                       |
+| `use-notification-taps.test.tsx`        | A tap — including the one that launched the app — navigates                                                                                                        |
+| `chat-access.test.ts`                   | No client gets a chat entry point, permission or not                                                                                                               |
+| `MessageThread.test.tsx`                | Own on the right and others left, a separator per day, an unread divider, a mention drawn as a name, Edit only where `canEdit` says so and no withdraw for anybody |
+| `thread-rows.test.ts`                   | The divider counts back the way the API counts, and stops rather than lie about unloaded history                                                                   |
+| `mention-draft.test.ts`                 | An email address opens no picker, and what is written into the body is an id                                                                                       |
+| `mention-refusal.test.ts`               | A 400 about a body's length or an attachment is not a refused mention, and the remedy keeps the name                                                               |
+| `client-message-id.test.ts`             | The send key is a uuid inside the API's 64 characters, on a platform with Web Crypto and on one without                                                            |
+| `MessageEditor.test.tsx`                | An edit reaches that one message, an emptied one is never sent, and a refusal stays open                                                                           |
+| `conversation-filters.test.ts`          | Direct is two kinds, so it is never sent as the endpoint's one                                                                                                     |
+| `MessageComposer.test.tsx`              | It sends and clears; a failure keeps every word; a retry cannot post twice; a refused mention is recoverable                                                       |
+| `ConversationScreen.test.tsx`           | No withdraw control for anybody, and a 404 reads as "not there for you"                                                                                            |
+| `ConversationCalls.test.tsx`            | No call action on a group or a scope direct message, with the API's own refusal in its place                                                                       |
+| `ConversationsScreen.test.tsx`          | Search costs no request, the list never asks per conversation, and a mention badges its row                                                                        |
+| `NewConversationScreen.test.tsx`        | The directory says why, and each action sends what the API documents                                                                                               |
+| `GroupScreen.test.tsx`                  | Manage and leave are the server's answers; the owner cannot be removed                                                                                             |
+| `mutations.test.tsx`                    | A refusal shows the API's words, frees the button and throws nothing                                                                                               |
+| `attachments.test.ts`                   | Multipart with the bearer token; an oversized or unaccepted file never leaves the device                                                                           |
+| `TaskAttachments.test.tsx`              | A picker that fails says so; an attachment image follows the session token                                                                                         |
+| `task-display.test.ts`                  | A refusal about timing is explained; one about the person is hidden                                                                                                |
+| `TaskActions.test.tsx`                  | Upcoming shows Start disabled with its reason, and sends nothing                                                                                                   |
+| `LoginScreen.test.tsx`                  | The form is reachable by label and shows why a sign-in failed                                                                                                      |
+| `queries.test.tsx`                      | A cursor-paged list asks for the next page and keeps the first                                                                                                     |
+| `HomeScreen.test.tsx`                   | Every row is offered on a permission, and a provider never asks the portal                                                                                         |
+| `approval-display.test.ts`              | Edit and the client's own decision are never drawn on the provider's screen                                                                                        |
+| `ApprovalsScreen.test.tsx`              | Each audience reads its own endpoint, and an empty view names itself                                                                                               |
+| `InternalApprovalDetailScreen.test.tsx` | A refused transition is greyed with its reason and sends nothing                                                                                                   |
+| `ClientApprovalDetailScreen.test.tsx`   | No form without `canDecide`; a refusal needs its comment                                                                                                           |
+| `SignOffScreen.test.tsx`                | Reading and answering are separate; only `uat:decide` sees the form                                                                                                |
+| `work-log-display.test.ts`              | The day totals and the seven-day range, including across a month                                                                                                   |
+| `MyTimeScreen.test.tsx`                 | Only the signed-in person's time, with no control that widens it                                                                                                   |
+| `UpdatesScreen.test.tsx`                | Each list pages, and a release opens what changed rather than a version                                                                                            |
 
 A test that renders anything with a mutation in it builds its `QueryClient` with `gcTime: 0`. That
 is not tidiness: React Query holds a finished mutation for a five-minute garbage-collection window
@@ -443,36 +530,20 @@ to be in the allow-list or nothing is transformed.
 
 ## Not done here
 
-App icons and a splash image, EAS build profiles, code signing, over-the-air updates, offline
-write queueing, biometric unlock, and a Socket.IO connection for live updates — see "Chat, and why
-it polls".
+EAS build profiles, code signing, over-the-air updates, offline write queueing and biometric
+unlock.
 
 Also deliberately absent, each for its own reason:
 
 - **Per-environment API URLs.** `app.json` is static, so one build points at one API. Pointing a
   staging build somewhere else means converting it to `app.config.ts`; nothing here needs that yet.
-- **Replying to one message in particular.** Not a decision this app gets to take: a message has no
-  parent. There is no `replyToId` column on `Message`, no field on `MessageSummary` and none on the
-  send DTO, so a "reply to" control here would either invent a convention the web app does not
-  share or quote the text into the body — where it would be an ordinary message that merely looks
-  like a reply, and would not survive the original being edited or withdrawn. It needs a column, a
-  contract field and both clients, and that is a piece of work rather than a phone screen.
 - **Downloading a non-image attachment.** It would mean writing a client's file to the device and
   handing it to another app.
-- **Revealing a test credential.** That is an audited endpoint with a short reveal window, and a
-  password on screen in a public place is exactly what the window exists to limit. A tester's
-  assignment shows the username; the reveal stays on the web.
-- **Assigning testing, triaging tickets, editing a project.** Decisions about who does what next,
-  taken with a queue or a team calendar in front of you.
-- **Raising an approval request, and the client's own projects list.** Preparing a request means
-  choosing a subject, writing five thousand characters of client-visible summary and attaching
-  files, which is desk work; the phone answers requests rather than composing them. A client's
-  project board is the one gap here that is a gap rather than a decision — it is a dense screen
-  and it is on the list, not in this change.
-- **Contracts, change requests, milestones, releases, problems and incidents.** Read-heavy screens
-  whose actions are decisions taken with a contract, a burn-down or an incident timeline open.
-- **The tester's other five queue views** — today, passed today, UAT, live, retest. They are ways
-  of reviewing a day's work, which is a desk activity. The phone shows mine, ready, failed and
-  overdue.
+- **CSV exports and PDF downloads** (reports, invoices, release notes). Both need a text/blob
+  helper in `shared/api/client.ts` and `expo-sharing` to hand the file to another app; the screens
+  say to download from the web.
+- **Copy buttons.** There is no `expo-clipboard`; invitation links, webhook addresses and new keys
+  use the system Share sheet instead.
+
 The approved clickable mobile prototype is at
 `docs/design-reference/prototype/Ashniva Desk - Mobile Prototype.dc.html`.

@@ -46,10 +46,25 @@ function handlers() {
   };
 }
 
+/** An internal person's Home settles on their dashboard; tests wait for it before asserting. */
+const EMPLOYEE_DASHBOARD = {
+  kind: 'employee',
+  kpis: { open: 0, waitingForYou: 0, resolved: 0 },
+  tickets: [],
+};
+
+function dashboardSettled(view: Awaited<ReturnType<typeof renderScreen>>) {
+  return view.findByLabelText('Resolved: 0');
+}
+
 beforeEach(() => {
   fetchMock.mockReset();
   globalThis.fetch = fetchMock as unknown as typeof fetch;
-  fetchMock.mockResolvedValue(jsonResponse({ kpis: { pendingApprovals: 0 } }));
+  fetchMock.mockImplementation(async (url: string) =>
+    jsonResponse(
+      url.includes('/dashboard') ? EMPLOYEE_DASHBOARD : { kpis: { pendingApprovals: 0 } },
+    ),
+  );
 });
 
 describe('a developer', () => {
@@ -66,6 +81,7 @@ describe('a developer', () => {
   it('is offered their own logged time, and opens it', async () => {
     const props = handlers();
     const view = await renderScreen(<HomeScreen {...props} />);
+    await dashboardSettled(view);
 
     await fireEvent.press(await view.findByRole('button', { name: 'My time' }));
     expect(props.onOpenMyTime).toHaveBeenCalled();
@@ -73,11 +89,13 @@ describe('a developer', () => {
 
   it('is offered approvals through the internal endpoint’s permission', async () => {
     const view = await renderScreen(<HomeScreen {...handlers()} />);
+    await dashboardSettled(view);
     expect(await view.findByRole('button', { name: 'Approvals' })).toBeTruthy();
   });
 
   it('is not offered a client’s sign-offs', async () => {
     const view = await renderScreen(<HomeScreen {...handlers()} />);
+    await dashboardSettled(view);
     await view.findByRole('button', { name: 'Approvals' });
     expect(view.queryByRole('button', { name: 'Sign-offs' })).toBeNull();
   });
@@ -86,7 +104,7 @@ describe('a developer', () => {
     // `GET /portal/home` refuses a provider. Asking on their behalf would put a guaranteed 403 in
     // the cache of every internal user who opened the app.
     const view = await renderScreen(<HomeScreen {...handlers()} />);
-    await view.findByRole('button', { name: 'Approvals' });
+    await dashboardSettled(view);
     expect(requestedPaths(fetchMock).some((path) => path.includes('/portal/'))).toBe(false);
   });
 });
@@ -106,7 +124,7 @@ describe('an internal employee without project access', () => {
   it('is offered neither approvals nor time they cannot read', async () => {
     const view = await renderScreen(<HomeScreen {...handlers()} />);
 
-    await view.findByText('On your phone');
+    await dashboardSettled(view);
     expect(view.queryByRole('button', { name: 'Approvals' })).toBeNull();
     expect(view.queryByRole('button', { name: 'My time' })).toBeNull();
   });

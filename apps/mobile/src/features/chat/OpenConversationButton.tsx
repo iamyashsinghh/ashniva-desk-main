@@ -36,6 +36,7 @@ export function OpenConversationButton({
     <>
       <Button
         label={label}
+        icon="chatbubbles-outline"
         variant="secondary"
         loading={open.busy}
         accessibilityHint={hint}

@@ -6,6 +6,7 @@ import {
 } from '@ashniva/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, type RenderResult } from '@testing-library/react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ThemeProvider } from '../../shared/theme/ThemeProvider';
 import { TaskActions } from './TaskActions';
@@ -46,11 +47,18 @@ function testClient(): QueryClient {
 
 function renderActions(task: TaskDetail): Promise<RenderResult> {
   return render(
-    <ThemeProvider>
-      <QueryClientProvider client={testClient()}>
-        <TaskActions task={task} onSubmit={jest.fn()} onChanged={jest.fn()} />
-      </QueryClientProvider>
-    </ThemeProvider>,
+    <SafeAreaProvider
+      initialMetrics={{
+        frame: { x: 0, y: 0, width: 390, height: 844 },
+        insets: { top: 47, left: 0, right: 0, bottom: 34 },
+      }}
+    >
+      <ThemeProvider>
+        <QueryClientProvider client={testClient()}>
+          <TaskActions task={task} onSubmit={jest.fn()} onChanged={jest.fn()} />
+        </QueryClientProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>,
   );
 }
 
@@ -98,25 +106,33 @@ describe('a task that can be started', () => {
   });
 });
 
-describe('the actions this app deliberately does not have', () => {
-  it('draws nothing for review, cancel or reassignment, whatever the API offers', async () => {
-    // The API offers them to a manager. They are decisions about somebody else's work, taken with
-    // the full history in front of you, and a phone-sized version invites a mistake that is
-    // awkward to undo.
-    const view = await renderActions(
-      taskWith([
-        { action: TASK_ACTION.APPROVE, enabled: true },
-        { action: TASK_ACTION.REJECT, enabled: true },
-        { action: TASK_ACTION.CANCEL, enabled: true },
-        { action: TASK_ACTION.ASSIGN, enabled: true },
-        { action: TASK_ACTION.REOPEN, enabled: true },
-      ]),
-    );
+describe("a manager's view of a task in review", () => {
+  const inReview = taskWith([
+    { action: TASK_ACTION.APPROVE, enabled: true },
+    { action: TASK_ACTION.REJECT, enabled: true },
+    { action: TASK_ACTION.CANCEL, enabled: true },
+    { action: TASK_ACTION.ASSIGN, enabled: true },
+    { action: TASK_ACTION.REOPEN, enabled: true },
+  ]);
 
-    await view.findByText('Actions');
-    expect(view.queryByRole('button', { name: 'Approve' })).toBeNull();
-    expect(view.queryByRole('button', { name: 'Reject' })).toBeNull();
-    expect(view.queryByRole('button', { name: 'Cancel' })).toBeNull();
-    expect(view.queryByRole('button', { name: 'Reassign' })).toBeNull();
+  it('leads with the review, not with the other decisions', async () => {
+    const view = await renderActions(inReview);
+    expect(await view.findByRole('button', { name: 'Review' })).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Cancel task' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'More actions (3)' })).toBeTruthy();
+  });
+
+  it('keeps reassigning, reopening and cancelling one tap away', async () => {
+    const view = await renderActions(inReview);
+    await fireEvent.press(await view.findByRole('button', { name: 'More actions (3)' }));
+    expect(await view.findByText('Assign / reassign')).toBeTruthy();
+    expect(view.getByText('Reopen')).toBeTruthy();
+    expect(view.getByText('Cancel task')).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('draws nothing the API did not offer', async () => {
+    const view = await renderActions(taskWith([{ action: TASK_ACTION.CANCEL, enabled: false }]));
+    expect(await view.findByText('Nothing to do from here right now.')).toBeTruthy();
   });
 });

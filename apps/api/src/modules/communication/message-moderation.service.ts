@@ -11,13 +11,20 @@ import {
 } from '@ashniva/types';
 
 import { AuditLogService } from '../audit-logs/audit-log.service';
-import { CommunicationPolicyService } from './communication-policy.service';
+import {
+  CommunicationPolicyService,
+  type CommunicationResolver,
+} from './communication-policy.service';
 import { CommunicationRealtimeService } from './communication-realtime.service';
 import { ConversationAudienceService } from './conversation-audience.service';
 import { ConversationMentionsService } from './conversation-mentions.service';
 import { toMessageRevisionSummary, toMessageSummary } from './communication.mapper';
 import { abilitiesOf, authorshipOf } from './message-abilities';
-import { ConversationsRepository, messageViewerOf } from './conversations.repository';
+import {
+  ConversationsRepository,
+  messageViewerOf,
+  type MessageRow,
+} from './conversations.repository';
 import { ConversationsService } from './conversations.service';
 import type { EditMessageDto } from './dto/communication.dto';
 
@@ -87,7 +94,7 @@ export class MessageModerationService {
     if (body === message.body) {
       // Nothing changed. Writing a revision for a save that altered nothing would fill the record
       // with copies of itself and make `editedAt` lie about a message nobody touched.
-      return toMessageSummary(message, abilitiesOf(resolver, message, actor.userId, now));
+      return summaryFor(actor, resolver, message, now);
     }
 
     const updated = await this.conversations.editMessage(
@@ -132,7 +139,7 @@ export class MessageModerationService {
         lostSight,
       );
     }
-    return toMessageSummary(updated, abilitiesOf(resolver, updated, actor.userId, now));
+    return summaryFor(actor, resolver, updated, now);
   }
 
   async remove(
@@ -178,7 +185,7 @@ export class MessageModerationService {
 
     const audience = await this.audience.forMessage(actor, row, updated.restrictedToUserIds);
     this.realtime.messageDeleted(row, toMessageSummary(updated), audience);
-    return toMessageSummary(updated, abilitiesOf(resolver, updated, actor.userId, now));
+    return summaryFor(actor, resolver, updated, now);
   }
 
   /**
@@ -247,4 +254,18 @@ export class MessageModerationService {
     }
     return { row, message, resolver, context, now: new Date() };
   }
+}
+
+/** The acting caller's own copy: their abilities, and the quote as they may read it. */
+function summaryFor(
+  actor: AuthenticatedUser,
+  resolver: CommunicationResolver,
+  message: MessageRow,
+  now: Date,
+): MessageSummary {
+  return toMessageSummary(
+    message,
+    abilitiesOf(resolver, message, actor.userId, now),
+    messageViewerOf(actor),
+  );
 }

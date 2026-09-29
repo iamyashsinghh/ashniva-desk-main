@@ -101,6 +101,21 @@ export async function setSession(
   return true;
 }
 
+/**
+ * Replaces the signed-in person's own details — a new profile picture — without a new token.
+ *
+ * Written through to the cached user too, so a cold start offline paints what was last chosen
+ * rather than what was there before.
+ */
+export async function updateSessionUser(change: (user: SessionUser) => SessionUser): Promise<void> {
+  if (!current) {
+    return;
+  }
+  current = { ...current, user: change(current.user) };
+  await writeSecureJson(SECURE_KEYS.sessionUser, current.user);
+  announce();
+}
+
 /** Signs out locally: memory cleared first, so nothing can read a token mid-teardown. */
 export async function clearSession(): Promise<void> {
   generation += 1;

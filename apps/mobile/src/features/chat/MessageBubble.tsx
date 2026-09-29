@@ -1,13 +1,15 @@
-import { memo, type MutableRefObject } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import type { MessageSummary } from '@ashniva/types';
+import { memo, useCallback, type MutableRefObject } from 'react';
+import { Pressable, View } from 'react-native';
 
 import { AppText } from '../../shared/components/primitives';
-import { formatTime } from '../../shared/format/format';
-import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { MessageAttachments } from './MessageAttachments';
-import { MessageBody } from './MessageBody';
+import { BubbleActions, MessageRevisions } from './BubbleActions';
+import { BubbleSurface } from './BubbleSurface';
 import { MessageEditor } from './MessageEditor';
+import { canReplyTo } from './MessageActionSheet';
+import { bubbleAccessibilityLabel } from './message-labels';
+import { SwipeToReply } from './SwipeToReply';
 import type { MessageRow } from './thread-rows';
 
 /**
@@ -27,23 +29,14 @@ import type { MessageRow } from './thread-rows';
  *
  * **Edit is drawn from `message.canEdit`, and from nothing else.** The server answers it per
  * message on every read — the sender, inside the fifteen-minute window — because the answer
- * differs between two lines of the same thread. Nothing here recomputes it: a rule restated on a
- * phone is a rule that drifts from the one the API enforces, and it would be a worse copy anyway,
- * since the window is measured against the server's clock rather than this device's.
+ * differs between two lines of the same thread. Nothing here recomputes it.
  *
- * **There is no delete control here, for anybody**, and that is not the same kind of decision.
- * `DELETE /conversations/:id/messages/:id` refuses everyone without `conversation:inspect`, the
- * sender included, with the same sentence a bystander gets: a message cannot be withdrawn once it
- * is sent. `canDelete` is therefore false for every person this app is built for, so a control
- * conditioned on it would never appear — and offering an ordinary reader a withdraw button that
- * only ever refuses would be worse than the honesty of not drawing one. Somebody holding
- * `conversation:inspect` moderates on the web, where the act is labelled as the administrative
- * one it is.
+ * **There is no delete control here, for anybody** — nor on the web. `DELETE` refuses everyone
+ * without `conversation:inspect`, the sender included.
  *
  * **An edit in progress is not held here.** The thread renders these in a windowed list that
- * unmounts rows it has scrolled past, so anything kept inside a bubble is something the list may
- * throw away without anybody being told. `MessageThread` holds both the id of the message being
- * edited and the words typed into it; this passes them through. See the note there.
+ * unmounts rows it has scrolled past, so `MessageThread` holds both the id of the message being
+ * edited and the words typed into it; this passes them through.
  */
 export interface MessageBubbleProps {
   row: MessageRow;
@@ -59,6 +52,19 @@ export interface MessageBubbleProps {
   onEdit: (messageId: string) => void;
   /** Finished editing — the save landed, or it was cancelled. */
   onDoneEditing: () => void;
+  /** What the in-thread search is looking for, lowercased. */
+  highlight?: string;
+  /** Answers this message in the composer. Absent where the reader cannot post. */
+  onReply?: ((message: MessageSummary) => void) | undefined;
+  /** Opens the edit history. Only given to somebody reading on oversight. */
+  onShowRevisions?: ((messageId: string) => void) | undefined;
+  revisionsOpen?: boolean;
+  /** Opens the message's action sheet. */
+  onLongPress?: ((message: MessageSummary, isOwn: boolean) => void) | undefined;
+  /** Goes to the message a reply quotes. */
+  onOpenQuote?: ((messageId: string) => void) | undefined;
+  /** True for a moment after somebody jumped here from a quote. */
+  flashing?: boolean;
 }
 
 export const MessageBubble = memo(function MessageBubble({
@@ -70,9 +76,20 @@ export const MessageBubble = memo(function MessageBubble({
   editingDraftRef,
   onEdit,
   onDoneEditing,
+  highlight = '',
+  onReply,
+  onShowRevisions,
+  revisionsOpen = false,
+  onLongPress,
+  onOpenQuote,
+  flashing = false,
 }: MessageBubbleProps) {
   const theme = useTheme();
   const { message, isOwn, isSystem } = row;
+  // Stable while the message is: the swipe's responder is memoised on it, and one rebuilt mid-drag
+  // loses the gesture. The thread's cache keeps an unchanged message the same object across
+  // refetches, so only a real change to this line makes a new callback.
+  const reply = useCallback(() => onReply?.(message), [onReply, message]);
 
   if (isSystem) {
     return (
@@ -91,120 +108,89 @@ export const MessageBubble = memo(function MessageBubble({
     // `accessible` element with a sentence of its own, and a text field buried in one of those is
     // a text field a screen reader cannot reach.
     return (
-      <View
-        style={{
-          alignItems: 'stretch',
-          paddingTop: row.isRunStart ? theme.spacing.sm : 2,
-        }}
-      >
-        <MessageEditor message={message} draftRef={editingDraftRef} onDone={onDoneEditing} />
+      <View style={{ alignItems: 'stretch', paddingTop: row.isRunStart ? theme.spacing.sm : 2 }}>
+        <MessageEditor
+          message={message}
+          names={names}
+          draftRef={editingDraftRef}
+          onDone={onDoneEditing}
+        />
       </View>
     );
   }
 
-  // The corner nearest the sender's edge is tightened on the last line of a run, which is what
-  // ties a run of lines to its side of the screen without drawing a tail.
-  const tail = row.isRunEnd ? theme.radius.xs : theme.radius.lg;
+  const replyable = canReplyTo(message, { onReply });
+  const spokenActions = [
+    ...(replyable ? [{ name: 'reply', label: 'Reply' }] : []),
+    ...(message.canEdit && !message.deletedAt ? [{ name: 'edit', label: 'Edit' }] : []),
+  ];
 
   return (
-    // Two wrappers rather than one, so that Edit sits *outside* the bubble. The bubble is a single
-    // `accessible` element reading as one sentence, and a control inside one of those is a control
-    // a screen reader cannot reach on its own.
-    <View style={{ alignItems: isOwn ? 'flex-end' : 'flex-start' }}>
-      <View
-        accessible
-        accessibilityLabel={accessibilityLabelFor(row, senderName)}
-        style={{
-          alignItems: isOwn ? 'flex-end' : 'flex-start',
-          gap: 2,
-          paddingTop: row.isRunStart ? theme.spacing.sm : 2,
-        }}
-      >
-        {row.showSender && showSenderNames && !isOwn ? (
-          <View style={{ paddingHorizontal: theme.spacing.md }}>
-            <AppText size="xs" weight="medium" tone="muted">
-              {senderName}
-            </AppText>
-          </View>
-        ) : null}
-        <View
-          // Never the full width: a bubble that reaches both edges is a paragraph, and the reader
-          // loses the left/right cue that says whose it is.
-          style={{
-            backgroundColor: isOwn ? theme.colors.primary : theme.colors.surface,
-            borderBottomLeftRadius: isOwn ? theme.radius.lg : tail,
-            borderBottomRightRadius: isOwn ? tail : theme.radius.lg,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.lg,
-            // A surface bubble on a dark background needs an edge; in light mode colour does it.
-            borderWidth: !isOwn && theme.isDark ? StyleSheet.hairlineWidth : 0,
-            gap: theme.spacing.xs,
-            maxWidth: '82%',
-            paddingHorizontal: theme.spacing.md,
-            paddingVertical: theme.spacing.sm,
-          }}
-        >
-          {message.deletedAt ? (
-            <AppText size="sm" tone={isOwn ? 'inverse' : 'muted'} style={{ fontStyle: 'italic' }}>
-              This message was withdrawn.
-            </AppText>
-          ) : (
-            <>
-              {message.body ? (
-                <MessageBody
-                  body={message.body}
-                  names={names}
-                  viewerId={viewerId}
-                  onBrand={isOwn}
-                />
-              ) : null}
-              <MessageAttachments files={message.attachments} />
-            </>
-          )}
-
-          <AppText
-            size="xs"
-            tone={isOwn ? 'inverse' : 'muted'}
-            align="right"
-            tabular
-            // The brand's own foreground, softened: still the colour the tokens pair with the
-            // brand, so it stays legible on any tenant's colour.
-            style={isOwn ? { opacity: 0.8 } : undefined}
+    <View
+      style={{
+        alignItems: isOwn ? 'flex-end' : 'flex-start',
+        // A brief wash behind a line somebody jumped to from a quote, so the eye lands on it.
+        backgroundColor: flashing ? theme.colors.primarySoft : 'transparent',
+        borderRadius: theme.radius.md,
+      }}
+    >
+      {/* Never the full width: a bubble that reaches both edges is a paragraph, and the reader
+          loses the left/right cue that says whose it is. The limit sits on the outermost
+          shrink-wrapped box, so the percentage is of the row rather than of the bubble itself. */}
+      <View style={{ maxWidth: '82%' }}>
+        <SwipeToReply enabled={replyable} onReply={reply}>
+          <Pressable
+            accessible
+            accessibilityLabel={bubbleAccessibilityLabel(row, senderName, names)}
+            accessibilityHint={
+              onLongPress && !message.deletedAt ? 'Long press for actions' : undefined
+            }
+            accessibilityActions={spokenActions}
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'reply') {
+                reply();
+              } else if (event.nativeEvent.actionName === 'edit') {
+                onEdit(message.id);
+              }
+            }}
+            onLongPress={
+              onLongPress && !message.deletedAt ? () => onLongPress(message, isOwn) : undefined
+            }
+            delayLongPress={280}
+            style={({ pressed }) => ({
+              alignItems: isOwn ? 'flex-end' : 'flex-start',
+              gap: 2,
+              opacity: pressed && onLongPress ? 0.85 : 1,
+              paddingTop: row.isRunStart ? theme.spacing.md : 2,
+            })}
           >
-            {formatTime(message.createdAt) ?? ''}
-            {message.editedAt ? ' · edited' : ''}
-          </AppText>
-        </View>
+            {row.showSender && showSenderNames && !isOwn ? (
+              <View style={{ paddingHorizontal: theme.spacing.md }}>
+                <AppText size="xs" weight="medium" tone="muted">
+                  {senderName}
+                </AppText>
+              </View>
+            ) : null}
+            <BubbleSurface
+              message={message}
+              isOwn={isOwn}
+              isRunEnd={row.isRunEnd}
+              names={names}
+              viewerId={viewerId}
+              highlight={highlight}
+              onOpenQuote={onOpenQuote}
+            />
+          </Pressable>
+        </SwipeToReply>
       </View>
 
-      {message.canEdit && !message.deletedAt ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Edit this message"
-          accessibilityHint="Rewrites what this message says. What it said before is kept."
-          // Small to look at, full size to hit: the slop makes up the 44 points.
-          hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-          onPress={() => onEdit(message.id)}
-          style={({ pressed }) => ({
-            justifyContent: 'center',
-            minHeight: TOUCH_TARGET - 16,
-            opacity: pressed ? 0.6 : 1,
-            paddingHorizontal: theme.spacing.sm,
-          })}
-        >
-          <AppText size="xs" weight="medium" tone="primary">
-            Edit
-          </AppText>
-        </Pressable>
-      ) : null}
+      {revisionsOpen ? <MessageRevisions message={message} /> : null}
+      <BubbleActions
+        message={message}
+        onEdit={onEdit}
+        onShowRevisions={onShowRevisions}
+        revisionsOpen={revisionsOpen}
+      />
     </View>
   );
 });
-
-/** One sentence per bubble, so a screen reader is not read a name, a body and a time separately. */
-function accessibilityLabelFor(row: MessageRow, senderName: string): string {
-  const who = row.isOwn ? 'You' : senderName;
-  const what = row.message.deletedAt ? 'withdrew a message' : `said ${row.message.body}`;
-  const when = formatTime(row.message.createdAt) ?? '';
-  return `${who} ${what}, ${when}`;
-}

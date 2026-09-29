@@ -1,7 +1,9 @@
 import { Chip, ChipScroller } from '../../shared/components/chips';
 import {
+  CONVERSATION_FILTER,
   CONVERSATION_FILTERS,
   CONVERSATION_FILTER_LABELS,
+  unreadBadge,
   type ConversationFilter,
 } from './conversation-filters';
 
@@ -19,22 +21,31 @@ export function FilterChips({
   value,
   onChange,
   filters = CONVERSATION_FILTERS,
+  unreadCount = null,
 }: {
   value: ConversationFilter;
   onChange: (filter: ConversationFilter) => void;
   filters?: readonly ConversationFilter[];
+  /** The Unread chip's figure, as on the web. `null` or zero draws the plain label. */
+  unreadCount?: number | null;
 }) {
   return (
     <ChipScroller>
-      {filters.map((filter) => (
-        <Chip
-          key={filter}
-          label={CONVERSATION_FILTER_LABELS[filter]}
-          accessibilityLabel={`${CONVERSATION_FILTER_LABELS[filter]} conversations`}
-          selected={filter === value}
-          onPress={() => onChange(filter)}
-        />
-      ))}
+      {filters.map((filter) => {
+        const label = CONVERSATION_FILTER_LABELS[filter];
+        const count = filter === CONVERSATION_FILTER.UNREAD && unreadCount ? unreadCount : 0;
+        return (
+          <Chip
+            key={filter}
+            label={count > 0 ? `${label} ${unreadBadge(count)}` : label}
+            accessibilityLabel={
+              count > 0 ? `${label} conversations, ${count} unread` : `${label} conversations`
+            }
+            selected={filter === value}
+            onPress={() => onChange(filter)}
+          />
+        );
+      })}
     </ChipScroller>
   );
 }

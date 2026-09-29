@@ -93,50 +93,70 @@ interface SessionPayload {
   user: SessionUser;
 }
 
-let refreshInFlight: Promise<boolean> | null = null;
+/**
+ * What a refresh came to.
+ *
+ * - `refreshed` — a new access token is in the session store.
+ * - `refused` — the API said no (401/403) or there is no stored token. The session is gone.
+ * - `unreachable` — no answer worth trusting: no network, a timeout, a 429 or a 5xx. The stored
+ *   session is kept, because none of those says anything about whether it is still valid.
+ */
+export type RefreshOutcome =
+  { kind: 'refreshed'; user: SessionUser } | { kind: 'refused' } | { kind: 'unreachable' };
+
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
+
+/** A refusal is the API judging the token; anything else is the API not answering the question. */
+const isRefusal = (status: number) => status === 401 || status === 403;
 
 /**
  * Exchanges the stored refresh token for a new access token.
  *
- * Concurrent 401s share one call: several screens loading at once would otherwise each present
- * the same refresh token, and the API rotates it — the second presentation would be a reuse of a
- * spent token, which is treated as theft and revokes the whole family.
+ * Every exchange in the app goes through here — the cold-start restore as well as a 401 mid-use —
+ * and concurrent callers share one call. The API rotates the token on each use and treats a second
+ * presentation of a spent one as theft, revoking the whole family; two exchanges racing on launch
+ * would sign the person out on every reload.
  */
-export function refreshSession(): Promise<boolean> {
-  refreshInFlight ??= (async () => {
+export function exchangeRefreshToken(): Promise<RefreshOutcome> {
+  refreshInFlight ??= (async (): Promise<RefreshOutcome> => {
     // Read before the first await. If the user signs out while this is in flight, `setSession`
     // below refuses to commit rather than putting the session — and a fresh refresh token — back.
     const startedAt = sessionGeneration();
     try {
-      const stored = await getStoredRefreshToken();
-      const cookie = refreshCookieHeader(stored);
+      const cookie = refreshCookieHeader(await getStoredRefreshToken());
       if (!cookie) {
         await clearSession();
-        return false;
+        return { kind: 'refused' };
       }
 
-      const response = await fetch(`${mobileEnv.apiBaseUrl}/auth/refresh`, {
-        method: 'POST',
-        headers: { Accept: 'application/json', Cookie: cookie },
-      });
-      if (!response.ok) {
+      let response: Response;
+      try {
+        response = await fetch(`${mobileEnv.apiBaseUrl}/auth/refresh`, {
+          method: 'POST',
+          headers: { Accept: 'application/json', Cookie: cookie },
+        });
+      } catch {
+        return { kind: 'unreachable' };
+      }
+      if (isRefusal(response.status)) {
         await clearSession();
-        return false;
+        return { kind: 'refused' };
+      }
+      if (!response.ok) {
+        return { kind: 'unreachable' };
       }
 
       const payload = (await response.json()) as SessionPayload;
-      return await setSession(
+      const committed = await setSession(
         payload.accessToken,
         payload.user,
         refreshTokenFromSetCookie(response.headers.get('set-cookie')),
         startedAt,
       );
+      return committed ? { kind: 'refreshed', user: payload.user } : { kind: 'refused' };
     } catch {
-      // A refresh that could not reach the server is not proof the session is gone, but the app
-      // has no usable access token either way. Clearing it sends the person to the sign-in
-      // screen, which is honest about what has happened.
-      await clearSession();
-      return false;
+      // An unreadable body from a 2xx — a proxy's page, a truncated reply. Not a verdict.
+      return { kind: 'unreachable' };
     } finally {
       refreshInFlight = null;
     }
@@ -144,13 +164,23 @@ export function refreshSession(): Promise<boolean> {
   return refreshInFlight;
 }
 
+/** True when a fresh access token is now in the session store. */
+export async function refreshSession(): Promise<boolean> {
+  return (await exchangeRefreshToken()).kind === 'refreshed';
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const response = await send(path, options);
 
   if (response.status === 401 && !options.skipAuth) {
-    const refreshed = await refreshSession();
-    if (refreshed) {
+    const outcome = await exchangeRefreshToken();
+    if (outcome.kind === 'refreshed') {
       return unwrap<T>(await send(path, options));
+    }
+    if (outcome.kind === 'unreachable') {
+      // The screen shows "could not reach the server" and offers a retry, rather than a 401
+      // that reads like the person lost access.
+      throw new NetworkError();
     }
   }
 

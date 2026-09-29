@@ -1,16 +1,10 @@
 import type { UatRequestDetail } from '@ashniva/types';
 import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Linking,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Linking, Platform, ScrollView, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
+import { MetaLine } from '../../shared/components/data-display';
 import { Expandable } from '../../shared/components/Expandable';
 import { Banner } from '../../shared/components/feedback';
 import { Hero, Section, useStackKeyboardOffset } from '../../shared/components/layout';
@@ -26,7 +20,8 @@ import { ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDateTime, formatSince } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { SignOffDecisionForm, SignOffQuestionForm } from './SignOffDecisionForm';
-import { isAwaitingDecision, uatStatusLabel, uatStatusTone } from './uat-display';
+import { isAwaitingDecision, uatStatusLabel, uatStatusMark, uatStatusTone } from './uat-display';
+import { PullRefresh } from '../../shared/components/PullRefresh';
 
 /**
  * One sign-off: what changed, what to check, and the client's answer.
@@ -93,8 +88,8 @@ export function SignOffScreen({ requestId }: { requestId: string }) {
           }}
           keyboardShouldPersistTaps="handled"
           refreshControl={
-            <RefreshControl
-              refreshing={query.isRefetching}
+            <PullRefresh
+              busy={query.isRefetching}
               onRefresh={refresh}
               tintColor={theme.colors.primary}
             />
@@ -103,6 +98,7 @@ export function SignOffScreen({ requestId }: { requestId: string }) {
           <Hero
             overline={`Asked ${formatSince(request.createdAt) ?? ''}${request.releaseVersion ? ` · version ${request.releaseVersion}` : ''}`}
             title="What changed"
+            {...uatStatusMark(request.status)}
           >
             <AppText>{request.summaryPlain}</AppText>
             <PillRow>
@@ -111,7 +107,7 @@ export function SignOffScreen({ requestId }: { requestId: string }) {
           </Hero>
 
           {request.checklist.length > 0 ? (
-            <Section title={`What to check (${request.checklist.length})`}>
+            <Section title={`What to check (${request.checklist.length})`} icon="list-outline">
               {request.checklist.map((item, index) => (
                 <View key={item} style={{ gap: theme.spacing.sm }}>
                   {index > 0 ? <Divider /> : null}
@@ -131,9 +127,10 @@ export function SignOffScreen({ requestId }: { requestId: string }) {
           ) : null}
 
           {request.previewUrl ? (
-            <Section title="Try it yourself">
+            <Section title="Try it yourself" icon="eye-outline">
               <Button
                 label="Open the preview"
+                icon="open-outline"
                 accessibilityHint="Opens the link your team sent, in your browser"
                 onPress={() => void open(request.previewUrl ?? '')}
               />
@@ -148,7 +145,7 @@ export function SignOffScreen({ requestId }: { requestId: string }) {
           {isAwaitingDecision(request.status) ? (
             <SignOffDecisionForm requestId={request.id} onDecided={refresh} />
           ) : (
-            <Section title="Your answer">
+            <Section title="Your answer" icon="chatbox-ellipses-outline">
               <AppText size="sm">
                 {uatStatusLabel(request.status)}
                 {request.decidedByName ? ` · ${request.decidedByName}` : ''}
@@ -158,7 +155,7 @@ export function SignOffScreen({ requestId }: { requestId: string }) {
             </Section>
           )}
 
-          <Section title={`Questions (${request.comments.length})`}>
+          <Section title={`Questions (${request.comments.length})`} icon="help-circle-outline">
             {request.comments.length === 0 ? (
               <AppText size="sm" tone="muted">
                 Nothing asked yet.
@@ -168,11 +165,11 @@ export function SignOffScreen({ requestId }: { requestId: string }) {
                 {(comment, index) => (
                   <View key={comment.id} style={{ gap: 2 }}>
                     {index > 0 ? <Divider /> : null}
-                    <AppText size="xs" tone="faint">
+                    <MetaLine icon="person-circle-outline">
                       {comment.authorName}
                       {comment.fromClient ? ' · your organization' : ''} ·{' '}
                       {formatSince(comment.createdAt)}
-                    </AppText>
+                    </MetaLine>
                     <AppText size="sm">{comment.body}</AppText>
                   </View>
                 )}

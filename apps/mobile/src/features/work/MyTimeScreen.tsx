@@ -1,10 +1,11 @@
 import type { WorkLogSummary } from '@ashniva/types';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 
 import { errorMessage } from '../../shared/api/client';
 import { useResource } from '../../shared/api/queries';
 import { Glyph } from '../../shared/components/glyph';
+import { Icon, IconTile } from '../../shared/components/Icon';
 import { Segmented } from '../../shared/components/navigation-list';
 import { AppText, Card, Divider, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
@@ -19,6 +20,7 @@ import {
   totalMinutes,
   type TimeRange,
 } from './work-log-display';
+import { PullRefresh } from '../../shared/components/PullRefresh';
 
 /**
  * The time you have logged.
@@ -66,10 +68,13 @@ export function MyTimeScreen({ onOpenTask }: { onOpenTask: (taskId: string) => v
         it: a lone "2 h" would read as the same thing as a day's total, and a screen reader would
         hear a number with nothing to say what it counts.
       */}
-      <AppText variant="heading" tabular>
-        {formatMinutes(totalMinutes(entries))} logged
-        {range === 'week' ? ' over the last seven days' : ' today'}
-      </AppText>
+      <Card style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.md }}>
+        <IconTile name="time" tone="primary" size={44} solid />
+        <AppText variant="heading" tabular style={{ flex: 1 }}>
+          {formatMinutes(totalMinutes(entries))} logged
+          {range === 'week' ? ' over the last seven days' : ' today'}
+        </AppText>
+      </Card>
     </View>
   );
 
@@ -107,14 +112,15 @@ export function MyTimeScreen({ onOpenTask }: { onOpenTask: (taskId: string) => v
           paddingTop: theme.spacing.sm,
         }}
         refreshControl={
-          <RefreshControl
-            refreshing={query.isRefetching}
+          <PullRefresh
+            busy={query.isRefetching}
             onRefresh={refresh}
             tintColor={theme.colors.primary}
           />
         }
         ListEmptyComponent={
           <EmptyState
+            icon="time-outline"
             title="Nothing logged"
             description={
               range === 'today'
@@ -127,20 +133,30 @@ export function MyTimeScreen({ onOpenTask }: { onOpenTask: (taskId: string) => v
           <Card style={{ gap: 0, paddingVertical: theme.spacing.md }}>
             <View
               style={{
-                alignItems: 'baseline',
+                alignItems: 'center',
                 flexDirection: 'row',
                 gap: theme.spacing.sm,
                 paddingBottom: theme.spacing.sm,
               }}
             >
+              <Icon name="calendar-outline" size={15} color={theme.colors.primary} />
               <View style={{ flex: 1 }}>
                 <AppText variant="label" tone="muted" uppercase>
                   {formatDate(item.date) ?? item.date}
                 </AppText>
               </View>
-              <AppText weight="bold" tabular>
-                {formatMinutes(item.minutes)}
-              </AppText>
+              <View
+                style={{
+                  backgroundColor: theme.colors.primarySoft,
+                  borderRadius: theme.radius.pill,
+                  paddingHorizontal: theme.spacing.sm + 2,
+                  paddingVertical: 2,
+                }}
+              >
+                <AppText weight="bold" tone="primary" tabular>
+                  {formatMinutes(item.minutes)}
+                </AppText>
+              </View>
             </View>
             {item.entries.map((entry) => (
               <View key={entry.id}>
@@ -159,6 +175,7 @@ export function MyTimeScreen({ onOpenTask }: { onOpenTask: (taskId: string) => v
                     paddingVertical: theme.spacing.sm,
                   })}
                 >
+                  <IconTile name="checkbox-outline" tone="teal" size={32} />
                   <View style={{ flex: 1, gap: 2 }}>
                     <AppText size="xs" tone="faint" numberOfLines={1}>
                       {entry.task.key} · {entry.project.name} · {formatMinutes(entry.minutes)}

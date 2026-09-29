@@ -13,6 +13,7 @@ import { animateLayout } from '../theme/motion';
 import { TOUCH_TARGET } from '../theme/theme';
 import { useTheme } from '../theme/ThemeProvider';
 import { Glyph } from './glyph';
+import { Icon, IconTile, iconToneColors, type IconName, type IconTone } from './Icon';
 import { AppText, cardStyle } from './primitives';
 
 /**
@@ -25,10 +26,12 @@ export function SectionHeader({
   title,
   count,
   action,
+  icon,
 }: {
   title: string;
   count?: number;
   action?: ReactNode;
+  icon?: IconName;
 }) {
   const theme = useTheme();
   return (
@@ -41,14 +44,24 @@ export function SectionHeader({
         minHeight: 28,
       }}
     >
-      <View style={{ alignItems: 'baseline', flexDirection: 'row', flexShrink: 1, gap: 6 }}>
+      <View style={{ alignItems: 'center', flexDirection: 'row', flexShrink: 1, gap: 6 }}>
+        {icon ? <Icon name={icon} size={15} color={theme.colors.primary} /> : null}
         <AppText variant="label" tone="muted" uppercase>
           {title}
         </AppText>
         {count !== undefined ? (
-          <AppText variant="label" tone="faint" tabular>
-            {count}
-          </AppText>
+          <View
+            style={{
+              backgroundColor: theme.colors.surfaceSunken,
+              borderRadius: theme.radius.pill,
+              minWidth: 20,
+              paddingHorizontal: 6,
+            }}
+          >
+            <AppText variant="label" tone="muted" tabular align="center">
+              {count}
+            </AppText>
+          </View>
         ) : null}
       </View>
       {action}
@@ -70,6 +83,9 @@ export function PressableCard({
   accessibilityHint,
   chevron = true,
   highlight = false,
+  icon,
+  iconTone = 'primary',
+  leading,
   style,
 }: {
   children: ReactNode;
@@ -79,6 +95,11 @@ export function PressableCard({
   chevron?: boolean;
   /** An unread or waiting-for-you item: a brand-coloured edge on the leading side. */
   highlight?: boolean;
+  /** A leading icon tile saying what kind of thing the card is. */
+  icon?: IconName;
+  iconTone?: IconTone;
+  /** Anything else in the leading slot, such as an avatar. Wins over `icon`. */
+  leading?: ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
@@ -109,12 +130,13 @@ export function PressableCard({
             left: 0,
             position: 'absolute',
             top: 0,
-            width: 3,
+            width: 4,
           }}
         />
       ) : null}
+      {leading ?? (icon ? <IconTile name={icon} tone={iconTone} size={40} /> : null)}
       <View style={{ flex: 1, gap: theme.spacing.xs + 2 }}>{children}</View>
-      {chevron ? <Glyph name="chevron-right" color={theme.colors.textFaint} size={12} /> : null}
+      {chevron ? <Glyph name="chevron-right" color={theme.colors.textFaint} size={14} /> : null}
     </Pressable>
   );
 }
@@ -130,6 +152,7 @@ export function Section({
   title,
   count,
   action,
+  icon,
   children,
   collapsible = false,
   initiallyOpen = true,
@@ -138,6 +161,7 @@ export function Section({
   title?: string;
   count?: number;
   action?: ReactNode;
+  icon?: IconName;
   children: ReactNode;
   collapsible?: boolean;
   initiallyOpen?: boolean;
@@ -161,13 +185,13 @@ export function Section({
         style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}
       >
         <View style={{ flex: 1 }}>
-          <SectionHeader title={title} count={count} action={action} />
+          <SectionHeader title={title} count={count} action={action} icon={icon} />
         </View>
-        <Glyph name={open ? 'chevron-up' : 'chevron-down'} size={12} />
+        <Glyph name={open ? 'chevron-up' : 'chevron-down'} size={14} />
       </Pressable>
     );
   } else if (title) {
-    heading = <SectionHeader title={title} count={count} action={action} />;
+    heading = <SectionHeader title={title} count={count} action={action} icon={icon} />;
   }
 
   return (
@@ -218,19 +242,39 @@ export function Grow({ children }: { children: ReactNode }) {
 export function Hero({
   overline,
   title,
+  icon,
+  iconTone = 'primary',
   children,
 }: {
   overline?: string | null;
   title: string;
+  /** What kind of thing the screen is about, as a tile beside the overline. */
+  icon?: IconName;
+  iconTone?: IconTone;
   children?: ReactNode;
 }) {
   const theme = useTheme();
   return (
-    <View style={{ gap: theme.spacing.sm, paddingBottom: theme.spacing.xs }}>
-      {overline ? (
-        <AppText variant="label" tone="muted" uppercase numberOfLines={1}>
-          {overline}
-        </AppText>
+    <View style={[cardStyle(theme), { gap: theme.spacing.sm, overflow: 'hidden' }]}>
+      <View
+        style={{
+          backgroundColor: iconToneColors(theme, iconTone).color,
+          height: 4,
+          left: 0,
+          position: 'absolute',
+          right: 0,
+          top: 0,
+        }}
+      />
+      {icon || overline ? (
+        <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
+          {icon ? <IconTile name={icon} tone={iconTone} size={32} /> : null}
+          {overline ? (
+            <AppText variant="label" tone="muted" uppercase numberOfLines={1} style={{ flex: 1 }}>
+              {overline}
+            </AppText>
+          ) : null}
+        </View>
       ) : null}
       <AppText variant="title">{title}</AppText>
       {children}

@@ -1,81 +1,69 @@
 import type { NotificationSummary } from '@ashniva/types';
-import { FlatList, RefreshControl, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { FlatList, View } from 'react-native';
 
-import { useQueryClient } from '@tanstack/react-query';
-
-import { apiRequest, errorMessage } from '../../shared/api/client';
+import { errorMessage } from '../../shared/api/client';
 import { ListFooterLoader } from '../../shared/components/feedback';
-import { PressableCard, SectionHeader } from '../../shared/components/layout';
 import { AppText, Button, Screen } from '../../shared/components/primitives';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/components/states';
-import { formatSince } from '../../shared/format/format';
+import { TabBar, type TabOption } from '../../shared/components/TabBar';
+import { linkForNotification } from '../../shared/notifications/notification-payload';
 import { useTheme } from '../../shared/theme/ThemeProvider';
-import { useInbox } from './notifications-api';
+import { NotificationRow } from './NotificationRow';
+import { useInbox, useNotificationActions, type InboxFilter } from './notifications-api';
+import { useCachedUnreadCount } from './use-cached-unread';
+import { PullRefresh } from '../../shared/components/PullRefresh';
 
 /**
  * What needs your attention.
  *
- * Tapping a row marks it read and follows its link. Rows are marked read on the server rather
- * than locally so the badge agrees across the phone and the web — a notification you dismissed on
- * one should not still be waiting on the other.
+ * Unread first, as on the web: the list most people open this screen for. Tapping a row marks it
+ * read and follows its link. Rows are marked read on the server rather than locally so the badge
+ * agrees across the phone and the web — a notification you dismissed on one should not still be
+ * waiting on the other.
  */
 export function NotificationsScreen({ onOpenLink }: { onOpenLink: (link: string) => void }) {
   const theme = useTheme();
-  const queryClient = useQueryClient();
-  const inbox = useInbox();
+  const [filter, setFilter] = useState<InboxFilter>('unread');
+  const inbox = useInbox(filter);
+  const { markRead, markAllRead } = useNotificationActions();
+  // The shared count, not this page's: it is the one the socket keeps current between refetches.
+  const unread = useCachedUnreadCount();
+  const [markingAll, setMarkingAll] = useState(false);
 
-  const items = inbox.items;
-  const unread = inbox.unreadCount;
-  const loading = inbox.isLoading;
-  const error = inbox.error;
-
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['notifications'] });
-
-  const open = async (item: NotificationSummary) => {
-    if (!item.readAt) {
-      try {
-        await apiRequest(`/notifications/${item.id}/read`, { method: 'POST' });
-      } catch {
-        // Reading a notification is not worth an error dialog; the link still opens.
+  const open = useCallback(
+    (item: NotificationSummary) => {
+      void markRead(item);
+      const link = linkForNotification(item.link, item.type);
+      if (link) {
+        onOpenLink(link);
       }
-    }
-    if (item.link) {
-      onOpenLink(item.link);
-    }
-    void invalidate();
-  };
+    },
+    [markRead, onOpenLink],
+  );
 
-  const markAll = async () => {
+  const readAll = async () => {
+    setMarkingAll(true);
     try {
-      await apiRequest('/notifications/read-all', { method: 'POST' });
-      await invalidate();
-    } catch {
-      // The badge stays as it was; the next refresh will pick it up.
+      await markAllRead();
+    } finally {
+      setMarkingAll(false);
     }
   };
 
-  if (loading) {
-    return (
-      <Screen>
-        <LoadingState label="Loading your notifications" />
-      </Screen>
-    );
-  }
-
-  if (error && items.length === 0) {
-    return (
-      <Screen>
-        <ErrorState
-          message={errorMessage(error)}
-          offline={error instanceof Error && error.name === 'NetworkError'}
-          onRetry={inbox.refresh}
-        />
-      </Screen>
-    );
-  }
+  const options: TabOption<InboxFilter>[] = [
+    { value: 'unread', label: 'Unread', icon: 'mail-unread-outline', count: unread },
+    { value: 'all', label: 'All', icon: 'file-tray-full-outline' },
+  ];
 
   return (
     <Screen>
+      <TabBar
+        options={options}
+        value={filter}
+        onChange={setFilter}
+        accessibilityLabel="Which notifications"
+      />
       {unread > 0 ? (
         <View
           style={{
@@ -86,81 +74,97 @@ export function NotificationsScreen({ onOpenLink }: { onOpenLink: (link: string)
             paddingTop: theme.spacing.md,
           }}
         >
-          <SectionHeader title="Unread" count={unread} />
+          <AppText size="sm" tone="muted">
+            {unread === 1 ? '1 unread' : `${unread} unread`}
+          </AppText>
           <Button
-            label={`Mark all ${unread} as read`}
+            label="Mark all read"
             variant="ghost"
             size="sm"
-            icon="check"
-            onPress={() => void markAll()}
+            icon="checkmark-done"
+            loading={markingAll}
+            onPress={() => void readAll()}
           />
         </View>
       ) : null}
-
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{
-          gap: theme.spacing.sm,
-          padding: theme.spacing.screen,
-          paddingTop: unread > 0 ? theme.spacing.sm : theme.spacing.screen,
-        }}
-        refreshControl={
-          <RefreshControl
-            refreshing={inbox.isRefreshing}
-            onRefresh={inbox.refresh}
-            tintColor={theme.colors.primary}
-          />
-        }
-        onEndReached={inbox.loadMore}
-        onEndReachedThreshold={0.4}
-        ListEmptyComponent={
-          <EmptyState title="Nothing waiting" description="You are up to date." />
-        }
-        ListFooterComponent={
-          inbox.isLoadingMore ? <ListFooterLoader label="Loading older notifications" /> : undefined
-        }
-        renderItem={({ item }) => (
-          <PressableCard
-            accessibilityLabel={item.title}
-            accessibilityHint={item.link ? 'Opens the related screen' : 'Marks it read'}
-            onPress={() => void open(item)}
-            highlight={!item.readAt}
-            chevron={Boolean(item.link)}
-          >
-            <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
-              {item.readAt ? null : (
-                <View
-                  style={{
-                    backgroundColor: theme.colors.primary,
-                    borderRadius: 4,
-                    height: 8,
-                    width: 8,
-                  }}
-                />
-              )}
-              <AppText weight={item.readAt ? 'regular' : 'medium'} style={{ flex: 1 }}>
-                {item.title}
-              </AppText>
-            </View>
-            {item.body ? (
-              <AppText size="sm" tone="muted" numberOfLines={3}>
-                {item.body}
-              </AppText>
-            ) : null}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
-              <AppText size="xs" tone="faint">
-                {formatSince(item.createdAt)}
-              </AppText>
-              {item.groupedCount > 1 ? (
-                <AppText size="xs" tone="faint">
-                  and {item.groupedCount - 1} more like this
-                </AppText>
-              ) : null}
-            </View>
-          </PressableCard>
-        )}
+      <InboxList
+        filter={filter}
+        inbox={inbox}
+        onOpen={open}
+        onShowAll={() => setFilter('all')}
+        compactTop={unread > 0}
       />
     </Screen>
+  );
+}
+
+function InboxList({
+  filter,
+  inbox,
+  onOpen,
+  onShowAll,
+  compactTop,
+}: {
+  filter: InboxFilter;
+  inbox: ReturnType<typeof useInbox>;
+  onOpen: (item: NotificationSummary) => void;
+  onShowAll: () => void;
+  compactTop: boolean;
+}) {
+  const theme = useTheme();
+
+  if (inbox.isLoading) {
+    return <LoadingState label="Loading your notifications" />;
+  }
+  if (inbox.error && inbox.items.length === 0) {
+    return (
+      <ErrorState
+        message={errorMessage(inbox.error)}
+        offline={inbox.error instanceof Error && inbox.error.name === 'NetworkError'}
+        onRetry={inbox.refresh}
+      />
+    );
+  }
+
+  return (
+    <FlatList
+      data={inbox.items}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={{
+        gap: theme.spacing.sm,
+        padding: theme.spacing.screen,
+        paddingTop: compactTop ? theme.spacing.sm : theme.spacing.screen,
+      }}
+      refreshControl={
+        <PullRefresh
+          busy={inbox.isRefreshing}
+          onRefresh={inbox.refresh}
+          tintColor={theme.colors.primary}
+        />
+      }
+      onEndReached={inbox.loadMore}
+      onEndReachedThreshold={0.4}
+      ListEmptyComponent={
+        filter === 'unread' ? (
+          <EmptyState
+            title="You are all caught up"
+            description="Nothing unread. Older notifications are under All."
+            icon="notifications-off-outline"
+            iconTone="success"
+            action={{ label: 'Show all', onPress: onShowAll }}
+          />
+        ) : (
+          <EmptyState
+            title="No notifications yet"
+            description="Anything that needs you will appear here."
+            icon="notifications-off-outline"
+          />
+        )
+      }
+      ListFooterComponent={
+        inbox.isLoadingMore ? <ListFooterLoader label="Loading older notifications" /> : undefined
+      }
+      renderItem={({ item }) => <NotificationRow item={item} onOpen={onOpen} />}
+    />
   );
 }

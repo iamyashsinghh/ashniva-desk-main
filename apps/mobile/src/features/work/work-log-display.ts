@@ -15,8 +15,8 @@ import type { SegmentOption } from '../../shared/components/navigation-list';
 export type TimeRange = 'today' | 'week';
 
 export const TIME_RANGES: readonly SegmentOption<TimeRange>[] = [
-  { value: 'today', label: 'Today' },
-  { value: 'week', label: 'Last 7 days' },
+  { value: 'today', label: 'Today', icon: 'today-outline' },
+  { value: 'week', label: 'Last 7 days', icon: 'calendar-outline' },
 ];
 
 export interface DayGroup {

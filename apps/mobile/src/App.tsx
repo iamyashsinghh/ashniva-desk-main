@@ -7,6 +7,7 @@ import { SessionProvider } from './features/auth/SessionProvider';
 import { useBranding } from './features/branding/use-branding';
 import { RootNavigator } from './navigation/RootNavigator';
 import { ErrorBoundary } from './shared/components/ErrorBoundary';
+import { RealtimeProvider } from './shared/realtime/RealtimeProvider';
 import { ThemeProvider } from './shared/theme/ThemeProvider';
 
 /**
@@ -53,8 +54,10 @@ export default function App() {
         <BrandedTheme>
           <ErrorBoundary>
             <SessionProvider>
-              <StatusBar style="auto" />
-              <RootNavigator />
+              <RealtimeProvider>
+                <StatusBar style="auto" />
+                <RootNavigator />
+              </RealtimeProvider>
             </SessionProvider>
           </ErrorBoundary>
         </BrandedTheme>

@@ -3,7 +3,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import type { AppConfigService } from '../../config/app-config.service';
 import type { RefreshToken } from '../../generated/prisma/client';
 import type { CreateRefreshTokenInput, RefreshTokenRepository } from './refresh-token.repository';
-import { RefreshTokenService } from './refresh-token.service';
+import { ROTATION_GRACE_MS, RefreshTokenService } from './refresh-token.service';
 
 /** In-memory stand-in for the Prisma-backed repository. */
 class FakeRefreshTokenRepository {
@@ -20,6 +20,7 @@ class FakeRefreshTokenRepository {
       expiresAt: input.expiresAt,
       revokedAt: null,
       replacedByTokenId: null,
+      presentedAt: null,
       userAgent: input.userAgent ?? null,
       ipAddress: input.ipAddress ?? null,
       createdAt: new Date(),
@@ -30,9 +31,18 @@ class FakeRefreshTokenRepository {
   async findByHash(tokenHash: string) {
     return this.rows.find((row) => row.tokenHash === tokenHash) ?? null;
   }
-  async markReplaced(id: string, replacedByTokenId: string, revokedAt: Date) {
+  async findById(id: string) {
+    return this.rows.find((row) => row.id === id) ?? null;
+  }
+  async markReplaced(id: string, replacedByTokenId: string, revokedAt: Date, presented: boolean) {
     const row = this.rows.find((r) => r.id === id);
-    if (row) Object.assign(row, { revokedAt, replacedByTokenId });
+    if (row) {
+      Object.assign(row, {
+        revokedAt,
+        replacedByTokenId,
+        ...(presented ? { presentedAt: revokedAt } : {}),
+      });
+    }
   }
   async revokeById(id: string, revokedAt: Date) {
     const row = this.rows.find((r) => r.id === id && !r.revokedAt);
@@ -77,13 +87,100 @@ describe('RefreshTokenService', () => {
     expect(repository.rows[0]?.replacedByTokenId).toBe('token-2');
   });
 
-  it('revokes the whole family when a rotated token is reused', async () => {
-    const { service, repository } = buildService();
-    const first = await service.issue('user-1');
-    await service.rotate(first.token);
+  describe('reuse of a rotated token', () => {
+    afterEach(() => jest.useRealTimers());
 
-    await expect(service.rotate(first.token)).rejects.toThrow(UnauthorizedException);
-    expect(repository.rows.every((row) => row.revokedAt !== null)).toBe(true);
+    const live = (repository: FakeRefreshTokenRepository) =>
+      repository.rows.filter((row) => row.revokedAt === null);
+
+    it('revokes the whole family once the grace period has passed and the replacement was used', async () => {
+      jest.useFakeTimers({ now: new Date('2026-09-28T10:00:00Z') });
+      const { service, repository } = buildService();
+      const first = await service.issue('user-1');
+      const second = await service.rotate(first.token);
+      await service.rotate(second.token);
+
+      jest.setSystemTime(new Date(Date.now() + ROTATION_GRACE_MS + 1));
+      await expect(service.rotate(first.token)).rejects.toThrow(/already used/);
+      expect(live(repository)).toHaveLength(0);
+    });
+
+    it('accepts a retry long after the rotation while its replacement was never claimed', async () => {
+      // The refresh committed but its reply never arrived (a timeout, a 500 while building the
+      // session), and the app is opened again hours later with the token it still holds.
+      jest.useFakeTimers({ now: new Date('2026-09-28T10:00:00Z') });
+      const { service, repository } = buildService(24 * 60 * 60);
+      const first = await service.issue('user-1');
+      await service.rotate(first.token);
+
+      jest.setSystemTime(new Date(Date.now() + 6 * 60 * 60 * 1000));
+      const retried = await service.rotate(first.token);
+
+      expect(retried.familyId).toBe(first.familyId);
+      expect(live(repository)).toHaveLength(1);
+    });
+
+    it('catches a replay of the old token once the real device uses its replacement', async () => {
+      // A thief replays `first` after the real device received `second` but before it used it.
+      jest.useFakeTimers({ now: new Date('2026-09-28T10:00:00Z') });
+      const { service, repository } = buildService();
+      const first = await service.issue('user-1');
+      const second = await service.rotate(first.token);
+
+      jest.setSystemTime(new Date(Date.now() + ROTATION_GRACE_MS + 1));
+      const stolen = await service.rotate(first.token);
+
+      jest.setSystemTime(new Date(Date.now() + ROTATION_GRACE_MS + 1));
+      await expect(service.rotate(second.token)).rejects.toThrow(/already used/);
+      await expect(service.rotate(stolen.token)).rejects.toThrow(UnauthorizedException);
+      expect(live(repository)).toHaveLength(0);
+    });
+
+    it('treats a reply lost inside the grace period as a retry, not theft', async () => {
+      // An app reloaded while its refresh was in flight: the server rotated, the client never
+      // heard, and it presents the token it still has.
+      const { service, repository } = buildService();
+      const first = await service.issue('user-1');
+      await service.rotate(first.token);
+
+      const retried = await service.rotate(first.token);
+
+      expect(retried.familyId).toBe(first.familyId);
+      // Still exactly one live token: the one just handed out.
+      expect(live(repository)).toHaveLength(1);
+      expect(live(repository)[0]?.tokenHash).not.toBe(repository.rows[1]?.tokenHash);
+      await expect(service.rotate(retried.token)).resolves.toMatchObject({ userId: 'user-1' });
+    });
+
+    it('follows several lost replies to the live end of the chain', async () => {
+      const { service, repository } = buildService();
+      const first = await service.issue('user-1');
+      const second = await service.rotate(first.token);
+      await service.rotate(second.token);
+
+      await expect(service.rotate(first.token)).resolves.toMatchObject({ userId: 'user-1' });
+      expect(live(repository)).toHaveLength(1);
+    });
+
+    it('never revives a session that was signed out, however recently', async () => {
+      const { service, repository } = buildService();
+      const first = await service.issue('user-1');
+      const second = await service.rotate(first.token);
+      await service.revoke(second.token);
+
+      await expect(service.rotate(first.token)).rejects.toThrow(UnauthorizedException);
+      expect(live(repository)).toHaveLength(0);
+    });
+
+    it('never revives a family already revoked for theft', async () => {
+      const { service, repository } = buildService();
+      const first = await service.issue('user-1');
+      await service.rotate(first.token);
+      await service.revokeAllForUser('user-1');
+
+      await expect(service.rotate(first.token)).rejects.toThrow(UnauthorizedException);
+      expect(live(repository)).toHaveLength(0);
+    });
   });
 
   it('rejects expired tokens', async () => {

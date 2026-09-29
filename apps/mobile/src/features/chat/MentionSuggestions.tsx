@@ -1,6 +1,7 @@
 import type { MentionableUser } from '@ashniva/types';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Icon } from '../../shared/components/Icon';
 import { AppText } from '../../shared/components/primitives';
 import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
@@ -61,8 +62,15 @@ export function MentionSuggestions({
           paddingRight: theme.spacing.xs,
         }}
       >
-        <View style={{ flex: 1 }}>
-          <AppText size="xs" tone="muted" weight="medium" numberOfLines={1}>
+        <View style={{ alignItems: 'center', flex: 1, flexDirection: 'row', gap: 6 }}>
+          <Icon name="at" size={14} color={theme.colors.primary} />
+          <AppText
+            size="xs"
+            tone="muted"
+            weight="medium"
+            numberOfLines={1}
+            style={{ flexShrink: 1 }}
+          >
             Mention somebody in this conversation
           </AppText>
         </View>

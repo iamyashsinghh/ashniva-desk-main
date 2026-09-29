@@ -30,7 +30,11 @@ const MINE: MessageSummary = {
   deletedAt: null,
   canEdit: true,
   canDelete: false,
+  restrictedToUserIds: [],
 };
+
+const PRIYA = '55555555-5555-4555-8555-555555555555';
+const NAMES: ReadonlyMap<string, string> = new Map([[PRIYA, 'Priya S']]);
 
 const fetchMock = jest.fn();
 const onDone = jest.fn();
@@ -49,11 +53,14 @@ function edits(): [string, { body?: string }][] {
  * a property of the thread and is proved in `MessageThread.test.tsx`, next to the list that does
  * the unmounting.
  */
-function renderEditor(kept: { current: string | null } = { current: null }): Promise<RenderResult> {
+function renderEditor(
+  kept: { current: string | null } = { current: null },
+  message: MessageSummary = MINE,
+): Promise<RenderResult> {
   return render(
     <ThemeProvider>
       <QueryClientProvider client={testQueryClient()}>
-        <MessageEditor message={MINE} draftRef={kept} onDone={onDone} />
+        <MessageEditor message={message} names={NAMES} draftRef={kept} onDone={onDone} />
       </QueryClientProvider>
     </ThemeProvider>,
   );
@@ -139,6 +146,17 @@ describe('MessageEditor', () => {
     await fireEvent.changeText(view.getByLabelText('Edit this message'), 'Tomorrow');
 
     expect(kept.current).toBe('Tomorrow');
+  });
+
+  it('shows a mention by name while editing, and saves it back as the id', async () => {
+    const view = await renderEditor(undefined, { ...MINE, body: `@[${PRIYA}] tomorow` });
+    const field = view.getByLabelText('Edit this message');
+    expect(field.props.value).toBe('@Priya S tomorow');
+
+    await fireEvent.changeText(field, '@Priya S tomorrow');
+    await fireEvent.press(view.getByRole('button', { name: 'Save' }));
+
+    expect(edits()[0]?.[1].body).toBe(`@[${PRIYA}] tomorrow`);
   });
 
   it('leaves without sending anything when it is cancelled', async () => {

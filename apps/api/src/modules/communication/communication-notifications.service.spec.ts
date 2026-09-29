@@ -144,4 +144,120 @@ describe('CommunicationNotificationsService.messagePosted', () => {
 
     expect(notify).toHaveBeenCalledTimes(1);
   });
+
+  it('titles a direct message with the sender, the way a phone chat does', async () => {
+    await service.messagePosted(
+      conversation(CONVERSATION_KIND.DIRECT),
+      message('Morning'),
+      sender,
+      [ALICE],
+    );
+
+    expect(notify.mock.calls[0]?.[0]).toMatchObject({ title: 'Dev One', body: 'Morning' });
+  });
+
+  describe('groups', () => {
+    const group = () => ({ ...conversation(CONVERSATION_KIND.GROUP), title: 'Launch crew' });
+
+    it('notifies every member on an ordinary line, under the group name', async () => {
+      await service.messagePosted(group(), message('Shipping at five'), sender, [ALICE, BOB]);
+
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(notify.mock.calls[0]?.[0]).toMatchObject({
+        type: NOTIFICATION_TYPE.CONVERSATION_MESSAGE,
+        body: 'Dev One: Shipping at five',
+        recipients: [{ userId: ALICE }, { userId: BOB }],
+      });
+      expect(notify.mock.calls[0]?.[0].title).toContain('Launch crew');
+    });
+
+    it('tells somebody mentioned once, as a mention, and everybody else as a message', async () => {
+      await service.messagePosted(group(), message(`@[${ALICE}] look`), sender, [ALICE, BOB]);
+
+      expect(notify).toHaveBeenCalledTimes(2);
+      const byType = Object.fromEntries(
+        notify.mock.calls.map((call) => [call[0].type, call[0].recipients]),
+      );
+      expect(byType[NOTIFICATION_TYPE.CONVERSATION_MESSAGE]).toEqual([{ userId: BOB }]);
+      expect(byType[NOTIFICATION_TYPE.CONVERSATION_MENTION]).toEqual([{ userId: ALICE }]);
+    });
+
+    it('stays quiet when nobody but the sender is in the group', async () => {
+      await service.messagePosted(group(), message('Note to self'), sender, []);
+
+      expect(notify).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('replies', () => {
+    function reply(body: string, originalSenderId: string | null): MessageSummary {
+      return {
+        ...message(body),
+        replyTo: {
+          id: 'original-1',
+          sender: originalSenderId
+            ? { id: originalSenderId, name: 'Original', email: 'o@example.com' }
+            : null,
+          bodyPreview: 'the original',
+          attachmentCount: 0,
+          deleted: false,
+          unavailable: originalSenderId === null,
+        },
+      };
+    }
+
+    it('tells the original’s sender they were replied to, like a mention', async () => {
+      await service.messagePosted(conversation(), reply('Done', ALICE), sender, [ALICE, BOB]);
+
+      expect(notify).toHaveBeenCalledTimes(1);
+      const payload = notify.mock.calls[0]?.[0];
+      expect(payload.type).toBe(NOTIFICATION_TYPE.CONVERSATION_MENTION);
+      expect(payload.title).toContain('replied to you');
+      expect(payload.recipients).toEqual([{ userId: ALICE }]);
+    });
+
+    it('tells nobody when the original’s sender is outside this message’s audience', async () => {
+      await service.messagePosted(conversation(), reply('Done', STRANGER), sender, [ALICE, BOB]);
+
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('does not notify somebody replying to themselves', async () => {
+      await service.messagePosted(conversation(), reply('Also', 'user-dev'), sender, [
+        'user-dev',
+        ALICE,
+      ]);
+
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('notifies once when the original’s sender is also mentioned', async () => {
+      await service.messagePosted(conversation(), reply(`@[${ALICE}] done`, ALICE), sender, [
+        ALICE,
+        BOB,
+      ]);
+
+      expect(notify).toHaveBeenCalledTimes(1);
+      expect(notify.mock.calls[0]?.[0].title).toContain('mentioned you');
+    });
+
+    it('mentions one person and tells the replied-to person separately', async () => {
+      await service.messagePosted(conversation(), reply(`@[${BOB}] see this`, ALICE), sender, [
+        ALICE,
+        BOB,
+      ]);
+
+      expect(notify).toHaveBeenCalledTimes(2);
+      expect(notify.mock.calls.map((call) => call[0].recipients)).toEqual([
+        [{ userId: BOB }],
+        [{ userId: ALICE }],
+      ]);
+    });
+
+    it('says nothing extra for a quote the sender could not read', async () => {
+      await service.messagePosted(conversation(), reply('Done', null), sender, [ALICE, BOB]);
+
+      expect(notify).not.toHaveBeenCalled();
+    });
+  });
 });

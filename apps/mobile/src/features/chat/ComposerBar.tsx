@@ -1,16 +1,26 @@
-import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View, type TextInputProps } from 'react-native';
+import { useState, type ReactNode, type Ref } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  View,
+  type TextInput,
+  type TextInputProps,
+} from 'react-native';
 
 import { Glyph } from '../../shared/components/glyph';
 import { Input } from '../../shared/components/primitives';
 import { DISABLED_OPACITY, TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
+import { AttachMenu } from './AttachMenu';
 
 /**
- * The composer's one bar: the two attach actions, the field, and Send.
+ * The composer's one bar: "+" for attachments, the field, and Send.
  *
- * Round actions either side of a rounded field, which is the shape every phone chat has taught
- * people to look for at the bottom of a thread. The buttons are 40 points to draw and 44 to hit.
+ * The shape every phone chat has taught people to look for at the bottom of a thread. The bar's
+ * own background runs down under the home indicator (`bottomInset`), so the wallpaper never shows
+ * as a strip between the bar and the bottom of the screen. The buttons are 40 points to draw and
+ * 44 to hit.
  */
 
 const ROUND = 40;
@@ -20,8 +30,11 @@ const FIELD_RADIUS = TOUCH_TARGET / 2;
 export function ComposerBar({
   attachDisabled,
   onAttachPhoto,
+  onAttachCamera,
   onAttachFile,
+  bottomInset = 0,
   field,
+  fieldRef,
   sendBusy,
   sendDisabled,
   onSend,
@@ -29,9 +42,14 @@ export function ComposerBar({
 }: {
   attachDisabled: boolean;
   onAttachPhoto: () => void;
+  onAttachCamera: () => void;
   onAttachFile: () => void;
+  /** The home indicator's height, drawn in the bar's colour; zero while the keyboard covers it. */
+  bottomInset?: number;
   /** Everything the message field needs; its label and value are the composer's business. */
   field: TextInputProps;
+  /** So the composer can put the caret in the field — when a reply is chosen, for instance. */
+  fieldRef?: Ref<TextInput>;
   sendBusy: boolean;
   sendDisabled: boolean;
   onSend: () => void;
@@ -39,6 +57,7 @@ export function ComposerBar({
   children?: ReactNode;
 }) {
   const theme = useTheme();
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <View
       style={{
@@ -46,27 +65,25 @@ export function ComposerBar({
         borderColor: theme.colors.border,
         borderTopWidth: StyleSheet.hairlineWidth,
         gap: theme.spacing.sm,
-        paddingHorizontal: theme.spacing.md,
-        paddingVertical: theme.spacing.sm,
+        paddingBottom: theme.spacing.sm + bottomInset,
+        paddingHorizontal: theme.spacing.sm,
+        paddingTop: theme.spacing.sm,
       }}
     >
       {children}
-      <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: theme.spacing.xs + 2 }}>
+      <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: theme.spacing.xs }}>
         <RoundAction
-          label="Attach a photo"
+          label="Attach"
+          accessibilityHint="Take a photo, choose a photo or attach a document"
           disabled={attachDisabled}
-          onPress={onAttachPhoto}
-          icon={<PhotoIcon color={theme.colors.textMuted} />}
-        />
-        <RoundAction
-          label="Attach a file"
-          disabled={attachDisabled}
-          onPress={onAttachFile}
-          icon={<Glyph name="plus" color={theme.colors.textMuted} size={16} />}
+          onPress={() => setMenuOpen(true)}
+          plain
+          icon={<Glyph name="plus" color={theme.colors.primary} size={26} />}
         />
         <View style={{ flex: 1 }}>
           <Input
             {...field}
+            {...(fieldRef ? { ref: fieldRef } : {})}
             multiline
             // Grows with the text and then scrolls, so the keyboard is never pushed off and a
             // long message never takes the whole screen.
@@ -91,11 +108,20 @@ export function ComposerBar({
             sendBusy ? (
               <ActivityIndicator color={theme.colors.primaryText} />
             ) : (
-              <Glyph name="arrow-up" color={theme.colors.primaryText} size={16} strokeWidth={2.4} />
+              <View style={{ marginLeft: 2 }}>
+                <Glyph name="send" color={theme.colors.primaryText} size={15} />
+              </View>
             )
           }
         />
       </View>
+      <AttachMenu
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onCamera={onAttachCamera}
+        onPhotos={onAttachPhoto}
+        onDocument={onAttachFile}
+      />
     </View>
   );
 }
@@ -108,6 +134,7 @@ function RoundAction({
   disabled,
   busy = false,
   primary = false,
+  plain = false,
   onPress,
 }: {
   label: string;
@@ -116,6 +143,8 @@ function RoundAction({
   disabled: boolean;
   busy?: boolean;
   primary?: boolean;
+  /** No fill: a bare icon, for the action that should not compete with Send. */
+  plain?: boolean;
   onPress: () => void;
 }) {
   const theme = useTheme();
@@ -131,7 +160,7 @@ function RoundAction({
       onPress={onPress}
       style={({ pressed }) => ({
         alignItems: 'center',
-        backgroundColor: primary ? theme.colors.primary : theme.colors.surfaceSunken,
+        backgroundColor: roundFill(theme.colors, primary, plain),
         borderRadius: ROUND / 2,
         height: ROUND,
         justifyContent: 'center',
@@ -147,27 +176,15 @@ function RoundAction({
   );
 }
 
-/** A picture frame with a sun in it: the glyph set has no photo, and a second plus would be ambiguous. */
-function PhotoIcon({ color }: { color: string }) {
-  return (
-    <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={{ borderColor: color, borderRadius: 3, borderWidth: 1.8, height: 14, width: 18 }}
-    >
-      <View
-        style={{
-          backgroundColor: color,
-          borderRadius: 2,
-          height: 4,
-          left: 2,
-          position: 'absolute',
-          top: 2,
-          width: 4,
-        }}
-      />
-    </View>
-  );
+function roundFill(
+  colors: { primary: string; surfaceSunken: string },
+  primary: boolean,
+  plain: boolean,
+): string {
+  if (primary) {
+    return colors.primary;
+  }
+  return plain ? 'transparent' : colors.surfaceSunken;
 }
 
 /** Two states rather than a nested ternary, as in `primitives.tsx`. */

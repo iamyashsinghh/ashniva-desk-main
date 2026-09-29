@@ -25,7 +25,13 @@ export function BrandMark({ size = 40, color }: { size?: number; color?: string 
 }
 
 /** The mark with the product name, for the sign-in and splash screens. */
-export function BrandLockup({ size = 44, title = 'Ashniva Desk' }: { size?: number; title?: string }) {
+export function BrandLockup({
+  size = 44,
+  title = 'Ashniva Desk',
+}: {
+  size?: number;
+  title?: string;
+}) {
   const theme = useTheme();
   return (
     <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.md }}>

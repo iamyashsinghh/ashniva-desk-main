@@ -1,7 +1,8 @@
 import type { SessionUser } from '@ashniva/types';
 
 import { mobileEnv } from '../../config/env';
-import { apiRequest, NetworkError } from '../../shared/api/client';
+import { apiRequest, exchangeRefreshToken, NetworkError } from '../../shared/api/client';
+import { forgetPreviousInstall } from '../../shared/storage/install-marker';
 import {
   clearSession,
   getCachedUser,
@@ -65,39 +66,26 @@ export type RestoreResult =
  * so it is exchanged for an access token before the app claims to be signed in. When the exchange
  * cannot be made because there is no network, the cached user is returned with `offline` rather
  * than signing the person out: losing your session because you opened the app in a lift is not
- * a security improvement.
+ * a security improvement. A 429 or a 5xx is treated the same way — only a 401 or 403 is a
+ * verdict on the token.
  */
 export async function restoreSession(): Promise<RestoreResult> {
-  const stored = await getStoredRefreshToken();
-  const cookie = refreshCookieHeader(stored);
-  if (!cookie) {
+  await forgetPreviousInstall();
+  if (!(await getStoredRefreshToken())) {
     return { status: 'signed-out' };
   }
 
-  let response: Response;
-  try {
-    response = await fetch(`${mobileEnv.apiBaseUrl}/auth/refresh`, {
-      method: 'POST',
-      headers: { Accept: 'application/json', Cookie: cookie },
-    });
-  } catch {
-    const cached = await getCachedUser();
-    return cached ? { status: 'offline', user: cached } : { status: 'signed-out' };
+  // The shared single-flight exchange, not a call of its own: anything that asks the API for data
+  // while this is in flight would otherwise present the same token a second time.
+  const outcome = await exchangeRefreshToken();
+  if (outcome.kind === 'refreshed') {
+    return { status: 'signed-in', user: outcome.user };
   }
-
-  if (!response.ok) {
-    // Refused, not unreachable: the token is revoked, expired or reused. Sign out for real.
-    await clearSession();
+  if (outcome.kind === 'refused') {
     return { status: 'signed-out' };
   }
-
-  const payload = (await response.json()) as LoginResponse;
-  await setSession(
-    payload.accessToken,
-    payload.user,
-    refreshTokenFromSetCookie(response.headers.get('set-cookie')),
-  );
-  return { status: 'signed-in', user: payload.user };
+  const cached = await getCachedUser();
+  return cached ? { status: 'offline', user: cached } : { status: 'signed-out' };
 }
 
 /**

@@ -35,16 +35,28 @@ export function ApprovalsScreen({ onOpen }: { onOpen: (approvalId: string) => vo
   );
 }
 
-export function ApprovalDetailScreen({ approvalId }: { approvalId: string }) {
+/**
+ * `onOpenProject` is optional: the detail screens name the project either way, and only make it a
+ * link when the navigator has somewhere to take it — the internal project screen for the provider,
+ * the portal's for the client.
+ */
+export function ApprovalDetailScreen({
+  approvalId,
+  onOpenProject,
+}: {
+  approvalId: string;
+  onOpenProject?: (projectId: string) => void;
+}) {
   const { user } = useSession();
 
   if (!user) {
     return <Waiting />;
   }
+  const link = onOpenProject ? { onOpenProject } : {};
   return isProviderUser(user) ? (
-    <InternalApprovalDetailScreen approvalId={approvalId} />
+    <InternalApprovalDetailScreen approvalId={approvalId} {...link} />
   ) : (
-    <ClientApprovalDetailScreen approvalId={approvalId} />
+    <ClientApprovalDetailScreen approvalId={approvalId} {...link} />
   );
 }
 

@@ -5,10 +5,12 @@ import {
 } from '@ashniva/types';
 import { Pressable, View } from 'react-native';
 
+import { MetaLine } from '../../shared/components/data-display';
 import { Glyph } from '../../shared/components/glyph';
 import { AppText, Button, Card, Field, Input } from '../../shared/components/primitives';
 import { TOUCH_TARGET } from '../../shared/theme/theme';
 import { useTheme } from '../../shared/theme/ThemeProvider';
+import { PersonAvatar } from '../../shared/components/PersonAvatar';
 import { Avatar } from './Avatar';
 
 /** The pieces of `NewConversationScreen`, split out so the screen reads as its list. */
@@ -59,6 +61,7 @@ export function GroupDraft({
       </View>
       <Button
         label="Create the group"
+        icon="people-outline"
         loading={busy}
         disabled={title.trim().length === 0}
         accessibilityHint="Everybody named is checked against your reach by the API"
@@ -125,15 +128,13 @@ export function ContactRow({
         paddingVertical: theme.spacing.md,
       }}
     >
-      <Avatar name={contact.name} size={CONTACT_AVATAR} />
+      <PersonAvatar person={contact} size={CONTACT_AVATAR} />
       <View style={{ flex: 1, gap: theme.spacing.sm }}>
         <View style={{ gap: 2 }}>
           <AppText weight="medium" numberOfLines={1}>
             {contact.name}
           </AppText>
-          <AppText size="xs" tone="muted">
-            {contact.reason}
-          </AppText>
+          <MetaLine icon="link-outline">{contact.reason}</MetaLine>
         </View>
         <View
           style={{
@@ -149,6 +150,7 @@ export function ContactRow({
                 ? `Open the thread with ${contact.name}`
                 : `Message ${contact.name}`
             }
+            icon="chatbubble-outline"
             size="sm"
             loading={busy}
             onPress={onMessage}

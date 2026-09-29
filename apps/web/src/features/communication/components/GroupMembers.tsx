@@ -1,4 +1,8 @@
-import { CONVERSATION_MEMBER_ROLE_LABELS, type ConversationDetail, type ConversationParticipant } from '@ashniva/types';
+import {
+  CONVERSATION_MEMBER_ROLE_LABELS,
+  type ConversationDetail,
+  type ConversationParticipant,
+} from '@ashniva/types';
 
 import { ConversationAvatar } from './ConversationAvatar';
 
@@ -37,7 +41,7 @@ function MemberRow({ person }: { person: ConversationParticipant }) {
   return (
     <li className="chat-list__item">
       <span className="chat-list__person">
-        <ConversationAvatar name={person.name} imageFileId={null} size="sm" />
+        <ConversationAvatar name={person.name} imageFileId={null} person={person} size="sm" />
         {person.name}
         <span className="timeline__note">
           {' '}

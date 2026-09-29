@@ -5,18 +5,16 @@ import { useResource } from '../../shared/api/queries';
 import { ProgressBar, StatTile, TileGrid } from '../../shared/components/data-display';
 import { Skeleton } from '../../shared/components/feedback';
 import { SectionHeader, PressableCard } from '../../shared/components/layout';
-import { AppText, Button, Pill, PillRow } from '../../shared/components/primitives';
+import { IconTile } from '../../shared/components/Icon';
+import { AppText, Button, Pill, PillRow, cardStyle } from '../../shared/components/primitives';
 import { formatDate, formatMinutes } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 
 /**
  * What Home shows before the list of places to go: the state of your work, at a glance.
  *
- * Only numbers the app already asks for. A client's come from `GET /portal/home`, which Home
- * has always requested for the approvals badge. An internal person's come from the first page
- * of the same lists their Tasks, Tickets and Alerts tabs load — the same query keys, so opening
- * the tab afterwards is instant rather than a second request. A cursor page has no total, so
- * these are previews ("up next"), never counts that pretend to be totals.
+ * A client's numbers come from `GET /portal/home`, which Home has always requested for the
+ * approvals badge. An internal person's are the role dashboard — see `InternalSummary`.
  *
  * Every part of this is additive. Home must paint on a cold start with no network, so a failed
  * or slow request leaves a section out rather than putting an error on the screen.
@@ -50,6 +48,7 @@ export function ClientSummary({
       <TileGrid>
         <StatTile
           label="Overall progress"
+          icon="trending-up"
           value={`${kpis.overallProgressPercent}%`}
           caption={`${kpis.activeProjects} active ${kpis.activeProjects === 1 ? 'project' : 'projects'}`}
         >
@@ -59,6 +58,8 @@ export function ClientSummary({
         </StatTile>
         <StatTile
           label="Open tickets"
+          icon="ticket"
+          iconTone="orange"
           value={kpis.openTickets}
           caption={
             kpis.ticketsNeedingYou > 0 ? `${kpis.ticketsNeedingYou} need you` : 'None need you'
@@ -67,18 +68,24 @@ export function ClientSummary({
         />
         <StatTile
           label="Done this week"
+          icon="checkmark-done"
+          iconTone="success"
           value={kpis.completedThisWeek}
           caption={`${kpis.completedToday} today`}
         />
         {kpis.supportHoursRemainingMinutes !== null ? (
           <StatTile
             label="Support time left"
+            icon="hourglass"
+            iconTone="violet"
             value={formatMinutes(kpis.supportHoursRemainingMinutes)}
             caption="Across active contracts"
           />
         ) : (
           <StatTile
             label="In progress"
+            icon="construct"
+            iconTone="info"
             value={kpis.inProgressTasks}
             caption="Tasks being worked on"
           />
@@ -89,6 +96,7 @@ export function ClientSummary({
         <View style={{ gap: theme.spacing.sm }}>
           <SectionHeader
             title="Needs your answer"
+            icon="hand-left-outline"
             count={kpis.pendingApprovals}
             action={<Button label="See all" variant="ghost" size="sm" onPress={onOpenApprovals} />}
           />
@@ -96,6 +104,8 @@ export function ClientSummary({
             <PressableCard
               key={approval.id}
               highlight
+              icon="shield-checkmark-outline"
+              iconTone={approval.isOverdue ? 'danger' : 'success'}
               accessibilityLabel={approval.title}
               onPress={() => (onOpenApproval ? onOpenApproval(approval.id) : onOpenApprovals())}
             >
@@ -122,26 +132,27 @@ export function ClientSummary({
 
       {(home.data?.recentUpdates ?? []).length > 0 ? (
         <View style={{ gap: theme.spacing.sm }}>
-          <SectionHeader title="Latest from your team" />
+          <SectionHeader title="Latest from your team" icon="megaphone-outline" />
           {(home.data?.recentUpdates ?? []).slice(0, 2).map((update) => (
             <View
               key={update.id}
-              style={{
-                backgroundColor: theme.colors.surface,
-                borderRadius: theme.radius.md,
-                gap: 2,
-                padding: theme.spacing.md,
-              }}
+              style={[
+                cardStyle(theme),
+                { alignItems: 'flex-start', flexDirection: 'row', gap: theme.spacing.md },
+              ]}
             >
-              <AppText size="xs" tone="faint" numberOfLines={1}>
-                {update.project.name} · {formatDate(update.workDate)}
-              </AppText>
-              <AppText weight="medium" numberOfLines={1}>
-                {update.title}
-              </AppText>
-              <AppText size="sm" tone="muted" numberOfLines={2}>
-                {update.body}
-              </AppText>
+              <IconTile name="newspaper-outline" tone="violet" size={36} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <AppText size="xs" tone="faint" numberOfLines={1}>
+                  {update.project.name} · {formatDate(update.workDate)}
+                </AppText>
+                <AppText weight="medium" numberOfLines={1}>
+                  {update.title}
+                </AppText>
+                <AppText size="sm" tone="muted" numberOfLines={2}>
+                  {update.body}
+                </AppText>
+              </View>
             </View>
           ))}
         </View>

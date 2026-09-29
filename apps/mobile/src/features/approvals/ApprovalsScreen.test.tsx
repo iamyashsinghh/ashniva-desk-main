@@ -1,5 +1,5 @@
 import { APPROVAL_STATUS, PERMISSIONS, ROLE_KEYS, type ApprovalSummary } from '@ashniva/types';
-import { fireEvent } from '@testing-library/react-native';
+import { fireEvent, waitFor } from '@testing-library/react-native';
 
 import {
   jsonResponse,
@@ -104,6 +104,19 @@ describe('somebody at the provider', () => {
     expect(await view.findByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
+  it('searches on the server rather than among the rows it already has', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ items: [], nextCursor: null, total: 0 }));
+    const view = await renderScreen(<ApprovalsScreen onOpen={jest.fn()} />);
+    await view.findByText('Nothing waiting on you');
+
+    await fireEvent.changeText(view.getByPlaceholderText('Search approval requests'), 'handover');
+
+    await waitFor(() =>
+      expect(requestedPaths(fetchMock).some((path) => path.includes('search=handover'))).toBe(true),
+    );
+    expect(await view.findByText('Nothing matches')).toBeTruthy();
+  });
+
   it('opens the one that was tapped', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ items: [summary()], nextCursor: null, total: 1 }));
     const onOpen = jest.fn();
@@ -125,5 +138,32 @@ describe('somebody at a client', () => {
     expect(requestedPaths(fetchMock).every((path) => path.includes('/portal/approvals'))).toBe(
       true,
     );
+  });
+
+  it('splits what is waiting for them from what they already decided', async () => {
+    const portalRow = (id: string, title: string, status: ApprovalSummary['status']) => ({
+      id,
+      title,
+      status,
+      subject: { type: 'MILESTONE', id: 'm1', label: 'Phase 2', link: null },
+      project: null,
+      publishedAt: null,
+      dueDate: null,
+      decidedBy:
+        status === APPROVAL_STATUS.PUBLISHED
+          ? null
+          : { id: 'u9', name: 'Dana Kim', email: 'dana@example.com' },
+      decidedAt: status === APPROVAL_STATUS.PUBLISHED ? null : '2026-09-03T09:00:00.000Z',
+      isOverdue: false,
+    });
+    fetchMock.mockResolvedValue(
+      jsonResponse([portalRow('a1', 'Phase 2 handover', APPROVAL_STATUS.CLIENT_APPROVED)]),
+    );
+    const view = await renderScreen(<ApprovalsScreen onOpen={jest.fn()} />);
+
+    expect(await view.findByText('Already decided')).toBeTruthy();
+    expect(view.getByText('Waiting for you')).toBeTruthy();
+    expect(view.getByText('Nothing to approve right now.')).toBeTruthy();
+    expect(view.getByText(/^Dana Kim · /)).toBeTruthy();
   });
 });

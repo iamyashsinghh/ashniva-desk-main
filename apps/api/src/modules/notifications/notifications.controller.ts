@@ -3,13 +3,15 @@ import {
   Controller,
   Get,
   Headers,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiNoContentResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   PERMISSIONS,
   type AuthenticatedUser,
@@ -20,9 +22,12 @@ import {
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { AppConfigService } from '../../config/app-config.service';
+import { DevicePushTokensService } from './device-push-tokens.service';
 import {
   ListNotificationsQueryDto,
+  RegisterPushDeviceDto,
   SubscribePushDto,
+  UnregisterPushDeviceDto,
   UnsubscribePushDto,
   UpdateNotificationPreferencesDto,
 } from './dto/notification.dto';
@@ -39,6 +44,7 @@ export class NotificationsController {
     private readonly notifications: NotificationsService,
     private readonly processor: NotificationsProcessor,
     private readonly pushSubscriptions: PushSubscriptionsService,
+    private readonly devicePushTokens: DevicePushTokensService,
     private readonly config: AppConfigService,
   ) {}
 
@@ -101,6 +107,28 @@ export class NotificationsController {
   ): Promise<{ ok: true }> {
     await this.pushSubscriptions.unsubscribe(actor, dto.endpoint);
     return { ok: true };
+  }
+
+  @Post('push/devices')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Register this phone’s Expo push token for native push' })
+  @ApiNoContentResponse()
+  registerPushDevice(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() dto: RegisterPushDeviceDto,
+  ): Promise<void> {
+    return this.devicePushTokens.register(actor, dto);
+  }
+
+  @Post('push/devices/unregister')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Forget one of my phones’ Expo push tokens (sign-out, permission off)' })
+  @ApiNoContentResponse()
+  unregisterPushDevice(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() dto: UnregisterPushDeviceDto,
+  ): Promise<void> {
+    return this.devicePushTokens.unregister(actor, dto.token);
   }
 
   @Post('read-all')

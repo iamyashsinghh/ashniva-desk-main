@@ -39,10 +39,7 @@ export function Pill({ label, tone = 'neutral' }: { label: string; tone?: PillTo
   );
 }
 
-export function pillColors(
-  theme: Theme,
-  tone: PillTone,
-): { color: string; background: string } {
+export function pillColors(theme: Theme, tone: PillTone): { color: string; background: string } {
   return {
     neutral: { color: theme.colors.textMuted, background: theme.colors.pillBackground },
     info: { color: theme.colors.info, background: theme.colors.infoSoft },

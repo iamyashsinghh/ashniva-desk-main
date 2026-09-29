@@ -1,4 +1,4 @@
-import { VISIBILITY, type FileSummary } from '@ashniva/types';
+import { VISIBILITY, type FileSummary, type Visibility } from '@ashniva/types';
 import { useState } from 'react';
 import { Image, View } from 'react-native';
 
@@ -13,11 +13,19 @@ import {
   useAccessTokenForImages,
   type PickedFile,
 } from '../../shared/attachments/attachments';
+import { MetaLine } from '../../shared/components/data-display';
 import { Banner } from '../../shared/components/feedback';
+import { IconTile } from '../../shared/components/Icon';
 import { Grow, Section } from '../../shared/components/layout';
+import { Segmented, type SegmentOption } from '../../shared/components/navigation-list';
 import { AppText, Button } from '../../shared/components/primitives';
 import { mobileEnv } from '../../config/env';
 import { useTheme } from '../../shared/theme/ThemeProvider';
+
+const VISIBILITY_OPTIONS: readonly SegmentOption<Visibility>[] = [
+  { value: VISIBILITY.INTERNAL, label: 'Internal', icon: 'lock-closed-outline' },
+  { value: VISIBILITY.CLIENT, label: 'Client can see', icon: 'eye-outline' },
+];
 
 /**
  * A task's attachments: what is there, and adding one.
@@ -34,23 +42,30 @@ import { useTheme } from '../../shared/theme/ThemeProvider';
  * mean writing it to the device and handing it to another app, which is a decision about where a
  * client's file ends up; that belongs on the web app until somebody has taken it deliberately.
  *
- * New attachments are internal. Client visibility is a decision taken with the client's reading
- * of it in mind, and the phone is not where that judgement is made.
+ * New attachments are internal unless the uploader deliberately chooses otherwise, and the choice
+ * is only offered where it means something — staff, on a project that has a client. The API
+ * decides whether the upload is allowed at all.
  */
 export function TaskAttachments({
   taskId,
   files,
   onUploaded,
+  canUpload = true,
+  chooseVisibility = false,
 }: {
   taskId: string;
   files: readonly FileSummary[];
   onUploaded: () => void;
+  canUpload?: boolean;
+  /** Offers Internal / Client for the next upload. Off means every upload is internal. */
+  chooseVisibility?: boolean;
 }) {
   const theme = useTheme();
   const token = useAccessTokenForImages();
   // Which of the two buttons started the upload, so only that one spins; both stay disabled.
   const [busy, setBusy] = useState<'photo' | 'file' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<Visibility>(VISIBILITY.INTERNAL);
 
   const attach = async (kind: 'photo' | 'file', pick: () => Promise<PickedFile | null>) => {
     setError(null);
@@ -64,7 +79,7 @@ export function TaskAttachments({
         return;
       }
       setBusy(kind);
-      await uploadAttachment(file, { taskId }, VISIBILITY.INTERNAL);
+      await uploadAttachment(file, { taskId }, chooseVisibility ? visibility : VISIBILITY.INTERNAL);
       onUploaded();
     } catch (cause) {
       setError(errorMessage(cause));
@@ -74,7 +89,7 @@ export function TaskAttachments({
   };
 
   return (
-    <Section title={`Attachments (${files.length})`}>
+    <Section title={`Attachments (${files.length})`} icon="attach">
       {files.length === 0 ? (
         <AppText size="sm" tone="muted">
           Nothing attached.
@@ -101,24 +116,29 @@ export function TaskAttachments({
           ) : null}
           <View
             style={{
-              gap: 2,
+              alignItems: 'center',
+              flexDirection: 'row',
+              gap: theme.spacing.md,
               paddingBottom: theme.spacing.md,
               paddingHorizontal: theme.spacing.md,
               paddingTop: isViewableImage(file) ? 0 : theme.spacing.md,
             }}
           >
-            <AppText size="sm" weight="medium" numberOfLines={1}>
-              {file.name}
-            </AppText>
-            <AppText size="xs" tone="faint">
-              {formatBytes(file.sizeBytes)} · {file.uploadedBy.name}
-              {file.visibility === VISIBILITY.CLIENT ? ' · the client sees this' : ''}
-            </AppText>
             {isViewableImage(file) ? null : (
-              <AppText size="xs" tone="muted">
-                Open this one on the web app.
-              </AppText>
+              <IconTile name="document-text-outline" tone="info" size={40} />
             )}
+            <View style={{ flex: 1, gap: 2 }}>
+              <AppText size="sm" weight="medium" numberOfLines={1}>
+                {file.name}
+              </AppText>
+              <AppText size="xs" tone="faint">
+                {formatBytes(file.sizeBytes)} · {file.uploadedBy.name}
+                {file.visibility === VISIBILITY.CLIENT ? ' · the client sees this' : ''}
+              </AppText>
+              {isViewableImage(file) ? null : (
+                <MetaLine icon="desktop-outline">Open this one on the web app.</MetaLine>
+              )}
+            </View>
           </View>
         </View>
       ))}
@@ -129,30 +149,41 @@ export function TaskAttachments({
         </Banner>
       ) : null}
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
-        <Grow>
-          <Button
-            label="Attach a photo"
-            variant="secondary"
-            icon="plus"
-            loading={busy === 'photo'}
-            disabled={busy !== null}
-            accessibilityHint="Adds a picture from your library as an internal attachment"
-            onPress={() => void attach('photo', pickImage)}
-          />
-        </Grow>
-        <Grow>
-          <Button
-            label="Attach a file"
-            variant="secondary"
-            icon="plus"
-            loading={busy === 'file'}
-            disabled={busy !== null}
-            accessibilityHint="Adds a document as an internal attachment"
-            onPress={() => void attach('file', pickDocument)}
-          />
-        </Grow>
-      </View>
+      {canUpload && chooseVisibility ? (
+        <Segmented
+          label="Who can see the next attachment"
+          options={VISIBILITY_OPTIONS}
+          value={visibility}
+          onChange={setVisibility}
+        />
+      ) : null}
+
+      {canUpload ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.sm }}>
+          <Grow>
+            <Button
+              label="Attach a photo"
+              variant="secondary"
+              icon="camera-outline"
+              loading={busy === 'photo'}
+              disabled={busy !== null}
+              accessibilityHint="Adds a picture from your library to the task"
+              onPress={() => void attach('photo', pickImage)}
+            />
+          </Grow>
+          <Grow>
+            <Button
+              label="Attach a file"
+              variant="secondary"
+              icon="attach"
+              loading={busy === 'file'}
+              disabled={busy !== null}
+              accessibilityHint="Adds a document to the task"
+              onPress={() => void attach('file', pickDocument)}
+            />
+          </Grow>
+        </View>
+      ) : null}
     </Section>
   );
 }

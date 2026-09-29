@@ -4,7 +4,11 @@ import { useState } from 'react';
 
 import { usePermission, useCurrentUser } from '../../auth/session-context';
 import { useConversationsQuery } from '../api';
-import { isGroupOnlyInboxKind, isPeopleInboxKind, inboxAllowsPersonalChat } from '../conversation-filters';
+import {
+  isGroupOnlyInboxKind,
+  isPeopleInboxKind,
+  inboxAllowsPersonalChat,
+} from '../conversation-filters';
 import { useMentionedConversationIds } from '../mention-badges';
 import { useMessenger } from '../messenger-context';
 import { ConversationAvatar } from './ConversationAvatar';
@@ -138,7 +142,12 @@ function MinimizedChat({
   return (
     <div className="messenger-dock__bar">
       <button type="button" className="messenger-dock__bar-open" onClick={onRestore}>
-        <ConversationAvatar name={name} imageFileId={row?.imageFileId ?? null} size="sm" />
+        <ConversationAvatar
+          name={name}
+          imageFileId={row?.imageFileId ?? null}
+          person={row?.counterpart}
+          size="sm"
+        />
         <span className="messenger-dock__bar-name">{name}</span>
         {row && row.unreadCount > 0 ? (
           <span className="messenger-dock__badge" aria-label={`${row.unreadCount} unread`}>

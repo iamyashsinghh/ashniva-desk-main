@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  CONVERSATION_KIND,
   NOTIFICATION_TYPE,
   PAIR_MEMBERSHIP_KINDS,
   mentionsIn,
@@ -35,9 +36,10 @@ export class CommunicationNotificationsService {
   /**
    * A message arrived.
    *
-   * Direct conversations notify; the shared kinds do not, unless somebody was mentioned. A
-   * project channel — or a group — that pinged everyone on every line would be turned off within
-   * a day, and a notification people turn off is worse than none.
+   * Direct conversations and groups notify on every line, the way a phone chat does: both are
+   * made of people who chose to talk to each other. The derived kinds — a project channel, a task
+   * or ticket thread — notify only somebody mentioned or replied to; those are everybody on the
+   * work, and a channel that pinged all of them on every line would be switched off within a day.
    */
   async messagePosted(
     row: ConversationRow,
@@ -46,17 +48,15 @@ export class CommunicationNotificationsService {
     audience: readonly string[],
   ): Promise<void> {
     const mentioned = mentionsIn(message.body);
-    // Both direct kinds notify: a message addressed to one person is addressed to them whether the
-    // relationship behind it is a shared project or a management one. A **group** deliberately
-    // does not, and is treated like a project channel — a thread that pings everybody on every
-    // line is a thread people switch off, and a notification people switch off is worse than none.
+    const senderName = message.sender?.name ?? 'Somebody';
+    const preview = messagePreview(message.body, message.attachments);
     const isDirect = PAIR_MEMBERSHIP_KINDS.includes(row.kind as ConversationKind);
 
     if (isDirect) {
       await this.dispatcher.notify({
         type: NOTIFICATION_TYPE.CONVERSATION_MESSAGE,
-        title: `${message.sender?.name ?? 'Somebody'} messaged you`,
-        body: messagePreview(message.body, message.attachments),
+        title: senderName,
+        body: preview,
         link: conversationLink(row),
         entityType: 'conversation',
         entityId: row.id,
@@ -68,25 +68,62 @@ export class CommunicationNotificationsService {
       return;
     }
 
-    if (mentioned.length === 0) {
-      return;
-    }
     // A mention is a direct address inside a shared thread, so it notifies where the thread
     // itself does not — but only the people who are already entitled to receive the message.
     const named = audience.filter((userId) => mentioned.includes(userId));
-    if (named.length === 0) {
-      return;
+    const answered = message.replyTo?.sender?.id;
+    const addressed = new Set([...named, ...(answered ? [answered] : [])]);
+
+    // Everybody else in a group hears the line itself; the people it addresses hear it as that,
+    // below, and not twice.
+    if (row.kind === CONVERSATION_KIND.GROUP) {
+      const others = audience.filter((userId) => !addressed.has(userId));
+      if (others.length > 0) {
+        await this.dispatcher.notify({
+          type: NOTIFICATION_TYPE.CONVERSATION_MESSAGE,
+          title: conversationName(row),
+          body: `${senderName}: ${preview}`,
+          link: conversationLink(row),
+          entityType: 'conversation',
+          entityId: row.id,
+          dedupeKey: `conversation:message:${message.id}`,
+          recipients: await this.recipients.members(row.organizationId, others),
+        });
+      }
     }
-    await this.dispatcher.notify({
-      type: NOTIFICATION_TYPE.CONVERSATION_MENTION,
-      title: `${message.sender?.name ?? 'Somebody'} mentioned you in ${conversationName(row)}`,
-      body: messagePreview(message.body, message.attachments),
-      link: conversationLink(row),
-      entityType: 'conversation',
-      entityId: row.id,
-      dedupeKey: `conversation:mention:${message.id}`,
-      recipients: await this.recipients.members(row.organizationId, named),
-    });
+    if (named.length > 0) {
+      await this.dispatcher.notify({
+        type: NOTIFICATION_TYPE.CONVERSATION_MENTION,
+        title: `${senderName} mentioned you in ${conversationName(row)}`,
+        body: preview,
+        link: conversationLink(row),
+        entityType: 'conversation',
+        entityId: row.id,
+        dedupeKey: `conversation:mention:${message.id}`,
+        recipients: await this.recipients.members(row.organizationId, named),
+      });
+    }
+
+    // Answering somebody's line addresses them as surely as naming them does, so it notifies the
+    // same way and under the same guard: only if they are in this message's audience, and only
+    // once — somebody both quoted and mentioned has just been told.
+    if (
+      answered &&
+      answered !== sender.userId &&
+      audience.includes(answered) &&
+      !named.includes(answered)
+    ) {
+      await this.dispatcher.notify({
+        type: NOTIFICATION_TYPE.CONVERSATION_MENTION,
+        title: `${senderName} replied to you in ${conversationName(row)}`,
+        body: preview,
+        link: conversationLink(row),
+        entityType: 'conversation',
+        entityId: row.id,
+        dedupeKey: `conversation:reply:${message.id}`,
+        recipients: await this.recipients.member(row.organizationId, answered),
+      });
+    }
   }
 
   /** Somebody is being rung from a conversation. */

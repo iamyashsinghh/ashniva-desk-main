@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, Switch, View } from 'react-
 
 import { useApiMutation } from '../../shared/api/mutations';
 import { Banner } from '../../shared/components/feedback';
+import { IconTile } from '../../shared/components/Icon';
 import {
   Grow,
   Section,
@@ -65,7 +66,7 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
           contentContainerStyle={{ gap: theme.spacing.md, padding: theme.spacing.screen }}
           keyboardShouldPersistTaps="handled"
         >
-          <Section title="The work">
+          <Section title="The work" icon="construct-outline">
             <Field label="What did you complete?" required hint="A reviewer reads this first">
               <Input
                 accessibilityLabel="What you completed"
@@ -81,6 +82,7 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
             <Field label="Time spent (minutes)" required hint="Between 1 and 1440">
               <Input
                 accessibilityLabel="Time spent in minutes"
+                icon="time-outline"
                 inputMode="numeric"
                 keyboardType="number-pad"
                 onChangeText={setMinutes}
@@ -91,10 +93,11 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
             </Field>
           </Section>
 
-          <Section title="Evidence · optional">
+          <Section title="Evidence · optional" icon="attach">
             <Field label="Link to the result" hint="A staging URL or a document. Optional.">
               <Input
                 accessibilityLabel="Link to the result"
+                icon="link-outline"
                 autoCapitalize="none"
                 inputMode="url"
                 onChangeText={setProofUrl}
@@ -106,6 +109,7 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
             <Field label="Git reference" hint="A branch, commit or pull request. Optional.">
               <Input
                 accessibilityLabel="Git reference"
+                icon="git-branch-outline"
                 autoCapitalize="none"
                 autoCorrect={false}
                 onChangeText={setGitRef}
@@ -115,7 +119,7 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
             </Field>
           </Section>
 
-          <Section title="Client">
+          <Section title="Client" icon="people-outline">
             <View
               style={{
                 alignItems: 'center',
@@ -124,6 +128,7 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
                 minHeight: TOUCH_TARGET,
               }}
             >
+              <IconTile name="eye-outline" tone={clientVisible ? 'info' : 'neutral'} size={36} />
               <View style={{ flex: 1, gap: 2 }}>
                 <AppText weight="medium">Tell the client about this</AppText>
                 <AppText size="xs" tone="muted">
@@ -177,7 +182,7 @@ export function CompleteTaskScreen({ taskId, onDone }: { taskId: string; onDone:
           <Grow>
             <Button
               label="Send for review"
-              icon="arrow-up"
+              icon="paper-plane-outline"
               loading={submit.busy}
               disabled={!valid}
               accessibilityHint="Submits the task for someone to review"

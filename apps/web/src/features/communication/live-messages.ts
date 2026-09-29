@@ -4,6 +4,7 @@ import {
   type ConversationDetail,
   type NotificationEvent,
   type NotificationSummary,
+  type UserRef,
 } from '@ashniva/types';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
@@ -36,6 +37,8 @@ export interface LiveMessageToast {
   from: string;
   /** The group's picture, when it has one. */
   imageFileId: string | null;
+  /** The other person of a direct conversation, whose own picture stands in for a group's. */
+  counterpart?: UserRef | null;
   preview: string;
   /** The project, task or ticket this hangs off, when it hangs off one. */
   context: string | null;
@@ -81,8 +84,7 @@ export function useLiveMessageToasts(): {
   const location = useLocation();
   const messenger = useMessenger();
   const [toasts, setToasts] = useState<readonly LiveMessageToast[]>([]);
-  const readingId =
-    messenger && !messenger.minimized ? messenger.conversationId : null;
+  const readingId = messenger && !messenger.minimized ? messenger.conversationId : null;
 
   const dismiss = useCallback((key: string) => {
     setToasts((current) => current.filter((toast) => toast.key !== key));
@@ -186,6 +188,7 @@ function toastFor(
     conversationId: conversation.id,
     from: conversation.counterpart?.name ?? conversation.title,
     imageFileId: conversation.imageFileId,
+    counterpart: conversation.counterpart,
     preview: maskMentions(conversation.lastMessagePreview ?? notification.title),
     context: contextLabelOf(conversation),
     link: notification.link ?? `/messages/${conversation.id}`,

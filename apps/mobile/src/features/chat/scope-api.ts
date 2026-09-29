@@ -30,13 +30,21 @@ export const SCOPE_KEYS = {
   list: ['conversations'] as const,
 };
 
-/** Who this person may reach outside a project, and why. Searched on the server. */
-export function useMessagingDirectory(search: string) {
+/**
+ * Who this person may reach outside a project, and why. Searched on the server.
+ *
+ * `enabled` is off for somebody without personal chat: the endpoint answers them with nobody, and
+ * the inbox has no people rows to draw for them anyway.
+ */
+export function useMessagingDirectory(search: string, enabled = true) {
   const query = search.trim();
   return useResource<MessagingScopeContact[]>(
     SCOPE_KEYS.directory(query),
     '/conversations/directory',
-    query ? { query: { q: query } } : {},
+    {
+      enabled,
+      ...(query ? { query: { q: query } } : {}),
+    },
   );
 }
 

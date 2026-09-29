@@ -84,7 +84,6 @@ export class NotificationDispatcher {
    * either way.
    */
   async deliverDeferred(row: NotificationRow, at = new Date()): Promise<void> {
-    const recipient = { userId: row.userId, organizationId: row.organizationId };
     const type = row.type as NotificationType;
     const stored = await this.notifications.preferences(row.userId, row.organizationId);
     const enabled = channelsFor(stored, type);
@@ -95,11 +94,7 @@ export class NotificationDispatcher {
       // inbox, and loses its due time so the delivery job stops picking it up.
       await this.notifications.clearDeferral(row.id);
     }
-    await this.sendExternal(
-      { type, title: row.title, body: row.body, link: row.link },
-      recipient,
-      this.externalChannels(enabled),
-    );
+    await this.sendExternal(row, this.externalChannels(enabled));
   }
 
   /** Pushes a stored row to the recipient's browser tabs and marks it delivered. */
@@ -179,6 +174,16 @@ export class NotificationDispatcher {
         if (bumped.deliveredAt) {
           await this.deliver(bumped, now);
         }
+        // The merged row is one line in the inbox, but each new event is still news on a phone —
+        // the second reply on a ticket buzzes like the second chat message does. A row still
+        // waiting out quiet hours sends when it is delivered, and a new event that falls in quiet
+        // hours or over the rate limit stays silent rather than lighting a phone up at 3am.
+        const waiting =
+          bumped.deliverAfter !== null ||
+          (!urgent && (await this.deferral(recipient, now, state?.settings ?? null)) !== null);
+        if (!waiting) {
+          await this.sendExternal(bumped, external);
+        }
         return 'grouped';
       }
     }
@@ -211,7 +216,7 @@ export class NotificationDispatcher {
     if (inApp) {
       await this.deliver(row, now);
     }
-    await this.sendExternal(input, recipient, external);
+    await this.sendExternal(row, external);
     return 'created';
   }
 
@@ -257,23 +262,26 @@ export class NotificationDispatcher {
    * "skipped" result would misreport work that actually succeeded.
    */
   private async sendExternal(
-    input: Pick<NotifyInput, 'type' | 'title' | 'body' | 'link'>,
-    recipient: Pick<Recipient, 'userId' | 'organizationId'>,
+    row: NotificationRow,
     channels: readonly NotificationChannel[],
   ): Promise<void> {
     for (const channel of channels) {
       try {
         await channel.send({
-          recipientUserId: recipient.userId,
-          organizationId: recipient.organizationId,
-          type: input.type,
-          title: input.title,
-          body: input.body ?? null,
-          link: input.link ?? null,
+          notificationId: row.id,
+          groupedCount: row.groupedCount,
+          recipientUserId: row.userId,
+          organizationId: row.organizationId,
+          type: row.type as NotificationType,
+          title: row.title,
+          body: row.body ?? null,
+          link: row.link ?? null,
+          entityType: row.entityType ?? null,
+          entityId: row.entityId ?? null,
         });
       } catch (error) {
         this.logger.warn(
-          { err: error, channel: channel.key, type: input.type },
+          { err: error, channel: channel.key, type: row.type },
           'External notification channel failed',
         );
       }

@@ -190,6 +190,7 @@ export function ConversationView({
       body: draft.body,
       ...(draft.attachmentIds.length > 0 ? { attachmentIds: draft.attachmentIds } : {}),
       clientMessageId: draft.clientMessageId,
+      ...(draft.replyToId ? { replyToId: draft.replyToId } : {}),
     });
   }
 
@@ -257,6 +258,7 @@ export function ConversationView({
         tagsArePrivate={TAGGED_PRIVATE_KINDS.includes(detailKind)}
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
+        audience={audience.data ?? []}
         onSend={send}
       />
 

@@ -1,9 +1,16 @@
-import { MAX_MESSAGE_LENGTH } from '@ashniva/types';
+import {
+  decodeMentions,
+  encodeMentions,
+  MAX_MESSAGE_LENGTH,
+  type ConversationAudienceMember,
+} from '@ashniva/types';
 import { Button, Textarea } from '@ashniva/ui';
 import { useState } from 'react';
 
 export interface MessageEditorProps {
   initialBody: string;
+  /** The conversation's people, to show the message's mentions as names while it is edited. */
+  audience?: readonly ConversationAudienceMember[];
   onSave: (body: string) => Promise<void>;
   onCancel: () => void;
 }
@@ -19,10 +26,21 @@ export interface MessageEditorProps {
  * That disabled button is a courtesy, not the control. Whether an empty edit is allowed is the
  * API's rule and the API enforces it; this component only declines to ask for something it already
  * knows is not on offer.
+ *
+ * Mentions are shown as `@Name` and written back as ids on save, from the names known when the
+ * editor opened.
  */
-export function MessageEditor({ initialBody, onSave, onCancel }: MessageEditorProps) {
-  const [draft, setDraft] = useState(initialBody);
-  const trimmed = draft.trim();
+export function MessageEditor({
+  initialBody,
+  audience = [],
+  onSave,
+  onCancel,
+}: MessageEditorProps) {
+  const [opened] = useState(() =>
+    decodeMentions(initialBody, new Map(audience.map((person) => [person.id, person.name]))),
+  );
+  const [draft, setDraft] = useState(opened.text);
+  const trimmed = encodeMentions(draft.trim(), opened.picks);
 
   return (
     <div className="chat-message__editor">

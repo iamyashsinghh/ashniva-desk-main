@@ -1,6 +1,8 @@
 import { REFRESH_TOKEN_COOKIE } from '@ashniva/types';
+import * as FileSystem from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 
+import { apiRequest } from '../../shared/api/client';
 import { SECURE_KEYS } from '../../shared/storage/secure-store';
 import { login, logout, restoreSession } from './auth-api';
 import { getAccessToken, getSession, resetSessionForTests, setSession } from './session-store';
@@ -14,6 +16,7 @@ import { getAccessToken, getSession, resetSessionForTests, setSession } from './
  */
 
 const mocked = SecureStore as unknown as { __store: Map<string, string> };
+const installMarker = FileSystem as unknown as { __files: Set<string> };
 
 const user = {
   id: 'u1',
@@ -90,6 +93,35 @@ describe('login', () => {
 });
 
 describe('restoreSession', () => {
+  it('starts a reinstalled app signed out, whatever the Keychain kept', async () => {
+    // Deleting the app removes its documents folder, marker and all, but not the iOS Keychain.
+    mocked.__store.set(SECURE_KEYS.refreshToken, 'from-the-old-install');
+    installMarker.__files.clear();
+
+    await expect(restoreSession()).resolves.toEqual({ status: 'signed-out' });
+    expect(mocked.__store.size).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // Marked now, so the next launch is not mistaken for another fresh install.
+    mocked.__store.set(SECURE_KEYS.refreshToken, 'refresh-1');
+    fetchMock.mockResolvedValueOnce(response(200, { accessToken: 'a', user }));
+    await expect(restoreSession()).resolves.toMatchObject({ status: 'signed-in' });
+  });
+
+  it('keeps the session when the install marker cannot be saved', async () => {
+    // Otherwise every launch would look like a fresh install and sign the person out.
+    mocked.__store.set(SECURE_KEYS.refreshToken, 'refresh-1');
+    installMarker.__files.clear();
+    const write = jest
+      .spyOn(FileSystem.File.prototype, 'write')
+      .mockImplementation(() => undefined);
+    fetchMock.mockResolvedValueOnce(response(200, { accessToken: 'a', user }));
+
+    await expect(restoreSession()).resolves.toMatchObject({ status: 'signed-in' });
+    write.mockRestore();
+    installMarker.__files.add('ashniva-installed');
+  });
+
   it('is signed out when nothing was stored', async () => {
     await expect(restoreSession()).resolves.toEqual({ status: 'signed-out' });
     expect(fetchMock).not.toHaveBeenCalled();
@@ -136,6 +168,37 @@ describe('restoreSession', () => {
     fetchMock.mockRejectedValueOnce(new Error('offline'));
 
     await expect(restoreSession()).resolves.toEqual({ status: 'signed-out' });
+  });
+
+  it('stays signed in from cache when the server is rate limiting or restarting', async () => {
+    // Neither is a verdict on the token; signing out would throw away a perfectly good session.
+    mocked.__store.set(SECURE_KEYS.refreshToken, 'refresh-1');
+    mocked.__store.set(SECURE_KEYS.sessionUser, JSON.stringify(user));
+    fetchMock
+      .mockResolvedValueOnce(response(429, { message: 'Too many requests' }))
+      .mockResolvedValueOnce(response(502, { message: 'Bad gateway' }));
+
+    expect((await restoreSession()).status).toBe('offline');
+    expect((await restoreSession()).status).toBe('offline');
+    expect(mocked.__store.get(SECURE_KEYS.refreshToken)).toBe('refresh-1');
+  });
+
+  it('shares its exchange with a request that 401s while it is in flight', async () => {
+    // Two exchanges would present the same token twice; the API calls that theft and revokes
+    // the whole family — which, on launch, meant being signed out by a reload.
+    mocked.__store.set(SECURE_KEYS.refreshToken, 'refresh-1');
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).endsWith('/auth/refresh')
+        ? response(200, { accessToken: 'fresh', user })
+        : response(getAccessToken() === 'fresh' ? 200 : 401, { ok: true }),
+    );
+
+    await Promise.all([restoreSession(), apiRequest('/tasks')]);
+
+    const refreshes = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).endsWith('/auth/refresh'),
+    );
+    expect(refreshes).toHaveLength(1);
   });
 
   it('proves the stored token before claiming to be signed in', async () => {

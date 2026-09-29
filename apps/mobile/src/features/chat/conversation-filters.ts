@@ -1,4 +1,11 @@
-import { CONVERSATION_KIND, DERIVED_MEMBERSHIP_KINDS, type ConversationKind, type ConversationSummary } from '@ashniva/types';
+import {
+  CONVERSATION_KIND,
+  DERIVED_MEMBERSHIP_KINDS,
+  type ConversationKind,
+  type ConversationSummary,
+} from '@ashniva/types';
+
+import type { IconName } from '../../shared/components/Icon';
 
 /**
  * The filters the conversation list offers, and where each one is applied.
@@ -70,11 +77,21 @@ export function serverQueryFor(filter: ConversationFilter): ConversationListQuer
 export function inboxFiltersFor(personalChat: boolean): readonly ConversationFilter[] {
   return personalChat
     ? CONVERSATION_FILTERS
-    : ([
-        CONVERSATION_FILTER.ALL,
-        CONVERSATION_FILTER.UNREAD,
-        CONVERSATION_FILTER.GROUPS,
-      ] as const);
+    : ([CONVERSATION_FILTER.ALL, CONVERSATION_FILTER.UNREAD, CONVERSATION_FILTER.GROUPS] as const);
+}
+
+/**
+ * Whether a kind belongs in the people inbox at all, for this reader.
+ *
+ * Direct messages and groups, never the project, task and ticket channels; and only the group for
+ * somebody who may not hold a private conversation. The chips, the Unread total and the tab badge
+ * all ask this one question, so the three cannot count different things.
+ */
+export function isInboxKind(kind: ConversationKind, personalChat = true): boolean {
+  if (DERIVED_MEMBERSHIP_KINDS.includes(kind)) {
+    return false;
+  }
+  return personalChat || kind === CONVERSATION_KIND.GROUP;
 }
 
 /** Whether a row belongs under this chip. Applied to every row, server-narrowed or not. */
@@ -83,10 +100,7 @@ export function matchesFilter(
   filter: ConversationFilter,
   personalChat = true,
 ): boolean {
-  if (DERIVED_MEMBERSHIP_KINDS.includes(row.kind)) {
-    return false;
-  }
-  if (!personalChat && row.kind !== CONVERSATION_KIND.GROUP) {
+  if (!isInboxKind(row.kind, personalChat)) {
     return false;
   }
   if (filter === CONVERSATION_FILTER.ALL) {
@@ -113,6 +127,7 @@ export function matchesSearch(row: ConversationSummary, needle: string): boolean
     row.title,
     row.counterpart?.name,
     row.project?.code,
+    row.project?.name,
     row.task?.key,
     row.ticket?.key,
     row.lastMessagePreview,
@@ -127,3 +142,28 @@ export function matchesSearch(row: ConversationSummary, needle: string): boolean
 export function conversationLabel(row: ConversationSummary): string {
   return row.counterpart?.name ?? row.title;
 }
+
+/** What a conversation hangs off, as a short tag: the task, else the ticket, else the project. */
+export function contextLabelOf(row: ConversationSummary): string | null {
+  if (row.task) {
+    return row.task.key;
+  }
+  if (row.ticket) {
+    return row.ticket.key;
+  }
+  return row.project?.code ?? null;
+}
+
+/** An unread count as a badge draws it. Past 99 the exact figure stops being read. */
+export function unreadBadge(count: number): string {
+  return count > 99 ? '99+' : String(count);
+}
+
+export const CONVERSATION_KIND_ICONS: Record<ConversationKind, IconName> = {
+  PROJECT: 'folder-open-outline',
+  TASK: 'checkbox-outline',
+  TICKET: 'ticket-outline',
+  DIRECT: 'person-outline',
+  SCOPE_DIRECT: 'person-outline',
+  GROUP: 'people-outline',
+};

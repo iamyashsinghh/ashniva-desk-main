@@ -3,6 +3,7 @@ import { TextInput, View, type TextInputProps } from 'react-native';
 
 import { TOUCH_TARGET } from '../theme/theme';
 import { useTheme } from '../theme/ThemeProvider';
+import { Icon, type IconName } from './Icon';
 import { AppText } from './primitives';
 
 /**
@@ -57,6 +58,7 @@ export function Input({
   style,
   invalid = false,
   right,
+  icon,
   ref,
   onFocus,
   onBlur,
@@ -66,6 +68,8 @@ export function Input({
   invalid?: boolean;
   /** Something inside the field's right edge, such as a show/hide control. */
   right?: ReactNode;
+  /** A leading icon saying what the field is for. */
+  icon?: IconName;
   ref?: Ref<TextInput>;
 }) {
   const theme = useTheme();
@@ -103,6 +107,7 @@ export function Input({
           fontSize: theme.fontSize.input,
           minHeight: TOUCH_TARGET + 4,
           paddingHorizontal: theme.spacing.md,
+          paddingLeft: icon ? 44 : theme.spacing.md,
           paddingRight: right ? 72 : theme.spacing.md,
           paddingVertical: theme.spacing.sm + 2,
         },
@@ -113,13 +118,23 @@ export function Input({
     />
   );
 
-  if (!right) {
+  if (!right && !icon) {
     return input;
   }
   return (
     <View style={{ justifyContent: 'center' }}>
       {input}
-      <View style={{ position: 'absolute', right: theme.spacing.xs }}>{right}</View>
+      {icon ? (
+        <Icon
+          name={icon}
+          size={20}
+          color={focused ? theme.colors.primary : theme.colors.textFaint}
+          style={{ left: theme.spacing.md, position: 'absolute' }}
+        />
+      ) : null}
+      {right ? (
+        <View style={{ position: 'absolute', right: theme.spacing.xs }}>{right}</View>
+      ) : null}
     </View>
   );
 }

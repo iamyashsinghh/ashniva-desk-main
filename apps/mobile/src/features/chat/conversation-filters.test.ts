@@ -85,7 +85,7 @@ describe('matchesFilter', () => {
 });
 
 describe('matchesSearch', () => {
-  it('searches everything the row draws, and nothing it does not', () => {
+  it('searches the same fields the web list does', () => {
     const conversation = row({
       title: 'Release crew',
       counterpart: null,
@@ -96,8 +96,9 @@ describe('matchesSearch', () => {
     expect(matchesSearch(conversation, 'tonight')).toBe(true);
     expect(matchesSearch(conversation, 'acme')).toBe(true);
     expect(matchesSearch(conversation, 'release')).toBe(true);
-    // The project's full name is not on the row, so matching it would look like a bug.
-    expect(matchesSearch(conversation, 'portal')).toBe(false);
+    // The web matches the project's name as well as its code; the two lists must agree.
+    expect(matchesSearch(conversation, 'portal')).toBe(true);
+    expect(matchesSearch(conversation, 'invoice')).toBe(false);
   });
 
   it('matches everything when nothing was typed', () => {

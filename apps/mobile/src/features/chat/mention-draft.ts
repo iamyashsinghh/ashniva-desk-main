@@ -1,15 +1,43 @@
-import { MAX_MENTIONABLE_QUERY_LENGTH, MIN_MENTIONABLE_QUERY_LENGTH } from '@ashniva/types';
+import {
+  decodeMentions,
+  encodeMentions,
+  MAX_MENTIONABLE_QUERY_LENGTH,
+  MIN_MENTIONABLE_QUERY_LENGTH,
+} from '@ashniva/types';
 
 /**
  * The `@` the person is currently typing, and how a chosen name goes into the draft.
  *
- * Pure string work, kept out of the composer so it can be tested without a keyboard. What it
- * produces is the grammar the rest of the system already uses: `@[<uuid>]`, parsed by
- * `mentionsIn` and `splitMentions` in `@ashniva/types` and intersected with the conversation's
- * audience by the send path. The composer never writes a name into the body — a name is not
- * stable and is not an identity, and a body full of names is a body where a mention can be forged
- * by typing one.
+ * Pure string work, kept out of the composer so it can be tested without a keyboard. The field
+ * shows `@Name`, because a uuid in the box someone is typing into is unreadable; the body that is
+ * sent carries `@[<uuid>]`, the grammar `mentionsIn` and `splitMentions` in `@ashniva/types` parse
+ * and the send path intersects with the conversation's audience. `draftToBody` is the one
+ * crossing, and only names chosen from the picker cross it — a name typed by hand stays text, so
+ * a mention still cannot be forged by typing one.
  */
+
+/** The people picked into a draft, by id: what `draftToBody` turns back into mentions. */
+export type MentionNames = ReadonlyMap<string, string>;
+
+/** The body to send for a draft whose picked names are `names`. */
+export function draftToBody(draft: string, names: MentionNames): string {
+  return encodeMentions(
+    draft,
+    [...names].map(([userId, name]) => ({ userId, name })),
+  );
+}
+
+/** A stored body as the field shows it, for editing, with the picks saving needs to write back. */
+export function bodyToDraft(
+  body: string,
+  known: MentionNames,
+): { draft: string; names: Map<string, string> } {
+  const decoded = decodeMentions(body, known);
+  return {
+    draft: decoded.text,
+    names: new Map(decoded.picks.map((pick) => [pick.userId, pick.name])),
+  };
+}
 
 /** The word the caret is inside, when that word is an unfinished mention. */
 export interface MentionDraft {
@@ -59,13 +87,13 @@ export function mentionSearchTerm(draft: MentionDraft | null): string | null {
   return draft.term;
 }
 
-/** A draft with the chosen person written into it, and where the caret lands afterwards. */
+/** A draft with the chosen person's name written into it, and where the caret lands afterwards. */
 export function insertMention(
   text: string,
   draft: MentionDraft,
-  userId: string,
+  name: string,
 ): { text: string; caret: number } {
-  const token = `@[${userId}] `;
+  const token = `@${name.trim()} `;
   return {
     text: `${text.slice(0, draft.start)}${token}${text.slice(draft.end)}`,
     caret: draft.start + token.length,

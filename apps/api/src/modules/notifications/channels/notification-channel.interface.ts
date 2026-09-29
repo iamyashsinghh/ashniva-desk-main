@@ -7,6 +7,10 @@ import type { NotificationType } from '@ashniva/types';
  * Messages carry deep links only — never passwords or credentials (Architecture Plan §13).
  */
 export interface NotificationMessage {
+  /** The stored notification row, so a native push can open the same notification. */
+  notificationId: string;
+  /** Events merged into that row; it grows each time a grouped notification is sent again. */
+  groupedCount: number;
   recipientUserId: string;
   organizationId: string;
   type: NotificationType;
@@ -14,8 +18,14 @@ export interface NotificationMessage {
   body: string | null;
   /** Deep link into the web or mobile app, e.g. /tasks/<id> */
   link: string | null;
+  entityType: string | null;
+  entityId: string | null;
 }
 
+/**
+ * Several adapters may share a key — Web Push and Expo push are both `PUSH` — and the dispatcher
+ * sends to every configured adapter whose key the recipient has switched on.
+ */
 export interface NotificationChannel {
   readonly key: 'EMAIL' | 'WHATSAPP' | 'PUSH';
   /** False until a provider is configured; the dispatcher then skips the channel silently. */

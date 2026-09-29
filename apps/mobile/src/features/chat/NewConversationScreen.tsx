@@ -77,6 +77,7 @@ export function NewConversationScreen({ onOpened }: { onOpened: (id: string) => 
             <Input
               accessibilityLabel="Find somebody"
               placeholder="Find somebody"
+              icon="search-outline"
               value={search}
               onChangeText={setSearch}
             />
@@ -100,6 +101,7 @@ export function NewConversationScreen({ onOpened }: { onOpened: (id: string) => 
             <EmptyState
               title="Nobody else here"
               description="There are no other people in your organization to message yet."
+              icon="people-outline"
             />
           )
         }

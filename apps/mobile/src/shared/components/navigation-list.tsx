@@ -4,6 +4,7 @@ import { TOUCH_TARGET } from '../theme/theme';
 import { useTheme } from '../theme/ThemeProvider';
 import { CountBadge } from './data-display';
 import { ChamferTile, Glyph } from './glyph';
+import { Icon, IconTile, type IconName, type IconTone } from './Icon';
 import { AppText, cardStyle } from './primitives';
 
 /**
@@ -25,6 +26,8 @@ export function NavigationRow({
   badgeUnit = 'unread',
   onPress,
   mark,
+  icon,
+  iconTone = 'primary',
   layout = 'row',
 }: {
   label: string;
@@ -37,8 +40,10 @@ export function NavigationRow({
    */
   badgeUnit?: string;
   onPress: () => void;
-  /** One or two letters for the leading tile; the label's initial when absent. */
+  /** One or two letters for the leading tile, used only when there is no `icon`. */
   mark?: string;
+  icon?: IconName;
+  iconTone?: IconTone;
   layout?: 'row' | 'tile';
 }) {
   const theme = useTheme();
@@ -56,17 +61,31 @@ export function NavigationRow({
         {
           flexDirection: tile ? 'column' : 'row',
           alignItems: tile ? 'flex-start' : 'center',
-          gap: tile ? theme.spacing.sm + 2 : theme.spacing.md,
-          minHeight: tile ? 118 : TOUCH_TARGET,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
+          gap: tile ? theme.spacing.md : theme.spacing.md,
+          minHeight: tile ? 132 : TOUCH_TARGET,
+          transform: [{ scale: pressed ? 0.97 : 1 }],
         },
         tile ? { flexBasis: '46%', flexGrow: 1 } : null,
         pressed ? { backgroundColor: theme.colors.surfaceSunken } : null,
       ]}
     >
-      <View style={{ alignItems: 'center', flexDirection: 'row', alignSelf: tile ? 'stretch' : 'auto', justifyContent: 'space-between' }}>
-        <ChamferTile label={mark ?? label.charAt(0)} size={tile ? 36 : 40} />
-        {tile && hasBadge ? <CountBadge count={badge} /> : null}
+      <View
+        style={{
+          alignItems: 'center',
+          alignSelf: tile ? 'stretch' : 'auto',
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+        }}
+      >
+        {icon ? (
+          <IconTile name={icon} tone={iconTone} size={tile ? 44 : 40} />
+        ) : (
+          <ChamferTile label={mark ?? label.charAt(0)} size={tile ? 36 : 40} />
+        )}
+        {tile && hasBadge ? <CountBadge count={badge} tone="danger" /> : null}
+        {tile && !hasBadge ? (
+          <Glyph name="arrow-forward" color={theme.colors.textFaint} size={14} />
+        ) : null}
       </View>
       <View style={{ flex: tile ? undefined : 1, gap: 2 }}>
         <AppText weight="bold">{label}</AppText>
@@ -77,7 +96,7 @@ export function NavigationRow({
       {!tile ? (
         <View style={{ alignItems: 'center', flexDirection: 'row', gap: theme.spacing.sm }}>
           {hasBadge ? <CountBadge count={badge} /> : null}
-          <Glyph name="chevron-right" color={theme.colors.textFaint} size={12} />
+          <Glyph name="chevron-right" color={theme.colors.textFaint} size={14} />
         </View>
       ) : null}
     </Pressable>
@@ -87,6 +106,7 @@ export function NavigationRow({
 export interface SegmentOption<T extends string> {
   value: T;
   label: string;
+  icon?: IconName;
 }
 
 /**
@@ -136,8 +156,10 @@ export function Segmented<T extends string>({
               {
                 alignItems: 'center',
                 backgroundColor: selected ? theme.colors.surfaceRaised : 'transparent',
-                borderRadius: theme.radius.sm + 1,
+                borderRadius: theme.radius.sm + 2,
                 flex: 1,
+                flexDirection: 'row',
+                gap: 6,
                 justifyContent: 'center',
                 minHeight: TOUCH_TARGET - 6,
                 opacity: pressed && !selected ? 0.7 : 1,
@@ -146,6 +168,13 @@ export function Segmented<T extends string>({
               selected ? theme.shadow.card : null,
             ]}
           >
+            {option.icon ? (
+              <Icon
+                name={option.icon}
+                size={15}
+                color={selected ? theme.colors.primary : theme.colors.textMuted}
+              />
+            ) : null}
             <AppText
               size="sm"
               weight={selected ? 'bold' : 'medium'}

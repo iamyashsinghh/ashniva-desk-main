@@ -1,9 +1,12 @@
+import { createHash } from 'node:crypto';
+
 import type { INestApplication } from '@nestjs/common';
 import { PERMISSIONS, REFRESH_TOKEN_COOKIE, ROLE_KEYS } from '@ashniva/types';
 import request from 'supertest';
 
 import { PrismaService } from '../src/database/prisma.service';
 import { LOGIN_ATTEMPTS_PER_MINUTE } from '../src/modules/auth/auth.controller';
+import { ROTATION_GRACE_MS } from '../src/modules/auth/refresh-token.service';
 import { DEMO, SEED_PASSWORD, bearer, createTestApp, loginAs } from './helpers/test-app';
 
 describe('Authentication flow (e2e)', () => {
@@ -86,6 +89,13 @@ describe('Authentication flow (e2e)', () => {
     });
   });
 
+  const cookieOf = (response: request.Response) =>
+    String(response.headers['set-cookie']?.[0] ?? '').split(';')[0] ?? '';
+  const hashOfCookie = (cookie: string) =>
+    createHash('sha256')
+      .update(cookie.slice(cookie.indexOf('=') + 1))
+      .digest('hex');
+
   it('rotates the refresh token and revokes the family when an old token is reused', async () => {
     const session = await loginAs(app, DEMO.tester);
 
@@ -95,8 +105,14 @@ describe('Authentication flow (e2e)', () => {
       .expect(200);
     expect(first.body.accessToken).toBeDefined();
     expect(first.body.user.email).toBe(DEMO.tester);
-    const rotatedCookie = String(first.headers['set-cookie']?.[0] ?? '').split(';')[0] ?? '';
+    const rotatedCookie = cookieOf(first);
     expect(rotatedCookie).not.toBe(session.cookie);
+
+    // Rotated longer ago than the grace period allows for a lost reply.
+    await app.get(PrismaService).refreshToken.update({
+      where: { tokenHash: hashOfCookie(session.cookie) },
+      data: { revokedAt: new Date(Date.now() - ROTATION_GRACE_MS - 1000) },
+    });
 
     // Presenting the already-rotated token is treated as theft: the whole family dies.
     await request(app.getHttpServer())
@@ -106,6 +122,43 @@ describe('Authentication flow (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/v1/auth/refresh')
       .set('Cookie', rotatedCookie)
+      .expect(401);
+  });
+
+  it('treats an old token presented again straight away as a lost reply, not theft', async () => {
+    // An app reloaded, or a second tab, while the first refresh was in flight.
+    const session = await loginAs(app, DEMO.tester);
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', session.cookie)
+      .expect(200);
+
+    const retried = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', session.cookie)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', cookieOf(retried))
+      .expect(200);
+  });
+
+  it('does not let an old token reopen a session that was signed out', async () => {
+    const session = await loginAs(app, DEMO.tester);
+    const first = await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', session.cookie)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/logout')
+      .set('Cookie', cookieOf(first))
+      .set('Authorization', `Bearer ${first.body.accessToken as string}`)
+      .expect(204);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', session.cookie)
       .expect(401);
   });
 

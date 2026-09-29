@@ -118,7 +118,28 @@ export const spacing = {
   section: 24,
 } as const;
 
-export const radius = { xs: 4, sm: 8, md: 12, lg: 16, pill: 999 } as const;
+export const radius = { xs: 4, sm: 8, md: 14, lg: 20, pill: 999 } as const;
+
+/**
+ * Extra hues for icon tiles, so a grid of destinations is told apart by colour as well as by
+ * picture. Decoration only: none of them carries a status, which stays with the semantic colours.
+ */
+export type AccentName = 'violet' | 'teal' | 'orange' | 'pink';
+export type AccentPalette = Record<AccentName, { color: string; background: string }>;
+
+const lightAccents: AccentPalette = {
+  violet: { color: '#6d4fc2', background: '#eee9fb' },
+  teal: { color: '#0f7b83', background: '#e0f3f4' },
+  orange: { color: '#c05a1c', background: '#fbeadf' },
+  pink: { color: '#b83e7a', background: '#f9e4ef' },
+};
+
+const darkAccents: AccentPalette = {
+  violet: { color: '#a792ef', background: '#2a2440' },
+  teal: { color: '#5cc4cb', background: '#17312f' },
+  orange: { color: '#f0995f', background: '#3a2618' },
+  pink: { color: '#ec8cbb', background: '#3a1f2d' },
+};
 
 /**
  * Type sizes.
@@ -165,9 +186,9 @@ export const shadow: { card: ViewStyle; raised: ViewStyle } = {
   card: Platform.select<ViewStyle>({
     ios: {
       shadowColor: '#000000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.05,
-      shadowRadius: 3,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
     },
     default: {},
   }),
@@ -197,6 +218,7 @@ export interface Theme {
   fontSize: typeof fontSize;
   typography: typeof typography;
   shadow: typeof shadow;
+  accents: AccentPalette;
   /** Priority colours for this scheme: CRITICAL, HIGH, MEDIUM, LOW. */
   priority: Record<keyof typeof priorityColors, string>;
   isDark: boolean;
@@ -218,6 +240,7 @@ export function themeFor(scheme: 'light' | 'dark', brandPrimary?: string | null)
     fontSize,
     typography,
     shadow,
+    accents: scheme === 'dark' ? darkAccents : lightAccents,
     priority: scheme === 'dark' ? darkPriorityColors : priorityColors,
     isDark: scheme === 'dark',
   };

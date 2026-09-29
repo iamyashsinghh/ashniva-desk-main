@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import type { PermissionKey, RoleKey, SessionOrganization, SessionUser } from '@ashniva/types';
 
 import { OrganizationMembershipsRepository } from '../organization-memberships/organization-memberships.repository';
+import { toUserAvatar } from '../users/user-avatar';
 
 /**
  * Builds the `SessionUser` returned by login / refresh / me from the membership rows.
@@ -68,6 +69,7 @@ export class SessionService {
         isServiceProvider: membership.organization.isServiceProvider,
       },
       organizations,
+      avatar: toUserAvatar(membership.user),
     };
   }
 }

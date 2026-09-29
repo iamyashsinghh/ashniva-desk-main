@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 
+import { Icon, IconTile } from '../../shared/components/Icon';
 import { AppText } from '../../shared/components/primitives';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 
@@ -31,11 +32,18 @@ export function QaStagingLink({ url }: { url: string }) {
         accessibilityHint="Opens the staging site in your browser"
         hitSlop={8}
         onPress={() => void open()}
-        style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+        style={({ pressed }) => ({
+          alignItems: 'center',
+          flexDirection: 'row',
+          gap: theme.spacing.sm,
+          opacity: pressed ? 0.6 : 1,
+        })}
       >
-        <AppText size="sm" tone="primary" weight="medium">
+        <IconTile name="globe-outline" tone="info" size={32} />
+        <AppText size="sm" tone="primary" weight="medium" style={{ flex: 1 }}>
           {url}
         </AppText>
+        <Icon name="open-outline" size={16} color={theme.colors.primary} />
       </Pressable>
       {openError ? (
         <AppText size="xs" tone="danger">

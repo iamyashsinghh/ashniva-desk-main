@@ -27,6 +27,7 @@ import { ConversationsRepository } from './conversations.repository';
 import { ConversationsService } from './conversations.service';
 import { InternalCallRoutingService } from './internal-call-routing.service';
 import { MessageModerationService } from './message-moderation.service';
+import { MessageRepliesService } from './message-replies.service';
 import { MessagesService } from './messages.service';
 import { MessagingScopeService } from './messaging-scope.service';
 import { ProjectTeamGroupModule } from './project-team-group.module';
@@ -79,6 +80,7 @@ import { TaskVisibilityModule } from '../tasks/task-visibility.module';
     CommunicationNotificationsService,
     ConversationAudienceService,
     ConversationMentionsService,
+    MessageRepliesService,
     MessagesService,
     MessageModerationService,
     InternalCallRoutingService,

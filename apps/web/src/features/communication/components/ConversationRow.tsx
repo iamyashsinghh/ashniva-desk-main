@@ -48,7 +48,12 @@ export function ConversationRow({
   return (
     <li>
       <button type="button" className={classes} aria-current={isSelected} onClick={onSelect}>
-        <ConversationAvatar name={name} imageFileId={row.imageFileId} size="md" />
+        <ConversationAvatar
+          name={name}
+          imageFileId={row.imageFileId}
+          person={row.counterpart}
+          size="md"
+        />
         <span className="chat-list__text">
           <span className="chat-list__title">
             {name}
@@ -96,7 +101,7 @@ export function PersonRow({
         disabled={opening}
         onClick={onSelect}
       >
-        <ConversationAvatar name={contact.name} imageFileId={null} size="md" />
+        <ConversationAvatar name={contact.name} imageFileId={null} person={contact} size="md" />
         <span className="chat-list__text">
           <span className="chat-list__title">{contact.name}</span>
           <span className="chat-list__preview">{contact.reason}</span>
