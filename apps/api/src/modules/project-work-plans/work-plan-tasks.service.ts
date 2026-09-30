@@ -12,7 +12,7 @@ import {
 } from '@ashniva/types';
 
 import { TaskEventsService } from '../tasks/task-events.service';
-import { TasksRepository } from '../tasks/tasks.repository';
+import { TasksRepository, type TaskSummaryRow } from '../tasks/tasks.repository';
 import type { ProjectRow } from '../projects/projects.repository';
 import type { WorkPlanRow } from './work-plan.mapper';
 
@@ -36,6 +36,29 @@ export class WorkPlanTasksService {
         await this.syncTitle(actor, project.id, row, phase, title, testerId);
       }
     }
+  }
+
+  /**
+   * The task a topic became, with the due date and reviewer an integration chose. Sync never
+   * touches these two fields, so they survive later Summary saves.
+   */
+  async scheduleTitleTask(
+    organizationId: string,
+    titleId: string,
+    schedule: { dueDate?: string | null; reviewerId?: string | null },
+  ): Promise<TaskSummaryRow | null> {
+    const task = await this.tasks.findByWorkPlanTitle(organizationId, titleId);
+    if (!task) {
+      return null;
+    }
+    const data = {
+      ...(schedule.dueDate ? { dueDate: new Date(schedule.dueDate) } : {}),
+      ...(schedule.reviewerId ? { reviewerId: schedule.reviewerId } : {}),
+    };
+    if (Object.keys(data).length === 0 || !EDITABLE.has(task.status)) {
+      return task;
+    }
+    return this.tasks.update(organizationId, task.id, data);
   }
 
   private async syncTitle(

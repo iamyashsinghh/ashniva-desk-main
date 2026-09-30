@@ -7,6 +7,7 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsDateString,
   IsInt,
   IsOptional,
   IsString,
@@ -202,6 +203,80 @@ export class AddWorkPlanWorkDto {
   @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsIn(PRIORITIES)
   priority?: Priority | null;
+}
+
+export class AddWorkPlanTopicPointDto {
+  @ApiProperty({ maxLength: 4000 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(4000)
+  body!: string;
+
+  @ApiProperty()
+  @IsInt()
+  @Min(1)
+  @Max(24 * 60)
+  estimateMinutes!: number;
+}
+
+export class AddWorkPlanTopicDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  phaseId?: string;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @ValidateIf((dto: AddWorkPlanTopicDto) => !dto.phaseId && !dto.titleId)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  phaseHeading?: string;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'An existing topic: the steps are added to it instead of a new topic.',
+  })
+  @IsOptional()
+  @IsUUID()
+  titleId?: string;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @ValidateIf((dto: AddWorkPlanTopicDto) => !dto.titleId)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  title?: string;
+
+  @ApiProperty({ type: [AddWorkPlanTopicPointDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(40)
+  @ValidateNested({ each: true })
+  @Type(() => AddWorkPlanTopicPointDto)
+  points!: AddWorkPlanTopicPointDto[];
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  assignedToId?: string | null;
+
+  @ApiPropertyOptional({ enum: PRIORITIES, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsIn(PRIORITIES)
+  priority?: Priority | null;
+
+  @ApiPropertyOptional({ format: 'date', nullable: true })
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  reviewerId?: string | null;
 }
 
 export class CombineWorkPlanTitlesDto {

@@ -32,6 +32,7 @@ import {
   combineWorkPlanTitles,
   isWorkPlanTimerFrozen,
   VISIBILITY,
+  type AddedWorkPlanTopic,
   type AuthenticatedUser,
   type ProjectWorkPlan,
   type UserRef,
@@ -47,6 +48,7 @@ import { AuditLogService } from '../audit-logs/audit-log.service';
 import { FilesRepository } from '../files/files.repository';
 import { ProjectsRepository } from '../projects/projects.repository';
 import type {
+  AddWorkPlanTopicDto,
   AddWorkPlanWorkDto,
   AssignWorkPlanDto,
   CombineWorkPlanTitlesDto,
@@ -223,6 +225,164 @@ export class WorkPlanService {
       },
     });
     return this.detail(actor, flags, project, fresh ?? row);
+  }
+
+  /**
+   * Adds one topic exactly as given (phase, title, steps, developer) — the approved counterpart of
+   * add-work, for integrations that already decided where the work goes. Same rights as add-work.
+   */
+  async addTopic(
+    actor: AuthenticatedUser,
+    projectId: string,
+    dto: AddWorkPlanTopicDto,
+  ): Promise<AddedWorkPlanTopic> {
+    const { flags, project } = await this.access(actor, projectId);
+    if (!flags.canAssign) {
+      throw new ForbiddenException(
+        'Only an admin, project manager or team lead can add work to this plan',
+      );
+    }
+    const assignedToId = dto.assignedToId ?? null;
+    this.assertOptionalDeveloper(project, assignedToId);
+    const reviewerId = dto.reviewerId ?? null;
+    if (reviewerId && !this.isOnProjectTeam(project, reviewerId)) {
+      throw new BadRequestException('The reviewer must be on this project');
+    }
+    const existing = await this.plans.findByProject(actor.organizationId, projectId);
+    const phases = existing ? this.existingToDto(existing) : [];
+    const points = dto.points.map((point) => ({
+      body: point.body.trim(),
+      estimateMinutes: point.estimateMinutes,
+    }));
+    if (dto.titleId) {
+      return this.addStepsToTopic(actor, flags, project, existing, phases, dto, points);
+    }
+    const heading = dto.phaseHeading?.trim() ?? '';
+    let target = dto.phaseId
+      ? phases.find((phase) => phase.id === dto.phaseId)
+      : phases.find((phase) => phase.heading.trim().toLowerCase() === heading.toLowerCase());
+    if (dto.phaseId && !target) {
+      throw new BadRequestException('That phase is not in this plan');
+    }
+    if (!target) {
+      if (!heading) {
+        throw new BadRequestException('Choose a phase or name a new one');
+      }
+      target = { heading, titles: [] };
+      phases.push(target);
+    }
+    target.titles.push({ title: (dto.title ?? '').trim(), points });
+    const row = await this.plans.savePhases(
+      actor.organizationId,
+      projectId,
+      actor.userId,
+      existing?.sourceFileId ? 'MIXED' : (existing?.source ?? 'MANUAL'),
+      existing?.sourceFileId ?? null,
+      phases,
+    );
+    const previous = {
+      phases: new Set(existing?.phases.map((phase) => phase.id) ?? []),
+      titles: new Set(
+        existing?.phases.flatMap((phase) => phase.titles.map((title) => title.id)) ?? [],
+      ),
+    };
+    const added = row.phases
+      .flatMap((phase) => phase.titles.map((title) => ({ phaseId: phase.id, titleId: title.id })))
+      .find((entry) => !previous.titles.has(entry.titleId));
+    if (!added) {
+      throw new ConflictException('The topic could not be added to this plan');
+    }
+    await this.applyNewWorkAssignment(row, previous, assignedToId, dto.priority ?? null);
+    return this.finishAddedTopic(actor, flags, project, row, added, dto);
+  }
+
+  /** `addTopic` with `titleId`: the steps join that topic; an unassigned topic gets the developer. */
+  private async addStepsToTopic(
+    actor: AuthenticatedUser,
+    flags: WorkPlanActorFlags,
+    project: ProjectRow,
+    existing: WorkPlanRow | null,
+    phases: WorkPlanPhaseDto[],
+    dto: AddWorkPlanTopicDto,
+    points: Array<{ body: string; estimateMinutes: number }>,
+  ): Promise<AddedWorkPlanTopic> {
+    const phase = phases.find((candidate) =>
+      candidate.titles.some((title) => title.id === dto.titleId),
+    );
+    const title = phase?.titles.find((candidate) => candidate.id === dto.titleId);
+    const current = existing?.phases
+      .flatMap((candidate) => candidate.titles)
+      .find((candidate) => candidate.id === dto.titleId);
+    if (!phase?.id || !title?.id || !current) {
+      throw new BadRequestException('That topic is not in this plan');
+    }
+    title.points = [...title.points, ...points];
+    const row = await this.plans.savePhases(
+      actor.organizationId,
+      project.id,
+      actor.userId,
+      existing?.sourceFileId ? 'MIXED' : (existing?.source ?? 'MANUAL'),
+      existing?.sourceFileId ?? null,
+      phases,
+    );
+    const assignedToId = dto.assignedToId ?? null;
+    if ((assignedToId && !current.assignedToId) || (dto.priority && !current.priority)) {
+      await this.prisma.projectWorkPlanTitle.update({
+        where: { id: title.id },
+        data: {
+          ...(assignedToId && !current.assignedToId
+            ? { assignedToId, assignedAt: new Date() }
+            : {}),
+          ...(dto.priority && !current.priority ? { priority: dto.priority } : {}),
+        },
+      });
+    }
+    return this.finishAddedTopic(
+      actor,
+      flags,
+      project,
+      row,
+      { phaseId: phase.id, titleId: title.id },
+      dto,
+    );
+  }
+
+  /** Syncs the topic's task, sets its due date and reviewer, and records the change. */
+  private async finishAddedTopic(
+    actor: AuthenticatedUser,
+    flags: WorkPlanActorFlags,
+    project: ProjectRow,
+    row: WorkPlanRow,
+    added: { phaseId: string; titleId: string },
+    dto: AddWorkPlanTopicDto,
+  ): Promise<AddedWorkPlanTopic> {
+    const fresh = (await this.plans.findByProject(actor.organizationId, project.id)) ?? row;
+    await this.planTasks.sync(actor, project, fresh);
+    const task = await this.planTasks.scheduleTitleTask(actor.organizationId, added.titleId, {
+      dueDate: dto.dueDate ?? null,
+      reviewerId: dto.reviewerId ?? null,
+    });
+    await this.auditLog.record({
+      action: AUDIT_ACTION.WORK_PLAN_UPDATED,
+      entityType: AUDIT_ENTITY_TYPE.PROJECT,
+      entityId: project.id,
+      organizationId: actor.organizationId,
+      actorUserId: actor.userId,
+      after: {
+        addedTopic: { ...added, title: dto.title ?? null, steps: dto.points.length },
+        assignedToId: dto.assignedToId ?? null,
+        priority: dto.priority ?? null,
+        taskId: task?.id ?? null,
+      },
+    });
+    return {
+      plan: this.detail(actor, flags, project, fresh),
+      phaseId: added.phaseId,
+      titleId: added.titleId,
+      task: task
+        ? { id: task.id, number: task.number, key: `${project.code}-${task.number}` }
+        : null,
+    };
   }
 
   async combineTitles(
@@ -1445,6 +1605,16 @@ export class WorkPlanService {
       }
     }
     return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  private isOnProjectTeam(project: ProjectRow, userId: string): boolean {
+    return (
+      project.managerUserId === userId ||
+      project.leadUserId === userId ||
+      project.members.some((member) => member.userId === userId) ||
+      project.team?.leadUserId === userId ||
+      (project.team?.members.some((member) => member.userId === userId) ?? false)
+    );
   }
 
   private assertOptionalDeveloper(project: ProjectRow, userId: string | null) {

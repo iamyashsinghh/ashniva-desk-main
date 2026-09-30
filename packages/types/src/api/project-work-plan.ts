@@ -188,6 +188,35 @@ export interface AddWorkPlanWorkInput {
   priority?: Priority | null;
 }
 
+/**
+ * One topic added to Summary exactly as given — no AI placement. Used by an integration (AI
+ * Memory) once a project manager or Super Admin has approved it. The topic goes into `phaseId`,
+ * or into the phase named `phaseHeading` (opened when the plan has none by that name). With
+ * `titleId` the steps are added to that existing topic instead.
+ */
+export interface AddWorkPlanTopicInput {
+  phaseId?: string;
+  phaseHeading?: string;
+  titleId?: string;
+  /** Required unless `titleId` is given. */
+  title?: string;
+  points: Array<{ body: string; estimateMinutes: number }>;
+  /** A developer on the project. The topic's task is created for them. */
+  assignedToId?: string | null;
+  priority?: Priority | null;
+  /** Set on the topic's task. */
+  dueDate?: string | null;
+  reviewerId?: string | null;
+}
+
+export interface AddedWorkPlanTopic {
+  plan: ProjectWorkPlan;
+  phaseId: string;
+  titleId: string;
+  /** The task Summary created for the topic; null until someone is assigned. */
+  task: { id: string; number: number; key: string } | null;
+}
+
 /** Merge topics in one phase into a single topic. Minutes from every step are added. */
 export interface CombineWorkPlanTitlesInput {
   phaseId: string;
