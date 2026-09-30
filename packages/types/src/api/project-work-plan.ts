@@ -213,7 +213,7 @@ export interface AddedWorkPlanTopic {
   plan: ProjectWorkPlan;
   phaseId: string;
   titleId: string;
-  /** The task Summary created for the topic; null until someone is assigned. */
+  /** The task Summary created for the topic (a Draft while nobody is assigned). */
   task: { id: string; number: number; key: string } | null;
 }
 
@@ -247,7 +247,7 @@ export interface WorkPlanProposal {
   decidedBy: UserRef | null;
   decidedAt: string | null;
   decisionNote: string | null;
-  /** After publishing: the topic it became and its task (null until a developer is assigned). */
+  /** After publishing: the topic it became and its task (a Draft while nobody is assigned). */
   publishedTitleId: string | null;
   task: { id: string; key: string } | null;
   createdAt: string;
