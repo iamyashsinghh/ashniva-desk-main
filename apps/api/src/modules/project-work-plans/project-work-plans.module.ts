@@ -15,6 +15,7 @@ import { WorkPlanLogoutPauseModule } from './work-plan-logout-pause.module';
 import { WorkPlanMapper } from './work-plan.mapper';
 import { WorkPlanRepository } from './work-plan.repository';
 import { WorkPlanService } from './work-plan.service';
+import { WorkPlanTaskBackfillService } from './work-plan-task-backfill.service';
 import { WorkPlanTasksService } from './work-plan-tasks.service';
 import { WorkTimeMonitorProcessor } from './work-time-monitor.processor';
 import { WorkTimeMonitorService } from './work-time-monitor.service';
@@ -35,6 +36,7 @@ import { WorkTimeMonitorService } from './work-time-monitor.service';
     WorkPlanGeminiService,
     WorkPlanEventsService,
     WorkPlanTasksService,
+    WorkPlanTaskBackfillService,
     ProjectDocService,
     WorkPlanService,
     WorkPlanProposalsService,

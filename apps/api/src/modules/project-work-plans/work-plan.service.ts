@@ -998,6 +998,7 @@ export class WorkPlanService {
       actorUserId: actor.userId,
       after: { pointId: point.id, resumed: wasPaused },
     });
+    await this.planTasks.follow(actor, point.titleId);
     this.docs.refreshSoon(actor.organizationId, projectId);
     return this.get(actor, projectId);
   }
@@ -1053,6 +1054,7 @@ export class WorkPlanService {
       after: { pointId: point.id },
     });
     await this.events.submittedForTest(actor, project, point.body);
+    await this.planTasks.follow(actor, point.titleId);
     this.docs.refreshSoon(actor.organizationId, projectId);
     return this.get(actor, projectId);
   }
@@ -1086,6 +1088,7 @@ export class WorkPlanService {
       actorUserId: actor.userId,
       after: { pointId: point.id, status: WORK_PLAN_POINT_STATUS.TESTING },
     });
+    await this.planTasks.follow(actor, point.titleId);
     return this.get(actor, projectId);
   }
 
@@ -1157,6 +1160,7 @@ export class WorkPlanService {
       actorUserId: actor.userId,
       after: { pointId: point.id },
     });
+    await this.planTasks.follow(actor, point.titleId);
     this.docs.refreshSoon(actor.organizationId, projectId);
     return this.get(actor, projectId);
   }
@@ -1915,6 +1919,7 @@ export class WorkPlanService {
       actorUserId: actor.userId,
       after: { pointId: errorPoint.id, parentPointId: parent.id },
     });
+    await this.planTasks.follow(actor, parent.titleId);
     return this.get(actor, projectId);
   }
 }
