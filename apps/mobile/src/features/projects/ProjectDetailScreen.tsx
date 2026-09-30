@@ -8,13 +8,17 @@ import { ErrorState, LoadingState } from '../../shared/components/states';
 import { formatDate } from '../../shared/format/format';
 import { useTheme } from '../../shared/theme/ThemeProvider';
 import { OpenConversationButton } from '../chat/OpenConversationButton';
+import { ProjectDocCard } from './ProjectDocCard';
 import { projectHealthLabel, projectHealthTone, projectStatusLabel } from './project-display';
+import { SummaryProposals } from './SummaryProposals';
 
 /**
  * One project: where it stands, who is on it, and a way into its channel.
  *
- * No editing. The screen answers "how is this going and who do I ask", which is what somebody
- * away from their desk needs; changing dates, members or scope is not.
+ * The screen answers "how is this going and who do I ask", which is what somebody away from their
+ * desk needs; changing dates, members or scope is not. The one decision it does offer is on work
+ * waiting for the Summary, so a project manager is not the reason it sits there until they are
+ * back at a computer.
  */
 export function ProjectDetailScreen({
   projectId,
@@ -105,6 +109,10 @@ export function ProjectDetailScreen({
             </AppText>
           ) : null}
         </Card>
+
+        <SummaryProposals projectId={project.id} />
+
+        <ProjectDocCard projectId={project.id} />
 
         {project.startDate || project.targetDate ? (
           <Card>
