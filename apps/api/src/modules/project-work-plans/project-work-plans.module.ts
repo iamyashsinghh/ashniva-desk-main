@@ -6,7 +6,9 @@ import { FilesModule } from '../files/files.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { ProjectDocService } from './project-doc.service';
 import { WorkPlanController } from './work-plan.controller';
+import { WorkPlanProposalsService } from './work-plan-proposals.service';
 import { WorkPlanEventsService } from './work-plan-events.service';
 import { WorkPlanGeminiService } from './work-plan-gemini';
 import { WorkPlanLogoutPauseModule } from './work-plan-logout-pause.module';
@@ -33,7 +35,9 @@ import { WorkTimeMonitorService } from './work-time-monitor.service';
     WorkPlanGeminiService,
     WorkPlanEventsService,
     WorkPlanTasksService,
+    ProjectDocService,
     WorkPlanService,
+    WorkPlanProposalsService,
     WorkTimeMonitorService,
     WorkTimeMonitorProcessor,
   ],

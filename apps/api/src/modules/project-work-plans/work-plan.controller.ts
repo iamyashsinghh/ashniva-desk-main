@@ -1,10 +1,22 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   PERMISSIONS,
   type AddedWorkPlanTopic,
   type AuthenticatedUser,
+  type ProjectDoc,
   type ProjectWorkPlan,
+  type WorkPlanProposal,
 } from '@ashniva/types';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -17,10 +29,17 @@ import {
   AddWorkPlanWorkDto,
   AddWorkPlanTopicDto,
   CombineWorkPlanTitlesDto,
+  CreateWorkPlanProposalDto,
+  DecideWorkPlanProposalDto,
+  ListWorkPlanProposalsQueryDto,
+  PublishWorkPlanProposalDto,
+  UpdateWorkPlanProposalDto,
   WorkPlanExplainApplyDto,
   WorkPlanExplainPreviewDto,
   WorkPlanNoteDto,
 } from './dto/work-plan.dto';
+import { ProjectDocService } from './project-doc.service';
+import { WorkPlanProposalsService } from './work-plan-proposals.service';
 import { WorkPlanService } from './work-plan.service';
 
 @ApiTags('Project work plans')
@@ -28,7 +47,11 @@ import { WorkPlanService } from './work-plan.service';
 @Controller('projects/:projectId/work-plan')
 // Nest reloads this module after prisma generate so work-plan tables are on the client.
 export class WorkPlanController {
-  constructor(private readonly plans: WorkPlanService) {}
+  constructor(
+    private readonly plans: WorkPlanService,
+    private readonly proposals: WorkPlanProposalsService,
+    private readonly docs: ProjectDocService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.PROJECT_READ)
@@ -133,6 +156,109 @@ export class WorkPlanController {
     @Body() dto: AddWorkPlanTopicDto,
   ): Promise<AddedWorkPlanTopic> {
     return this.plans.addTopic(actor, projectId, dto);
+  }
+
+  @Get('proposals')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({
+    summary:
+      'Work proposed for this Summary (from AI Memory), waiting for an admin, project manager or team lead.',
+  })
+  listProposals(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Query() query: ListWorkPlanProposalsQueryDto,
+  ): Promise<WorkPlanProposal[]> {
+    return this.proposals.list(actor, projectId, query.status);
+  }
+
+  @Post('proposals')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({
+    summary:
+      'Propose work for this Summary. It waits until an admin, project manager or team lead publishes (optionally after editing) or rejects it.',
+  })
+  createProposal(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: CreateWorkPlanProposalDto,
+  ): Promise<WorkPlanProposal> {
+    return this.proposals.create(actor, projectId, dto);
+  }
+
+  @Get('proposals/:proposalId')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({ summary: 'One proposal and what became of it' })
+  getProposal(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Param('proposalId', ParseUUIDPipe) proposalId: string,
+  ): Promise<WorkPlanProposal> {
+    return this.proposals.get(actor, projectId, proposalId);
+  }
+
+  @Patch('proposals/:proposalId')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({ summary: 'Edit a waiting proposal. Admin, project manager and team lead.' })
+  updateProposal(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Param('proposalId', ParseUUIDPipe) proposalId: string,
+    @Body() dto: UpdateWorkPlanProposalDto,
+  ): Promise<WorkPlanProposal> {
+    return this.proposals.update(actor, projectId, proposalId, dto);
+  }
+
+  @Post('proposals/:proposalId/publish')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({
+    summary:
+      'Publish a proposal into the Summary where it says (with any last edits). Admin, project manager and team lead.',
+  })
+  publishProposal(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Param('proposalId', ParseUUIDPipe) proposalId: string,
+    @Body() dto: PublishWorkPlanProposalDto,
+  ): Promise<{ proposal: WorkPlanProposal; plan: ProjectWorkPlan }> {
+    return this.proposals.publish(actor, projectId, proposalId, dto);
+  }
+
+  @Post('proposals/:proposalId/reject')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({ summary: 'Reject a proposal. Admin, project manager and team lead.' })
+  rejectProposal(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Param('proposalId', ParseUUIDPipe) proposalId: string,
+    @Body() dto: DecideWorkPlanProposalDto,
+  ): Promise<WorkPlanProposal> {
+    return this.proposals.reject(actor, projectId, proposalId, dto);
+  }
+
+  @Get('doc')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({
+    summary:
+      "The project's Markdown document (features, structure, flow), rebuilt from the Summary as work moves.",
+  })
+  async getDoc(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+  ): Promise<ProjectDoc> {
+    const { project } = await this.plans.projectAccess(actor, projectId);
+    return this.docs.get(actor.organizationId, project);
+  }
+
+  @Post('doc/refresh')
+  @RequirePermissions(PERMISSIONS.PROJECT_READ)
+  @ApiOperation({ summary: 'Rewrite the project document now' })
+  async refreshDoc(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+  ): Promise<ProjectDoc> {
+    const { project } = await this.plans.projectAccess(actor, projectId);
+    return this.docs.refreshNow(actor.organizationId, project);
   }
 
   @Post('combine-titles')

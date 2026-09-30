@@ -40,6 +40,93 @@
   gap: var(--space-3);
 }
 
+.work-plan__proposals {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+}
+
+.work-plan__proposal {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised, var(--color-surface));
+}
+
+.work-plan__proposal-head {
+  display: grid;
+  gap: 2px;
+}
+
+.work-plan__proposal-head .muted,
+.work-plan__proposal-context {
+  font-size: var(--font-size-xs);
+}
+
+.work-plan__proposal-points {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.work-plan__proposal-context {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.work-plan__proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.work-plan__proposal-steps {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.work-plan__proposal-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.5rem auto;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.work-plan__assign-row.work-plan__proposal-assign {
+  grid-template-columns: minmax(9rem, 1fr) minmax(8rem, 9.5rem) minmax(8rem, 10rem);
+}
+
+.project-doc {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.project-doc h2,
+.project-doc h3,
+.project-doc h4 {
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.project-doc pre {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  overflow-x: auto;
+}
+
+.project-doc blockquote {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+}
+
 .work-plan__scores {
   display: flex;
   flex-wrap: wrap;
@@ -526,7 +613,8 @@
     grid-column: 1 / -1;
   }
 
-  .work-plan__assign-row {
+  .work-plan__assign-row,
+  .work-plan__assign-row.work-plan__proposal-assign {
     grid-template-columns: minmax(0, 1fr);
   }
 

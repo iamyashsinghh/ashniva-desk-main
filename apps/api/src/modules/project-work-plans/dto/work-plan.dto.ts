@@ -279,6 +279,131 @@ export class AddWorkPlanTopicDto {
   reviewerId?: string | null;
 }
 
+/** Fields a proposal carries; every one may be edited before it is published. */
+class WorkPlanProposalFieldsDto {
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  phaseId?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 200, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(200)
+  phaseHeading?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  titleId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  assignedToId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  reviewerId?: string | null;
+
+  @ApiPropertyOptional({ enum: PRIORITIES, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsIn(PRIORITIES)
+  priority?: Priority | null;
+
+  @ApiPropertyOptional({ format: 'date', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsDateString()
+  dueDate?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 5000, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(5000)
+  context?: string | null;
+}
+
+export class CreateWorkPlanProposalDto extends WorkPlanProposalFieldsDto {
+  @ApiPropertyOptional({ maxLength: 120, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(120)
+  externalId?: string | null;
+
+  @ApiPropertyOptional({ maxLength: 40, default: 'AI_MEMORY' })
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(40)
+  source?: string;
+
+  @ApiProperty({ maxLength: 200 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  title!: string;
+
+  @ApiProperty({ type: [AddWorkPlanTopicPointDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(40)
+  @ValidateNested({ each: true })
+  @Type(() => AddWorkPlanTopicPointDto)
+  points!: AddWorkPlanTopicPointDto[];
+}
+
+export class UpdateWorkPlanProposalDto extends WorkPlanProposalFieldsDto {
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  title?: string;
+
+  @ApiPropertyOptional({ type: [AddWorkPlanTopicPointDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(40)
+  @ValidateNested({ each: true })
+  @Type(() => AddWorkPlanTopicPointDto)
+  points?: AddWorkPlanTopicPointDto[];
+}
+
+export class DecideWorkPlanProposalDto {
+  @ApiPropertyOptional({ maxLength: 1000, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(1000)
+  note?: string | null;
+}
+
+export class PublishWorkPlanProposalDto extends UpdateWorkPlanProposalDto {
+  @ApiPropertyOptional({ maxLength: 1000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+export class ListWorkPlanProposalsQueryDto {
+  @ApiPropertyOptional({ enum: ['PENDING', 'PUBLISHED', 'REJECTED', 'ALL'], default: 'PENDING' })
+  @IsOptional()
+  @IsIn(['PENDING', 'PUBLISHED', 'REJECTED', 'ALL'])
+  status?: 'PENDING' | 'PUBLISHED' | 'REJECTED' | 'ALL';
+}
+
 export class CombineWorkPlanTitlesDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID()

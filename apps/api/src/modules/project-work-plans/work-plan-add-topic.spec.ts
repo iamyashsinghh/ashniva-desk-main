@@ -117,6 +117,7 @@ function setup(existing: Row | null = existingPlan) {
     { isEnabled: () => false } as never,
     {} as never,
     planTasks as never,
+    { refreshSoon: jest.fn() } as never,
   );
   return { service, plans, prisma, planTasks, auditLog };
 }

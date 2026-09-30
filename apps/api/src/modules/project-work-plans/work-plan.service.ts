@@ -64,6 +64,7 @@ import { WorkPlanGeminiService } from './work-plan-gemini';
 import { WorkPlanMapper, type WorkPlanActorFlags, type WorkPlanRow } from './work-plan.mapper';
 import { WorkPlanRepository } from './work-plan.repository';
 import { WorkPlanTasksService } from './work-plan-tasks.service';
+import { ProjectDocService } from './project-doc.service';
 import type { ProjectRow } from '../projects/projects.repository';
 
 @Injectable()
@@ -81,6 +82,7 @@ export class WorkPlanService {
     private readonly gemini: WorkPlanGeminiService,
     private readonly events: WorkPlanEventsService,
     private readonly planTasks: WorkPlanTasksService,
+    private readonly docs: ProjectDocService,
   ) {}
 
   async get(actor: AuthenticatedUser, projectId: string): Promise<ProjectWorkPlan> {
@@ -115,6 +117,7 @@ export class WorkPlanService {
       dto.phases,
     );
     await this.planTasks.sync(actor, project, row);
+    this.docs.refreshSoon(actor.organizationId, projectId);
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_UPDATED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,
@@ -162,6 +165,7 @@ export class WorkPlanService {
       phases,
     );
     await this.planTasks.sync(actor, project, row);
+    this.docs.refreshSoon(actor.organizationId, projectId);
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_PARSED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,
@@ -207,11 +211,18 @@ export class WorkPlanService {
     await this.applyNewWorkAssignment(row, previous, assignedToId, dto.priority ?? null);
     const fresh = await this.plans.findByProject(actor.organizationId, projectId);
     if (assignedToId) {
-      await this.events.assigned(actor, project, assignedToId, 'work on this plan', `add-work:${row.id}:${Date.now()}`);
+      await this.events.assigned(
+        actor,
+        project,
+        assignedToId,
+        'work on this plan',
+        `add-work:${row.id}:${Date.now()}`,
+      );
     }
     if (fresh) {
       await this.planTasks.sync(actor, project, fresh);
     }
+    this.docs.refreshSoon(actor.organizationId, projectId);
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_UPDATED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,
@@ -362,6 +373,7 @@ export class WorkPlanService {
       dueDate: dto.dueDate ?? null,
       reviewerId: dto.reviewerId ?? null,
     });
+    this.docs.refreshSoon(actor.organizationId, project.id);
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_UPDATED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,
@@ -498,6 +510,7 @@ export class WorkPlanService {
     if (fresh) {
       await this.planTasks.sync(actor, project, fresh);
     }
+    this.docs.refreshSoon(actor.organizationId, projectId);
     await this.auditLog.record({
       action: AUDIT_ACTION.WORK_PLAN_UPDATED,
       entityType: AUDIT_ENTITY_TYPE.PROJECT,
@@ -787,10 +800,7 @@ export class WorkPlanService {
     const outline = source
       .map((title) => {
         const steps = title.points
-          .map(
-            (point) =>
-              `    - pointId=${point.id} (${point.estimateMinutes} min): ${point.body}`,
-          )
+          .map((point) => `    - pointId=${point.id} (${point.estimateMinutes} min): ${point.body}`)
           .join('\n');
         return `- titleId=${title.id} [${title.phaseHeading}] "${title.title}"\n${steps}`;
       })
@@ -988,6 +998,7 @@ export class WorkPlanService {
       actorUserId: actor.userId,
       after: { pointId: point.id, resumed: wasPaused },
     });
+    this.docs.refreshSoon(actor.organizationId, projectId);
     return this.get(actor, projectId);
   }
 
@@ -1042,6 +1053,7 @@ export class WorkPlanService {
       after: { pointId: point.id },
     });
     await this.events.submittedForTest(actor, project, point.body);
+    this.docs.refreshSoon(actor.organizationId, projectId);
     return this.get(actor, projectId);
   }
 
@@ -1145,6 +1157,7 @@ export class WorkPlanService {
       actorUserId: actor.userId,
       after: { pointId: point.id },
     });
+    this.docs.refreshSoon(actor.organizationId, projectId);
     return this.get(actor, projectId);
   }
 
@@ -1453,6 +1466,7 @@ export class WorkPlanService {
     if (row) {
       await this.planTasks.sync(actor, project, row);
     }
+    this.docs.refreshSoon(actor.organizationId, projectId);
   }
 
   private assertPhases(phases: WorkPlanPhaseDto[]): void {
@@ -1515,6 +1529,22 @@ export class WorkPlanService {
       create: { planId, userId, percent: 100 },
       update: {},
     });
+  }
+
+  /** The viewer's rights on this project's Summary (proposals and the project doc use them). */
+  projectAccess(
+    actor: AuthenticatedUser,
+    projectId: string,
+  ): Promise<{ flags: WorkPlanActorFlags; project: ProjectRow }> {
+    return this.access(actor, projectId);
+  }
+
+  isDeveloperOn(project: ProjectRow, userId: string): boolean {
+    return this.developersOn(project).some((user) => user.id === userId);
+  }
+
+  isTeamMemberOf(project: ProjectRow, userId: string): boolean {
+    return this.isOnProjectTeam(project, userId);
   }
 
   private async flags(actor: AuthenticatedUser, projectId: string): Promise<WorkPlanActorFlags> {
@@ -1779,7 +1809,8 @@ export class WorkPlanService {
       };
     },
   ) {
-    const status = point.status as (typeof WORK_PLAN_POINT_STATUS)[keyof typeof WORK_PLAN_POINT_STATUS];
+    const status =
+      point.status as (typeof WORK_PLAN_POINT_STATUS)[keyof typeof WORK_PLAN_POINT_STATUS];
     return workPlanPointActions({
       status,
       startedById: point.startedById,
