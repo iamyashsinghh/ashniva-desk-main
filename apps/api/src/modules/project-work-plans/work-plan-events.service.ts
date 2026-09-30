@@ -46,11 +46,7 @@ export class WorkPlanEventsService {
     );
   }
 
-  async doubt(
-    actor: AuthenticatedUser,
-    project: ProjectRow,
-    body: string,
-  ): Promise<void> {
+  async doubt(actor: AuthenticatedUser, project: ProjectRow, body: string): Promise<void> {
     await this.send(
       actor,
       project,
@@ -74,6 +70,24 @@ export class WorkPlanEventsService {
       `Reply on ${project.code}`,
       body,
       userIds,
+    );
+  }
+
+  /** Work from AI Memory waits in the Summary for the project manager or team lead to decide. */
+  async proposed(
+    actor: AuthenticatedUser,
+    project: ProjectRow,
+    proposalId: string,
+    title: string,
+  ): Promise<void> {
+    await this.send(
+      actor,
+      project,
+      NOTIFICATION_TYPE.WORK_PLAN_DOUBT,
+      `Work to approve on ${project.code}`,
+      `“${title}” is waiting in the Summary. Open the Summary to edit, publish or reject it.`,
+      [project.managerUserId, project.leadUserId],
+      `work-plan-proposal:${proposalId}`,
     );
   }
 

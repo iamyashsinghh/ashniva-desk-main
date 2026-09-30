@@ -2,10 +2,14 @@ import type {
   AddWorkPlanWorkInput,
   AssignWorkPlanInput,
   CombineWorkPlanTitlesInput,
+  DecideWorkPlanProposalInput,
   ParseWorkPlanInput,
+  ProjectDoc,
   ProjectWorkPlan,
   SaveWorkPlanAssignmentsInput,
   SaveWorkPlanInput,
+  UpdateWorkPlanProposalInput,
+  WorkPlanProposal,
   WorkPlanExplainApplyInput,
   WorkPlanExplainPreview,
   WorkPlanExplainPreviewInput,
@@ -18,7 +22,29 @@ import { projectKeys } from './api';
 
 export const workPlanKeys = {
   detail: (projectId: string) => [...projectKeys.detail(projectId), 'work-plan'] as const,
+  proposals: (projectId: string) =>
+    [...projectKeys.detail(projectId), 'work-plan', 'proposals'] as const,
+  doc: (projectId: string) => [...projectKeys.detail(projectId), 'work-plan', 'doc'] as const,
 };
+
+export function useWorkPlanProposalsQuery(projectId: string | undefined) {
+  return useQuery({
+    queryKey: workPlanKeys.proposals(projectId ?? ''),
+    queryFn: () =>
+      apiRequest<WorkPlanProposal[]>(`/projects/${projectId}/work-plan/proposals?status=PENDING`),
+    enabled: Boolean(projectId),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useProjectDocQuery(projectId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: workPlanKeys.doc(projectId ?? ''),
+    queryFn: () => apiRequest<ProjectDoc>(`/projects/${projectId}/work-plan/doc`),
+    enabled: Boolean(projectId) && enabled,
+    refetchInterval: (query) => (query.state.data?.refreshing ? 4_000 : false),
+  });
+}
 
 export function useWorkPlanQuery(projectId: string | undefined, enabled = true) {
   return useQuery({
@@ -40,6 +66,8 @@ export function useWorkPlanMutations(projectId: string) {
   const queryClient = useQueryClient();
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: workPlanKeys.detail(projectId) });
+  const invalidateProposals = () =>
+    queryClient.invalidateQueries({ queryKey: workPlanKeys.proposals(projectId) });
   return {
     parse: useMutation({
       mutationFn: (body: ParseWorkPlanInput) =>
@@ -152,6 +180,44 @@ export function useWorkPlanMutations(projectId: string) {
           body,
         }),
       onSuccess: invalidate,
+    }),
+    updateProposal: useMutation({
+      mutationFn: (input: { id: string; body: UpdateWorkPlanProposalInput }) =>
+        apiRequest<WorkPlanProposal>(`/projects/${projectId}/work-plan/proposals/${input.id}`, {
+          method: 'PATCH',
+          body: input.body,
+        }),
+      onSuccess: invalidateProposals,
+    }),
+    publishProposal: useMutation({
+      mutationFn: (input: {
+        id: string;
+        body: UpdateWorkPlanProposalInput & DecideWorkPlanProposalInput;
+      }) =>
+        apiRequest<{ proposal: WorkPlanProposal; plan: ProjectWorkPlan }>(
+          `/projects/${projectId}/work-plan/proposals/${input.id}/publish`,
+          { method: 'POST', body: input.body },
+        ),
+      onSuccess: async () => {
+        await invalidateProposals();
+        await invalidate();
+        await queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      },
+    }),
+    rejectProposal: useMutation({
+      mutationFn: (input: { id: string; body: DecideWorkPlanProposalInput }) =>
+        apiRequest<WorkPlanProposal>(
+          `/projects/${projectId}/work-plan/proposals/${input.id}/reject`,
+          { method: 'POST', body: input.body },
+        ),
+      onSuccess: invalidateProposals,
+    }),
+    refreshDoc: useMutation({
+      mutationFn: () =>
+        apiRequest<ProjectDoc>(`/projects/${projectId}/work-plan/doc/refresh`, {
+          method: 'POST',
+        }),
+      onSuccess: (doc) => queryClient.setQueryData(workPlanKeys.doc(projectId), doc),
     }),
     combineTitles: useMutation({
       mutationFn: (body: CombineWorkPlanTitlesInput) =>

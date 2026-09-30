@@ -742,6 +742,8 @@ model Project {
   problems         Problem[]
   incidents        Incident[]
   workPlan         ProjectWorkPlan?
+  workPlanProposals ProjectWorkPlanProposal[]
+  doc              ProjectDoc?
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -796,6 +798,72 @@ model ProjectWorkPlan {
   @@index([organizationId])
   @@index([assignedToId])
   @@map("project_work_plans")
+}
+
+enum WorkPlanProposalStatus {
+  PENDING
+  PUBLISHED
+  REJECTED
+}
+
+/// Work an integration (AI Memory) sends for the Summary. Nothing reaches the plan until a super
+/// admin, project manager or team lead publishes it, as sent or edited, or rejects it.
+model ProjectWorkPlanProposal {
+  id               String                 @id @default(uuid(7)) @db.Uuid
+  organizationId   String                 @map("organization_id") @db.Uuid
+  projectId        String                 @map("project_id") @db.Uuid
+  status           WorkPlanProposalStatus @default(PENDING)
+  /// Who sent it, e.g. AI_MEMORY.
+  source           String
+  /// The sender's own id for it, so a retry does not add it twice.
+  externalId       String?                @map("external_id")
+  phaseId          String?                @map("phase_id") @db.Uuid
+  phaseHeading     String?                @map("phase_heading")
+  titleId          String?                @map("title_id") @db.Uuid
+  title            String
+  /// [{ body, estimateMinutes }]
+  points           Json
+  assignedToId     String?                @map("assigned_to_id") @db.Uuid
+  reviewerId       String?                @map("reviewer_id") @db.Uuid
+  priority         Priority?
+  dueDate          DateTime?              @map("due_date") @db.Date
+  /// What was said and where, shown to the person deciding.
+  context          String?
+  createdById      String                 @map("created_by_id") @db.Uuid
+  decidedById      String?                @map("decided_by_id") @db.Uuid
+  decidedAt        DateTime?              @map("decided_at")
+  decisionNote     String?                @map("decision_note")
+  publishedTitleId String?                @map("published_title_id") @db.Uuid
+  publishedTaskId  String?                @map("published_task_id") @db.Uuid
+  publishedTaskKey String?                @map("published_task_key")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, source, externalId])
+  @@index([projectId, status])
+  @@map("project_work_plan_proposals")
+}
+
+/// The project's living Markdown document — features, structure and flow — rebuilt from the
+/// Summary as work moves.
+model ProjectDoc {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  projectId      String   @unique @map("project_id") @db.Uuid
+  markdown       String
+  /// Fingerprint of what it was written from; a different one means it is out of date.
+  sourceHash     String   @map("source_hash")
+  /// AI or OUTLINE (written without AI).
+  generatedBy    String   @map("generated_by")
+  generatedAt    DateTime @map("generated_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_docs")
 }
 
 model ProjectWorkPlanPhase {

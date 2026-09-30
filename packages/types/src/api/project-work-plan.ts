@@ -217,6 +217,83 @@ export interface AddedWorkPlanTopic {
   task: { id: string; number: number; key: string } | null;
 }
 
+export type WorkPlanProposalStatus = 'PENDING' | 'PUBLISHED' | 'REJECTED';
+
+/**
+ * Work sent for the Summary by an integration (AI Memory). It stays out of the plan until an
+ * admin, project manager or team lead publishes it — as sent, or after editing — or rejects it.
+ */
+export interface WorkPlanProposal {
+  id: string;
+  projectId: string;
+  status: WorkPlanProposalStatus;
+  /** Who sent it, e.g. AI_MEMORY. */
+  source: string;
+  externalId: string | null;
+  /** An existing phase, or the heading of a new one (both null: a new "General" phase). */
+  phaseId: string | null;
+  phaseHeading: string | null;
+  /** An existing topic the steps join; null opens a new topic called `title`. */
+  titleId: string | null;
+  title: string;
+  points: Array<{ body: string; estimateMinutes: number }>;
+  assignedTo: UserRef | null;
+  reviewer: UserRef | null;
+  priority: Priority | null;
+  dueDate: string | null;
+  /** What was said and where. */
+  context: string | null;
+  createdBy: UserRef | null;
+  decidedBy: UserRef | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  /** After publishing: the topic it became and its task (null until a developer is assigned). */
+  publishedTitleId: string | null;
+  task: { id: string; key: string } | null;
+  createdAt: string;
+  /** The viewer may edit, publish and reject it (admin, project manager or team lead). */
+  canDecide: boolean;
+}
+
+export interface CreateWorkPlanProposalInput {
+  /** Sender's own id; sending the same one again returns the first proposal. */
+  externalId?: string | null;
+  source?: string;
+  phaseId?: string | null;
+  phaseHeading?: string | null;
+  titleId?: string | null;
+  title: string;
+  points: Array<{ body: string; estimateMinutes: number }>;
+  assignedToId?: string | null;
+  reviewerId?: string | null;
+  priority?: Priority | null;
+  dueDate?: string | null;
+  context?: string | null;
+}
+
+/** Edit before publishing. Omitted fields keep their value; null clears. */
+export type UpdateWorkPlanProposalInput = Partial<
+  Omit<CreateWorkPlanProposalInput, 'externalId' | 'source'>
+>;
+
+export interface DecideWorkPlanProposalInput {
+  note?: string | null;
+}
+
+/** The project's Markdown document, rebuilt from the Summary as the work moves. */
+export interface ProjectDoc {
+  projectId: string;
+  markdown: string | null;
+  generatedAt: string | null;
+  /** AI (Gemini) or OUTLINE (written from the Summary without AI). */
+  generatedBy: 'AI' | 'OUTLINE' | null;
+  /** The Summary changed since it was written; a new version is on its way. */
+  stale: boolean;
+  /** A new version is being written right now. */
+  refreshing: boolean;
+  fileName: string;
+}
+
 /** Merge topics in one phase into a single topic. Minutes from every step are added. */
 export interface CombineWorkPlanTitlesInput {
   phaseId: string;

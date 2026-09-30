@@ -17,13 +17,12 @@ import {
   toSavePhases,
   type AddedWorkPlacement,
 } from '../work-plan-layout';
-import { useWorkPlanMutations, useWorkPlanQuery } from '../work-plan-api';
+import { useProjectDocQuery, useWorkPlanMutations, useWorkPlanQuery } from '../work-plan-api';
+import { ProjectDocDialog } from './ProjectDocDialog';
 import { WorkPlanAddWorkPanel } from './WorkPlanAddWorkPanel';
 import { WorkPlanEditor } from './WorkPlanEditor';
-import {
-  WorkPlanAssignWordsDialog,
-  WorkPlanExplainDialog,
-} from './WorkPlanExplainDialog';
+import { WorkPlanProposalsPanel } from './WorkPlanProposalsPanel';
+import { WorkPlanAssignWordsDialog, WorkPlanExplainDialog } from './WorkPlanExplainDialog';
 import {
   assignmentDraftFrom,
   assignmentFingerprint,
@@ -70,12 +69,13 @@ export function ProjectWorkPlanModal({
   const [uploading, setUploading] = useState(false);
   const [placement, setPlacement] = useState<AddedWorkPlacement | null>(null);
   const [explainStep, setExplainStep] = useState<ExplainStep>('idle');
-  const [explainPreviewData, setExplainPreviewData] = useState<WorkPlanExplainPreview | null>(
-    null,
-  );
+  const [explainPreviewData, setExplainPreviewData] = useState<WorkPlanExplainPreview | null>(null);
   const [explainAttempt, setExplainAttempt] = useState(0);
   const [explainError, setExplainError] = useState<string | undefined>();
   const [aiHint, setAiHint] = useState<string | undefined>();
+  const [docOpen, setDocOpen] = useState(false);
+  const doc = useProjectDocQuery(projectId);
+  const docFileName = doc.data?.fileName ?? 'project.md';
 
   const data = plan.data;
   const canEdit = Boolean(data?.canAssign);
@@ -241,6 +241,32 @@ export function ProjectWorkPlanModal({
     await onSaveAssignments();
   }
 
+  const headerEditActions = (
+    <>
+      {data && data.phases.length > 0 ? (
+        <Button
+          variant="primary"
+          size="sm"
+          loading={saveAssignments.isPending || explainPreview.isPending || explainApply.isPending}
+          disabled={!assignDirty}
+          disabledReason={!assignDirty ? 'Change an assignment to save it.' : undefined}
+          onClick={onSaveAssignmentsClick}
+        >
+          Save
+        </Button>
+      ) : null}
+      <Button
+        size="sm"
+        onClick={() => {
+          setDraft(data && data.phases.length === 0 ? emptyDraft() : toDraft(data?.phases ?? []));
+          setEditing(true);
+        }}
+      >
+        {data && data.phases.length === 0 ? 'Add phase' : 'Edit plan'}
+      </Button>
+    </>
+  );
+
   return (
     <Modal
       open
@@ -249,35 +275,19 @@ export function ProjectWorkPlanModal({
       description="The developer presses Start, then Send to tester — that pauses leftover time. The tester marks Good or Error. Admin, project manager and team lead see extra time past the estimate, every send, and each tester error until Good."
       onClose={onClose}
       headerActions={
-        canEdit && !showEditor ? (
+        showEditor ? null : (
           <>
-            {data && data.phases.length > 0 ? (
-              <Button
-                variant="primary"
-                size="sm"
-                loading={
-                  saveAssignments.isPending || explainPreview.isPending || explainApply.isPending
-                }
-                disabled={!assignDirty}
-                disabledReason={!assignDirty ? 'Change an assignment to save it.' : undefined}
-                onClick={onSaveAssignmentsClick}
-              >
-                Save
-              </Button>
-            ) : null}
             <Button
               size="sm"
-              onClick={() => {
-                setDraft(
-                  data && data.phases.length === 0 ? emptyDraft() : toDraft(data?.phases ?? []),
-                );
-                setEditing(true);
-              }}
+              variant="ghost"
+              aria-label="Open the project Markdown file"
+              onClick={() => setDocOpen(true)}
             >
-              {data && data.phases.length === 0 ? 'Add phase' : 'Edit plan'}
+              {docFileName}
             </Button>
+            {canEdit ? headerEditActions : null}
           </>
-        ) : null
+        )
       }
       footer={
         showEditor ? (
@@ -303,7 +313,12 @@ export function ProjectWorkPlanModal({
       {plan.isError ? <Alert tone="danger">{errorMessage(plan.error)}</Alert> : null}
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {aiHint ? (
-        <Alert tone="info" title={aiHint} dismissLabel="Dismiss" onDismiss={() => setAiHint(undefined)} />
+        <Alert
+          tone="info"
+          title={aiHint}
+          dismissLabel="Dismiss"
+          onDismiss={() => setAiHint(undefined)}
+        />
       ) : null}
       {placement && placement.lines.length > 0 && !showEditor ? (
         <Alert
@@ -351,6 +366,8 @@ export function ProjectWorkPlanModal({
           </Button>
         </div>
       ) : null}
+
+      {!showEditor && data ? <WorkPlanProposalsPanel projectId={projectId} plan={data} /> : null}
 
       {canEdit && !showEditor && data ? (
         <WorkPlanAddWorkPanel
@@ -446,6 +463,14 @@ export function ProjectWorkPlanModal({
             setExplainPreviewData(null);
             setExplainError(undefined);
           }}
+        />
+      ) : null}
+
+      {docOpen ? (
+        <ProjectDocDialog
+          projectId={projectId}
+          projectName={projectName}
+          onClose={() => setDocOpen(false)}
         />
       ) : null}
     </Modal>

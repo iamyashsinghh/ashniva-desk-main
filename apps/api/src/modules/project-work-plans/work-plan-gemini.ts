@@ -28,6 +28,7 @@ Rules:
 const EXPAND_FAIL = 'The extra work could not be planned. Try again, or add phases by hand.';
 const EXPLAIN_FAIL =
   'The wording could not be improved. Try again, or keep your own words and Save.';
+const DOC_FAIL = 'The project document could not be written. Try again later.';
 
 export interface ExpandWorkInput {
   prompt: string;
@@ -101,6 +102,22 @@ export class WorkPlanGeminiService {
       throw new BadRequestException(EXPLAIN_FAIL);
     }
     return { titles };
+  }
+
+  /** Writes the project's Markdown document from what the Summary and its tasks say. */
+  async writeProjectDoc(outline: string): Promise<string> {
+    const text = await this.generateJson(
+      {
+        contents: [{ role: 'user', parts: [{ text: projectDocPrompt(outline) }] }],
+        generationConfig: { temperature: 0.2 },
+      },
+      DOC_FAIL,
+    );
+    const markdown = stripMarkdownFence(text);
+    if (!markdown) {
+      throw new BadRequestException(DOC_FAIL);
+    }
+    return markdown;
   }
 
   private async generateJson(
@@ -216,6 +233,34 @@ Rules:
 ${retryNote}
 Work to rewrite:
 ${outline}`;
+}
+
+function projectDocPrompt(outline: string): string {
+  return `You keep the living document of a software project. Write it in Markdown from the facts below, so that anyone who opens it understands what this project is, what has been built, what is being built, and how it works.
+
+Use exactly these sections, in this order:
+# <Project name>
+## Overview — what the project is and who it is for, in 2–4 sentences.
+## Features — three lists: "### Done", "### In progress", "### Planned". One line per feature, in plain words. A topic whose steps are all done is Done; one with a started step is In progress; the rest are Planned.
+## Structure — the phases in order, each with its topics as a short nested list.
+## How it works — the flow of the product and of the work, as numbered steps, from what the topics and steps describe.
+## Team — who manages, leads, develops and tests.
+## Decisions and discussions — what was discussed and approved (from "Discussed and approved"), newest first. Omit the section when there is nothing.
+## Open items — work not started yet, errors sent back by testers, and anything unassigned.
+
+Rules:
+- Use only the facts given. Do not invent features, technologies, clients or dates.
+- Write in English, short sentences. No tables. No HTML.
+- Return the Markdown only, without a code fence.
+
+Facts:
+${outline}`;
+}
+
+function stripMarkdownFence(text: string): string {
+  const trimmed = text.trim();
+  const fenced = /^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i.exec(trimmed);
+  return (fenced?.[1] ?? trimmed).trim();
 }
 
 export function readGeminiText(body: unknown): string {
