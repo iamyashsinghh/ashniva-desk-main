@@ -205,11 +205,14 @@ export class WorkPlanRepository {
           // Assigners may remove started or completed steps when editing the plan.
           await tx.projectWorkPlanPoint.delete({ where: { id: point.id } });
         }
-        for (const title of titleById.values()) {
-          if (keptTitleIds.has(title.id)) {
-            continue;
-          }
-          await tx.projectWorkPlanTitle.delete({ where: { id: title.id } });
+        const droppedTitleIds = [...titleById.keys()].filter((id) => !keptTitleIds.has(id));
+        if (droppedTitleIds.length > 0) {
+          // A topic taken out of the Summary (on its own or with its phase) takes its task with it.
+          await tx.task.updateMany({
+            where: { organizationId, workPlanTitleId: { in: droppedTitleIds }, deletedAt: null },
+            data: { deletedAt: new Date(), workPlanTitleId: null },
+          });
+          await tx.projectWorkPlanTitle.deleteMany({ where: { id: { in: droppedTitleIds } } });
         }
         for (const phase of phaseById.values()) {
           if (keptPhaseIds.has(phase.id)) {

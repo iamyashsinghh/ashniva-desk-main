@@ -188,11 +188,16 @@ export class WorkPlanTasksService {
     // A topic with nobody on it yet still becomes a task (Draft), so the people running the
     // project see it on the board the moment it is added to the Summary.
     if (!existing) {
+      const started = title.points
+        .flatMap((point) => (point.startedAt ? [point.startedAt] : []))
+        .sort((left, right) => left.getTime() - right.getTime());
       const created = await this.tasks.create(actor.organizationId, {
         projectId,
         title: taskTitle,
         description,
         status: fromSummary ?? waiting,
+        startedAt: fromSummary ? (started[0] ?? new Date()) : null,
+        completedAt: fromSummary === TASK_STATUS.COMPLETED ? new Date() : null,
         priority: priority ?? PRIORITY.MEDIUM,
         assignedToId,
         createdById: actor.userId,
